@@ -1,0 +1,4 @@
+github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
+github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+github.com/agentic-wiki/wiki v0.9.0 h1:BTbB2IPLPEmL3As1PQGuGGLgOUg7by83i7Y4/tiyAEQ=
+github.com/agentic-wiki/wiki v0.9.0/go.mod h1:saN8gk0QggYgsppT63GWeH2aD8+TnG0w9Ny4qC/N08o=

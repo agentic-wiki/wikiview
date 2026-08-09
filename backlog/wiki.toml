@@ -1,0 +1,29 @@
+spec = "0.1"
+types = ["task"]
+
+# index.md links up to the repo README, which is outside this bundle. An `ignore`
+# path that resolves outside acknowledges the reference and silences the
+# out-of-bundle advisory; without this, `wiki check` warns on every run. (An
+# `ignore` path *inside* a bundle does the other thing: excludes it from the
+# index. Same key, and where the path lands decides which.)
+ignore = ["../README.md"]
+
+# Task entries live in the phase folders and are found by query, not by being
+# listed on the board — the board carries goals and epics, which outlast them.
+# So they stay indexed and checked, and only leave the orphans report. The glob
+# is per-subfolder rather than a list of names, so adding a phase needs no edit
+# here; the bundle root stays covered, which is what keeps index.md honest.
+ignore_orphans = ["*/**"]
+
+# wikiview's own board, over its own backlog. The first consumer of the namespace
+# is the tool that proposed it: if this is awkward to write or read, that is the
+# design telling us something before anyone else has to live with it.
+#
+# `path = "/"` boards the whole bundle, since this bundle *is* the backlog.
+# `where` is omitted because ["type=task"] is the default. `columns` pins the
+# order and declares "in-progress" before anything is in it, which inference
+# alone could never do.
+[[tool.wikiview.board]]
+path = "/"
+columns = ["todo", "in-progress", "done"]
+lane = "priority"
