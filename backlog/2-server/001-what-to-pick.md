@@ -7,7 +7,7 @@ tags: [design, architecture]
 blockers: [/1-design/001-design.md]
 ---
 
-A working board UI exists in the `wikanban` repo. It is not the starting point, because [the retro](../lessons/001-first-attempt.md) is about what happens when it is treated as one: every migration artifact it lists came from preserving decisions that were right for *a board over one folder* and wrong for *a reader over a bundle*.
+A working board UI exists in the `wikanban` repo. It is not the starting point: an attempt to treat it as one produced three link resolvers, two frontmatter writers in one module, and two config files with two parsers, every one of them a migration artifact from preserving decisions that were right for *a board over one folder* and wrong for *a reader over a bundle*. It was reverted.
 
 So this repo is built from its intended shape, and pieces are **picked deliberately, one at a time, with a reason**. The list below is the picking order, not a port.
 

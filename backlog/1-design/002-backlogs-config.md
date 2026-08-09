@@ -12,7 +12,7 @@ Config is **entirely optional**. A stock bundle serves with no configuration at 
 
 `[tool.wikiview]` inside `wiki.toml`, depending on the upstream `[tool.*]` namespace (`wiki` backlog, *reserve a per-tool config namespace in wiki.toml*). Named rather than linked: a relative link out of this bundle would assume a sibling checkout, and `check` is right to flag it.
 
-The alternative is a `wikiview.toml` beside the bundle, and the retro lists satellite configs as a failure. The argument that settles it is that the alternative is not *one* extra file, it is one per tool, forever. `pyproject.toml` is the precedent and it works.
+The alternative is a `wikiview.toml` beside the bundle, which is one of the things the reverted first attempt got wrong: two config files describing one directory, with two parsers. The argument that settles it is that the alternative is not *one* extra file, it is one per tool, forever. `pyproject.toml` is the precedent and it works.
 
 **Never a second parser.** `bundle.Bundle` hands the tables over; a TOML reader here would be another rule with two homes.
 
