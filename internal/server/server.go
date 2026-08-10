@@ -14,14 +14,16 @@ import (
 )
 
 type Server struct {
-	store *store.Store
-	mux   *http.ServeMux
+	store  *store.Store
+	events *broker
+	mux    *http.ServeMux
 }
 
 func New(s *store.Store) *Server {
-	srv := &Server{store: s, mux: http.NewServeMux()}
+	srv := &Server{store: s, events: newBroker(), mux: http.NewServeMux()}
 	srv.mux.HandleFunc("GET /api/bundle", srv.handleBundle)
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
+	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
 	return srv
 }
 
@@ -33,7 +35,8 @@ type BundleInfo struct {
 	Dir     string   `json:"dir"`
 	Spec    string   `json:"spec"`
 	Entries int      `json:"entries"`
-	Tools   []string `json:"tools"` // [tool.*] tables present in wiki.toml
+	Tools   []string `json:"tools"`   // [tool.*] tables present in wiki.toml
+	Version uint64   `json:"version"` // matches the SSE stream; compare to know you are stale
 }
 
 func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +46,7 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		Spec:    idx.Bundle.Spec,
 		Entries: len(idx.Entries),
 		Tools:   idx.Bundle.Tools(),
+		Version: s.store.Version(),
 	})
 }
 

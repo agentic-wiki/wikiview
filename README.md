@@ -29,14 +29,17 @@ Configuration lives in the bundle's own `wiki.toml`, under `[tool.wikiview]`, re
 **Early.** The server exists with no UI: it holds the bundle's index in memory and answers two read-only endpoints.
 
 ```
-GET /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables present
+GET /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version
 GET /api/entry/{path...}     one entry: frontmatter verbatim, unrendered body, checkboxes,
                              and its links and backlinks with every target already resolved
+GET /api/events              server-sent events carrying the current version
 ```
 
 Links arrive resolved to bundle paths because turning a written link into a path is the engine's rule; a browser doing it would be the second implementation this repo exists to avoid.
 
-No watcher, no SSE, no writes, no frontend yet — each is a deliberate next step rather than an omission. The plan, and the reasoning behind it, is in [`backlog/`](backlog/index.md), itself a wiki bundle that wikiview serves.
+A watcher follows the files, so an agent or an editor changing the bundle updates the index without anything asking it to. Clients hear a **version**, never a payload, and refetch what they are looking at — so a client that missed ten events pulls once and is correct again. The version moves only when content actually changed: a save that edited nothing, or a `tidy` that found nothing to fix, does not churn every open tab.
+
+No writes and no frontend yet — both are deliberate next steps rather than omissions. The plan, and the reasoning behind it, is in [`backlog/`](backlog/index.md), itself a wiki bundle that wikiview serves.
 
 ```sh
 just serve      # serves this repo's own backlog

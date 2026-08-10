@@ -26,10 +26,10 @@ Each step is finished before the next begins. The order is load-bearing rather t
 **1 — Design** *(settled)*
 One index rebuilt on change, no view privileged in the store. Rules stay in the engine and the server answers rather than the browser asking. Config is `[tool.wikiview]` in the bundle's own `wiki.toml`, and all of it is optional.
 
-**2 — Server** *(current)*
-A bundle served over HTTP with no UI. The store and a read-only API are done; the watcher, the change digest, and SSE are what remain, so the reader has something live to subscribe to rather than having live updates retrofitted later.
+**2 — Server** *(done)*
+A bundle served over HTTP with no UI: the index in memory, a read-only API, and a watcher that follows the files so the index never needs asking. Clients hear a version over SSE and refetch; the version moves only when content actually did.
 
-**3 — Reader**
+**3 — Reader** *(current)*
 Real routes, the front door at `index.md`, navigation by links, datasets rendered as tables. The reader is the product; the board is a view inside it.
 
 **4 — Boards**
