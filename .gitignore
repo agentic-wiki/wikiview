@@ -9,3 +9,6 @@ coverage.out
 /ui/node_modules/
 /ui/dist/*
 !/ui/dist/.gitkeep
+
+# tsc -b's incremental cache. Machine-specific and regenerated on every build.
+*.tsbuildinfo

@@ -4,6 +4,7 @@ import type { BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
 import { Breadcrumbs } from "@/shell/Breadcrumbs";
 import { Tree } from "@/shell/Tree";
+import { Omnibar } from "@/shell/Omnibar";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -45,19 +46,15 @@ export function Shell({
           </svg>
         </button>
 
-        <Breadcrumbs bundleName={basename(bundle.dir)} path={path} />
+        {/* Breadcrumbs shrink and ellipsize; the omnibar keeps a workable
+            width. The path orients you, the omnibar moves you. */}
+        <div className="min-w-0 flex-1">
+          <Breadcrumbs bundleName={basename(bundle.dir)} path={path} />
+        </div>
 
-        <div className="grow" />
-
-        {/* A small affordance, not an input: a persistent search field would
-            fight the path for width, so the palette opens as an overlay. */}
-        <button
-          type="button"
-          className="border-border text-muted hover:text-fg hidden shrink-0 items-center gap-2 rounded-md border px-2 py-1 text-xs sm:flex"
-        >
-          Search
-          <kbd className="border-border rounded border px-1 font-sans">⌘K</kbd>
-        </button>
+        <div className="hidden w-full max-w-sm shrink justify-center sm:flex">
+          <Omnibar tree={tree} />
+        </div>
       </header>
 
       <div className="relative flex min-h-0 grow">

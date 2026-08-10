@@ -30,7 +30,7 @@ lint:
 
 # Pre-commit quality gate: vet + lint + test
 [group('dev')]
-check: vet lint test
+check: vet lint test ui-check ui-test
 
 # Run unit tests
 [group('test')]
@@ -71,6 +71,12 @@ build: ui-build
 [group('dev')]
 ui-check:
     cd ui && bunx tsc -b --noEmit
+
+# Frontend tests: mounts the real app and drives it, so a route is proven to
+# render rather than merely to return HTML
+[group('test')]
+ui-test: ui-install
+    cd ui && bun test
 
 # The frontend dev server, proxying /api to a running wikiview
 [group('run')]

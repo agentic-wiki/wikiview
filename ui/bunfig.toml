@@ -1,0 +1,5 @@
+[test]
+# Registers a DOM before any test file loads, so the app can be mounted and
+# driven the way a browser would. Not a browser, but real execution: the module
+# graph runs, effects fire, and the router resolves.
+preload = ["./src/test-setup.ts"]

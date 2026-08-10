@@ -9,6 +9,9 @@ export default defineConfig({
   build: {
     // The Go binary embeds this directory, so it lands where the server expects.
     outDir: "dist",
+    // Cleared on every build so stale hashed assets do not accumulate. That also
+    // deletes the placeholder //go:embed needs, which is why public/.gitkeep
+    // exists: Vite copies publicDir into outDir, so the build puts it back.
     emptyOutDir: true,
   },
   server: {

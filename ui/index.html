@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tells the browser which canvas to paint *before* any stylesheet loads.
+         Without it the first frame is the UA default white, which is a visible
+         flash on a dark system. The stylesheet itself is a render-blocking
+         <link> that Vite emits, so nothing else paints unstyled. -->
+    <meta name="color-scheme" content="light dark" />
     <title>wikiview</title>
   </head>
   <body>

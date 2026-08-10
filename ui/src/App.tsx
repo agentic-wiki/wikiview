@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 import { api, onVersion, type BundleInfo, type TreeNode } from "@/api";
 import { Shell } from "@/shell/Shell";
 import { EntryView } from "@/views/EntryView";
@@ -66,7 +66,12 @@ export function App() {
  * table.
  */
 function Router({ tree, version }: { tree: TreeNode; version: number }) {
-  const path = "/" + window.location.pathname.replace(/^\/wiki\/?/, "");
+  // useLocation, not window.location: the latter is not reactive, so a
+  // navigation that keeps this component mounted would render the previous
+  // path. It happens to work today because <Routes> re-renders on navigation,
+  // which is a coincidence rather than a contract.
+  const location = useLocation();
+  const path = "/" + decodeURIComponent(location.pathname).replace(/^\/wiki\/?/, "");
   const folder = findFolder(tree, path.replace(/\/$/, "") || "/");
 
   if (folder) {
