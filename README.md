@@ -26,16 +26,19 @@ Configuration lives in the bundle's own `wiki.toml`, under `[tool.wikiview]`, re
 
 ## Status
 
-**Early.** The server exists with no UI: it holds the bundle's index in memory and answers two read-only endpoints.
+**Early.** The server exists with no UI: it holds the bundle's index in memory and answers read-only endpoints.
 
 ```
 GET /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version
-GET /api/entry/{path...}     one entry: frontmatter verbatim, unrendered body, checkboxes,
-                             and its links and backlinks with every target already resolved
+GET /api/tree                the folder tree, each folder's entries and its index.md if it has one
+GET /api/entry/{path...}     one entry: the markdown as written, frontmatter, checkboxes,
+                             plus resolved-link and heading-id tables
 GET /api/events              server-sent events carrying the current version
 ```
 
-Links arrive resolved to bundle paths because turning a written link into a path is the engine's rule; a browser doing it would be the second implementation this repo exists to avoid.
+**Rules are resolved on the server and shipped as data; rendering happens in the client.** Two things a browser must not work out for itself: a body link is written relative (`./b.md`) and resolving it against the bundle root is the engine's rule, and an `#anchor` has to land on the heading `wiki check` thinks it names — every markdown library brings its own slugger and they disagree in small ways (goldmark turns `and_underscore` into `and-underscore`; the engine keeps the underscore, matching GitHub).
+
+So both travel as lookup tables beside the body. The client renders markdown with its own stack and resolves a link by looking up the href it encounters; anything absent from the table — an external URL, a link out of the bundle — is left exactly as authored. The body stays the source, which is what an editor would save back and what a plugin pipeline takes as input.
 
 A watcher follows the files, so an agent or an editor changing the bundle updates the index without anything asking it to. Clients hear a **version**, never a payload, and refetch what they are looking at — so a client that missed ten events pulls once and is correct again. The version moves only when content actually changed: a save that edited nothing, or a `tidy` that found nothing to fix, does not churn every open tab.
 

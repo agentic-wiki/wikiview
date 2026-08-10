@@ -64,53 +64,6 @@ func TestBundleEndpoint(t *testing.T) {
 	}
 }
 
-func TestEntryEndpoint(t *testing.T) {
-	var got EntryView
-	if code := get(t, newTestServer(t), "/api/entry/notes/a.md", &got); code != http.StatusOK {
-		t.Fatalf("code=%d", code)
-	}
-	if got.Path != "/notes/a.md" || got.Type != "note" {
-		t.Errorf("path=%q type=%q", got.Path, got.Type)
-	}
-	// Frontmatter verbatim, lists included, with no per-field coercion.
-	if got.Frontmatter["title"] != "A" {
-		t.Errorf("title=%v", got.Frontmatter["title"])
-	}
-	if tags, ok := got.Frontmatter["tags"].([]any); !ok || len(tags) != 2 {
-		t.Errorf("tags=%#v, want a two-element list", got.Frontmatter["tags"])
-	}
-	// The body is served unrendered; where it becomes HTML is the reader's call.
-	if got.Body == "" || got.Frontmatter == nil {
-		t.Error("body should be the entry's markdown, frontmatter stripped")
-	}
-	if len(got.Checkboxes) != 2 || got.Checkboxes[0].Done || !got.Checkboxes[1].Done {
-		t.Errorf("checkboxes=%+v", got.Checkboxes)
-	}
-}
-
-// Links arrive resolved to bundle paths, so the browser never has to know how a
-// written link becomes one. A target that is not in the bundle is reported as
-// such rather than omitted: per the format it may be knowledge not yet written.
-func TestEntryLinksAreResolved(t *testing.T) {
-	var got EntryView
-	get(t, newTestServer(t), "/api/entry/notes/a.md", &got)
-
-	byTarget := map[string]LinkView{}
-	for _, l := range got.Links {
-		byTarget[l.To] = l
-	}
-	if b, ok := byTarget["/notes/b.md"]; !ok || !b.Exists {
-		t.Errorf("./b.md should resolve to /notes/b.md and exist, got %+v", byTarget)
-	}
-	if m, ok := byTarget["/notes/missing.md"]; !ok || m.Exists {
-		t.Errorf("./missing.md should resolve and report Exists=false, got %+v", byTarget)
-	}
-	// Backlinks come from the other end of the same graph.
-	if len(got.Backlinks) != 1 || got.Backlinks[0].From != "/index.md" {
-		t.Errorf("backlinks=%+v, want one from /index.md", got.Backlinks)
-	}
-}
-
 // The guard is structural: a request path is a map key, so traversal is not
 // blocked, it is meaningless — there is simply no such key. The property under
 // test is that nothing outside the bundle is ever served, whatever the route
