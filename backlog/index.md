@@ -30,10 +30,15 @@ One index rebuilt on change, no view privileged in the store. Rules stay in the 
 A bundle served over HTTP with no UI: the index in memory, a read-only API, and a watcher that follows the files so the index never needs asking. Clients hear a version over SSE and refetch; the version moves only when content actually did.
 
 **3 — Reader** *(current)*
-Real routes, the front door at `index.md`, navigation by links, datasets rendered as tables. The reader is the product; the board is a view inside it.
+Real routes, the front door at `index.md`, navigation by links, datasets rendered as tables. The reader is the product; the board is a view inside it. The engine's rules travel as data, so the client resolves links by lookup and never learns what a bundle root is.
+
+The shell is settled: an icon rail, a collapsible panel, ellipsizing breadcrumbs, and a ⌘K overlay. One layout rather than a preference — the three are affordances that compose, and two selectable layouts would mean every future view built twice.
 
 **4 — Boards**
-Columns, lanes, drag on pointer events, the card sheet. A view over one folder of the same index, reached from the reader and returning to it.
+Columns, lanes, drag on pointer events, the card sheet. A view over one folder of the same index, reached from the reader and returning to it. Any folder boards by URL; `[[tool.wikiview.board]]` only decides what the UI surfaces.
+
+**5 — Actions**
+Refresh, pull, sync. The first things that reach outside the machine, so each previews before acting, and a failed pull restores the previous state and offers the work as a named branch rather than stranding anyone in a conflicted tree.
 
 ## Upstream
 

@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the reader: URL routing, history, and the kanban toggle"
-status: todo
+status: done
 priority: high
 tags: [feature, ui]
 blockers: [/1-design/001-design.md]
@@ -38,3 +38,13 @@ Any folder is boardable by URL. The reader offers "view as board" when you are l
 ## Datasets
 
 A `type: dataset` entry renders its table as a table, and an entry holding several renders each. Sorting and filtering are client-side over the rendered values; the stored cells are never rewritten, since formatting is presentation and the raw value is the data.
+
+## Settled
+
+Everything above holds, and the parts that needed deciding since are decided in the tasks that build on it: [the shell](./004-ui-shell.md) for the chrome and the exact route table, [the reader](./005-markdown-and-checkboxes.md) for rendering and writes, [tables](./006-tables-and-grid.md) for the grid, and [the board](../4-boards/001-board-view.md) for what happens on one.
+
+Three things were sharpened rather than changed:
+
+- **Routes keep `.md`** and are the bundle path verbatim. Dropping the extension is ambiguous: a bundle can hold both `/notes.md` and `/notes/index.md`, and `wiki check` is clean on it.
+- **A folder navigates to its `index.md` when it has one**, via `replaceState`. Without one, the folder URL stays and lists its entries; an empty folder gets a placeholder, and the UI never writes an `index.md` to tidy that away.
+- **Hash routing is ruled out**, not merely unpreferred: the fragment carries heading anchors, so it cannot also carry the router.
