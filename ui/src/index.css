@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Both themes from the start: a reading tool gets used at night, and
+   retrofitting dark mode means revisiting every surface. */
+@theme {
+  --color-bg: oklch(99% 0 0);
+  --color-surface: oklch(97% 0 0);
+  --color-border: oklch(90% 0 0);
+  --color-fg: oklch(25% 0 0);
+  --color-muted: oklch(55% 0 0);
+  --color-accent: oklch(55% 0.14 250);
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-bg: oklch(19% 0.005 260);
+    --color-surface: oklch(23% 0.005 260);
+    --color-border: oklch(31% 0.008 260);
+    --color-fg: oklch(93% 0.004 260);
+    --color-muted: oklch(65% 0.01 260);
+    --color-accent: oklch(72% 0.13 250);
+  }
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--color-bg); color: var(--color-fg); }
+
+/* Motion is a preference, not a decoration: honour the system setting rather
+   than removing the state change. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

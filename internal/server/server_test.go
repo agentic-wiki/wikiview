@@ -34,7 +34,7 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s)
+	return New(s, nil)
 }
 
 func get(t *testing.T, srv *Server, path string, into any) int {

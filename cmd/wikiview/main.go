@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-wiki/wikiview/internal/server"
 	"github.com/agentic-wiki/wikiview/internal/store"
 	"github.com/agentic-wiki/wikiview/internal/watch"
+	"github.com/agentic-wiki/wikiview/ui"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func run(root, addr string) error {
 	if err != nil {
 		return err
 	}
-	srv := server.New(s)
+	srv := server.New(s, ui.Assets())
 	idx := s.Snapshot()
 	log.Printf("serving %s (%d entries) on http://%s", s.Dir, len(idx.Entries), addr)
 

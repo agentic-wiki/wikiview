@@ -6,6 +6,7 @@ package server
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 
 	"github.com/agentic-wiki/wikiview/internal/store"
@@ -14,15 +15,20 @@ import (
 type Server struct {
 	store  *store.Store
 	events *broker
+	ui     fs.FS
 	mux    *http.ServeMux
 }
 
-func New(s *store.Store) *Server {
-	srv := &Server{store: s, events: newBroker(), mux: http.NewServeMux()}
+// New builds the server. ui is the built frontend, or nil to serve the API only
+// (the development shape, where Vite serves the app and proxies /api here).
+func New(s *store.Store, ui fs.FS) *Server {
+	srv := &Server{store: s, events: newBroker(), ui: ui, mux: http.NewServeMux()}
 	srv.mux.HandleFunc("GET /api/bundle", srv.handleBundle)
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
 	srv.mux.HandleFunc("GET /api/tree", srv.handleTree)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
+	// Everything not under /api belongs to the app.
+	srv.mux.HandleFunc("GET /", srv.serveUI)
 	return srv
 }
 

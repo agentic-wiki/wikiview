@@ -52,10 +52,30 @@ coverage:
 backlog:
     go run github.com/agentic-wiki/wiki/cmd/wiki --root ./backlog check
 
-# Build the binary
+# Install frontend dependencies (never with install scripts)
 [group('build')]
-build:
+ui-install:
+    cd ui && bun install --ignore-scripts
+
+# Build the frontend into ui/dist, which the binary embeds
+[group('build')]
+ui-build: ui-install
+    cd ui && bunx vite build
+
+# Build the binary with the frontend embedded
+[group('build')]
+build: ui-build
     go build -o bin/wikiview ./cmd/wikiview
+
+# Frontend typecheck
+[group('dev')]
+ui-check:
+    cd ui && bunx tsc -b --noEmit
+
+# The frontend dev server, proxying /api to a running wikiview
+[group('run')]
+ui-dev: ui-install
+    cd ui && bunx vite
 
 # Serve a bundle (defaults to this repo's own backlog)
 [group('run')]

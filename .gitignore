@@ -2,3 +2,10 @@
 /dist/
 .wiki/
 coverage.out
+
+# The frontend build output is embedded into the binary at compile time, so it
+# is generated, never committed. `ui/dist/.gitkeep` is tracked because
+# `//go:embed` fails to compile when the directory does not exist at all.
+/ui/node_modules/
+/ui/dist/*
+!/ui/dist/.gitkeep
