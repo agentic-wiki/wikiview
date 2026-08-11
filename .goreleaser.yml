@@ -11,8 +11,11 @@ project_name: wikiview
 # transitive dependency, and a release build is the last place to allow that.
 before:
     hooks:
-        - bun install --ignore-scripts --cwd ui
-        - bun --cwd ui x vite build
+        # Wrapped in a shell to get a working directory: these hooks are plain
+        # strings, so there is no `dir` to set, and `bun x` is a subcommand only
+        # as bun's first argument — anything before it is read as a script name.
+        - sh -c "cd ui && bun install --ignore-scripts"
+        - sh -c "cd ui && bunx vite build"
 
 builds:
     - main: ./cmd/wikiview
