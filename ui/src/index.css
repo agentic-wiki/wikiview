@@ -22,6 +22,19 @@
   }
 }
 
+/* Tailwind v4 dropped the preflight cursor on buttons to match the bare browser
+   default. Restored here rather than per-component: a control that does not look
+   clickable is a bug, and adding the class to each new button is a rule nobody
+   remembers. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled { cursor: default; }
+}
+
 html, body, #root { height: 100%; }
 body { background: var(--color-bg); color: var(--color-fg); }
 
@@ -33,3 +46,71 @@ body { background: var(--color-bg); color: var(--color-fg); }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Prose. Scoped to rendered entry bodies so the chrome is unaffected.
+   Written out rather than pulled from a typography plugin: the set of elements
+   a markdown entry produces is small and known, and owning it avoids fighting
+   a plugin's opinions about colour and spacing at every turn. */
+.markdown { line-height: 1.7; }
+.markdown > * + * { margin-top: 1rem; }
+
+.markdown h1, .markdown h2, .markdown h3,
+.markdown h4, .markdown h5, .markdown h6 {
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+}
+.markdown > h1 + *, .markdown > h2 + *, .markdown > h3 + * { margin-top: 0.5rem; }
+.markdown > * + h1, .markdown > * + h2, .markdown > * + h3,
+.markdown > * + h4, .markdown > * + h5, .markdown > * + h6 { margin-top: 2rem; }
+.markdown h1 { font-size: 1.5rem; }
+.markdown h2 { font-size: 1.25rem; }
+.markdown h3 { font-size: 1.0625rem; }
+.markdown h4, .markdown h5, .markdown h6 { font-size: 1rem; color: var(--color-muted); }
+
+.markdown ul, .markdown ol { padding-left: 1.5rem; }
+.markdown ul { list-style: disc; }
+.markdown ol { list-style: decimal; }
+.markdown li + li { margin-top: 0.25rem; }
+.markdown li::marker { color: var(--color-muted); }
+/* Task list items carry their own checkbox, so the bullet is noise. */
+.markdown li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.5rem; }
+
+.markdown blockquote {
+  border-left: 2px solid var(--color-border);
+  padding-left: 1rem;
+  color: var(--color-muted);
+}
+
+.markdown code {
+  font-size: 0.875em;
+  background: color-mix(in oklch, var(--color-fg) 7%, transparent);
+  padding: 0.125em 0.375em;
+  border-radius: 0.25rem;
+}
+.markdown pre {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.markdown pre code { background: none; padding: 0; font-size: inherit; }
+
+.markdown table { width: 100%; border-collapse: collapse; font-size: 0.875rem; display: block; overflow-x: auto; }
+.markdown th, .markdown td { border: 1px solid var(--color-border); padding: 0.5rem 0.75rem; text-align: left; }
+.markdown th { background: var(--color-surface); font-weight: 600; }
+
+.markdown hr { border: 0; border-top: 1px solid var(--color-border); margin: 2rem 0; }
+.markdown img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+
+/* Syntax highlighting, driven by the theme tokens rather than a shipped theme,
+   so code follows light and dark with everything else. */
+.markdown .hljs-comment, .markdown .hljs-quote { color: var(--color-muted); font-style: italic; }
+.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-literal { color: oklch(60% 0.17 305); }
+.markdown .hljs-string, .markdown .hljs-attr { color: oklch(58% 0.13 150); }
+.markdown .hljs-number, .markdown .hljs-symbol { color: oklch(62% 0.15 45); }
+.markdown .hljs-title, .markdown .hljs-name, .markdown .hljs-section { color: var(--color-accent); }
+.markdown .hljs-type, .markdown .hljs-built_in { color: oklch(60% 0.12 220); }

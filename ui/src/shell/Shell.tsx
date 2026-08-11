@@ -49,7 +49,7 @@ export function Shell({
         {/* Breadcrumbs shrink and ellipsize; the omnibar keeps a workable
             width. The path orients you, the omnibar moves you. */}
         <div className="min-w-0 flex-1">
-          <Breadcrumbs bundleName={basename(bundle.dir)} path={path} />
+          <Breadcrumbs bundleName={basename(bundle.dir)} root={tree} path={path} />
         </div>
 
         <div className="hidden w-full max-w-sm shrink justify-center sm:flex">
@@ -69,7 +69,7 @@ export function Shell({
             panelOpen ? "w-64" : "w-0 border-r-0",
           ].join(" ")}
         >
-          {panelOpen && section === "entries" && <Tree node={tree} />}
+          {panelOpen && section === "entries" && <div className="py-2"><Tree node={tree} /></div>}
           {panelOpen && section === "boards" && (
             <p className="text-muted p-3 text-sm">No boards declared yet.</p>
           )}

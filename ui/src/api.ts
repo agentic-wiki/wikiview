@@ -33,17 +33,25 @@ export interface Backlink {
   line: number;
 }
 
+/**
+ * Positions arrive in two coordinate systems, and using the wrong one fails
+ * silently: `line` counts from the top of the *file* including frontmatter and
+ * is what a write is addressed by; `bodyLine` counts within `body` as served,
+ * which is what a renderer of that body can match against.
+ */
+interface Positioned {
+  line: number;
+  bodyLine: number;
+}
+
 /** Ids come from the server because every markdown library slugs differently. */
-export interface Heading {
+export interface Heading extends Positioned {
   level: number;
   text: string;
   id: string;
-  line: number;
 }
 
-/** Keyed by line: text repeats, and the line is what a write addresses. */
-export interface Checkbox {
-  line: number;
+export interface Checkbox extends Positioned {
   done: boolean;
   text: string;
 }
@@ -96,16 +104,40 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => null);
+    throw new ApiError(res.status, b?.error ?? res.statusText);
+  }
+  return res.json() as Promise<T>;
+}
+
+const encode = (path: string) =>
+  path.replace(/^\//, "").split("/").map(encodeURIComponent).join("/");
+
 export const api = {
   bundle: (signal?: AbortSignal) => get<BundleInfo>("/api/bundle", signal),
   tree: (signal?: AbortSignal) => get<TreeNode>("/api/tree", signal),
   entry: (path: string, signal?: AbortSignal) =>
     // The path is carried verbatim, `.md` and all, because it *is* the bundle
     // path. Each segment is encoded so a name with a space or a '#' survives.
-    get<Entry>(
-      "/api/entry/" + path.replace(/^\//, "").split("/").map(encodeURIComponent).join("/"),
-      signal,
-    ),
+    get<Entry>("/api/entry/" + encode(path), signal),
+
+  /**
+   * Toggles a checkbox.
+   *
+   * The version travels with the write because the request is addressed by
+   * *line*, and a line only means something against the content it was read
+   * from. If the entry changed underneath, line 12 may be a different checkbox
+   * or none at all, so the server refuses and this refetches.
+   */
+  setCheckbox: (path: string, line: number, done: boolean, version: number) =>
+    put<{ version: number }>("/api/checkbox/" + encode(path), { line, done, version }),
 };
 
 /**

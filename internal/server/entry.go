@@ -61,17 +61,27 @@ type BacklinkView struct {
 	Line int    `json:"line"`
 }
 
+// Positions come in two coordinate systems, and both are sent because mixing
+// them is a silent error.
+//
+// Line is the line in the *file*, counting frontmatter, which is what a write
+// is addressed by. BodyLine is the line in the body as served, frontmatter
+// stripped, which is what anything rendering that body can match against. They
+// differ by the length of the frontmatter block, so a client that had only one
+// would either fail to match every element or write to the wrong line.
 type HeadingView struct {
-	Level int    `json:"level"`
-	Text  string `json:"text"`
-	ID    string `json:"id"`
-	Line  int    `json:"line"`
+	Level    int    `json:"level"`
+	Text     string `json:"text"`
+	ID       string `json:"id"`
+	Line     int    `json:"line"`
+	BodyLine int    `json:"bodyLine"`
 }
 
 type CheckboxView struct {
-	Line int    `json:"line"`
-	Done bool   `json:"done"`
-	Text string `json:"text"`
+	Line     int    `json:"line"`
+	BodyLine int    `json:"bodyLine"`
+	Done     bool   `json:"done"`
+	Text     string `json:"text"`
 }
 
 func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +104,16 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// How many lines the frontmatter took, so file positions can be expressed in
+	// body coordinates too. Derived from what was actually stripped rather than
+	// by re-parsing the fence, so it cannot disagree with Body().
+	raw, err := e.Raw()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{err.Error()})
+		return
+	}
+	offset := strings.Count(raw[:len(raw)-len(body)], "\n")
+
 	view := EntryView{
 		Path:        e.Path,
 		Type:        e.Type,
@@ -101,8 +121,8 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 		Body:        body,
 		Links:       outgoing(idx, e),
 		Backlinks:   incoming(idx, e.Path),
-		Headings:    headings(e),
-		Checkboxes:  checkboxes(e),
+		Headings:    headings(e, offset),
+		Checkboxes:  checkboxes(e, offset),
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -134,7 +154,7 @@ func incoming(idx *index.Index, path string) []BacklinkView {
 	return out
 }
 
-func headings(e *index.Entry) []HeadingView {
+func headings(e *index.Entry, offset int) []HeadingView {
 	texts := make([]string, len(e.Headings))
 	for i, h := range e.Headings {
 		texts[i] = h.Text
@@ -143,15 +163,15 @@ func headings(e *index.Entry) []HeadingView {
 
 	out := make([]HeadingView, 0, len(e.Headings))
 	for i, h := range e.Headings {
-		out = append(out, HeadingView{Level: h.Level, Text: h.Text, ID: ids[i], Line: h.Line})
+		out = append(out, HeadingView{Level: h.Level, Text: h.Text, ID: ids[i], Line: h.Line, BodyLine: h.Line - offset})
 	}
 	return out
 }
 
-func checkboxes(e *index.Entry) []CheckboxView {
+func checkboxes(e *index.Entry, offset int) []CheckboxView {
 	out := make([]CheckboxView, 0, len(e.Checkboxes))
 	for _, c := range e.Checkboxes {
-		out = append(out, CheckboxView{Line: c.Line, Done: c.Done, Text: c.Text})
+		out = append(out, CheckboxView{Line: c.Line, BodyLine: c.Line - offset, Done: c.Done, Text: c.Text})
 	}
 	return out
 }

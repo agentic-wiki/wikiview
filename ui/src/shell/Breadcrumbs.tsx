@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import type { TreeNode } from "@/api";
 
 /**
  * How many path segments to show before collapsing the middle.
@@ -10,7 +11,15 @@ import { Link } from "react-router";
  */
 const MAX_SEGMENTS = 4;
 
-export function Breadcrumbs({ bundleName, path }: { bundleName: string; path: string }) {
+export function Breadcrumbs({
+  bundleName,
+  root,
+  path,
+}: {
+  bundleName: string;
+  root: TreeNode;
+  path: string;
+}) {
   const segments = path.replace(/^\//, "").split("/").filter(Boolean);
 
   const shown =
@@ -24,7 +33,13 @@ export function Breadcrumbs({ bundleName, path }: { bundleName: string; path: st
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
-      <span className="text-fg shrink-0 font-medium">{bundleName}</span>
+      <Link
+        to={rootDestination(root)}
+        className="text-fg hover:text-accent shrink-0 font-medium transition-colors"
+        title="Go to the bundle's front door"
+      >
+        {bundleName}
+      </Link>
       {shown.map((seg, i) => (
         <span key={i} className="flex min-w-0 items-center gap-1">
           <span className="text-muted/60 shrink-0" aria-hidden>
@@ -50,4 +65,20 @@ export function Breadcrumbs({ bundleName, path }: { bundleName: string; path: st
       ))}
     </nav>
   );
+}
+
+/**
+ * Where the bundle's name points.
+ *
+ * `index.md` is the format's front door and comes first. `README.md` is the
+ * convention every other tool that opens this folder will honour — GitHub, an
+ * editor's preview — so a bundle that has one and no index is not left with a
+ * dead name. Failing both, the folder listing, which is generated rather than
+ * stored: nothing is written to make the root look complete.
+ */
+function rootDestination(root: TreeNode): string {
+  if (root.index) return "/wiki" + root.index;
+  const readme = root.entries.find((e) => e.name.toLowerCase() === "readme.md");
+  if (readme) return "/wiki" + readme.path;
+  return "/wiki/";
 }

@@ -1,0 +1,163 @@
+import { useMemo } from "react";
+import { Link as RouterLink } from "react-router";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import type { Entry } from "@/api";
+
+/** The source position react-markdown attaches to every node it renders. */
+type WithNode = { node?: { position?: { start?: { line?: number } } } };
+
+const lineOf = (props: unknown): number | undefined =>
+  (props as WithNode)?.node?.position?.start?.line;
+
+/**
+ * Renders an entry's markdown.
+ *
+ * The two engine rules it needs arrive as data and are applied by lookup, never
+ * re-derived: an href is resolved by finding it in `entry.links`, and a heading
+ * takes its id from `entry.headings`. Getting either subtly wrong is invisible —
+ * a link that quietly 404s, an anchor `wiki check` calls valid that never
+ * scrolls — which is why neither is computed here.
+ *
+ * Everything is matched by **source line**, not by walking the document and
+ * counting. Counting assumes the renderer visits nodes in source order exactly
+ * once, which is not a promise React makes: a double render under StrictMode is
+ * enough to exhaust a cursor and silently drop every id. Positions are exact and
+ * order-independent, and the server already sends a line with each heading and
+ * checkbox.
+ */
+export function Markdown({
+  entry,
+  onToggleCheckbox,
+}: {
+  entry: Entry;
+  onToggleCheckbox?: (line: number, done: boolean) => void;
+}) {
+  // Keyed by the href exactly as written, which is what the renderer hands back.
+  const links = useMemo(() => new Map(entry.links.map((l) => [l.raw, l])), [entry.links]);
+    // Keyed by body line, because that is the coordinate system the rendered
+  // markdown is in. The file line rides along for writes.
+  const headings = useMemo(() => new Map(entry.headings.map((h) => [h.bodyLine, h])), [entry.headings]);
+  const checkboxes = useMemo(
+    () => new Map(entry.checkboxes.map((c) => [c.bodyLine, c])),
+    [entry.checkboxes],
+  );
+
+  const heading = (level: number) =>
+    function H({ children, ...props }: { children?: React.ReactNode }) {
+      const id = headings.get(lineOf(props) ?? -1)?.id;
+      const Tag = `h${level}` as "h1";
+      return (
+        <Tag id={id} className="group scroll-mt-16">
+          {children}
+          {id && (
+            <a
+              href={"#" + id}
+              aria-label="Link to this section"
+              className="text-muted hover:text-accent ml-2 no-underline opacity-0 transition-opacity group-hover:opacity-100"
+            >
+              #
+            </a>
+          )}
+        </Tag>
+      );
+    };
+
+  const components: Components = {
+    a({ href, children, node: _node, ...props }) {
+      const link = href ? links.get(href) : undefined;
+      if (!link) {
+        // Not an internal bundle link: an external URL, a bare fragment, or one
+        // resolving outside the bundle. Left exactly as authored.
+        const external = href?.startsWith("http");
+        return (
+          <a
+            href={href}
+            {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+            className="text-accent underline decoration-1 underline-offset-2"
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      }
+      return (
+        <RouterLink
+          to={"/wiki" + link.to + (link.anchor ? "#" + link.anchor : "")}
+          // Not an error: per the format a link may point at knowledge not yet
+          // written, so it stays a link and is shown differently.
+          title={link.exists ? undefined : "This entry does not exist yet"}
+          className={
+            link.exists
+              ? "text-accent underline decoration-1 underline-offset-2"
+              : "text-muted underline decoration-dotted underline-offset-2"
+          }
+        >
+          {children}
+        </RouterLink>
+      );
+    },
+
+    // The checkbox is matched through its list item, because remark-gfm gives
+    // the <input> no position of its own.
+    li({ children, ...props }) {
+      const box = checkboxes.get(lineOf(props) ?? -1);
+      if (!box) return <li>{children}</li>;
+      return (
+        <li className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={box.done}
+            disabled={!onToggleCheckbox}
+            onChange={() => onToggleCheckbox?.(box.line, !box.done)}
+            aria-label={box.text}
+            className="accent-accent mt-1.5 size-3.5 shrink-0 cursor-pointer disabled:cursor-default"
+          />
+          <span className={box.done ? "text-muted line-through" : undefined}>
+            {stripRenderedCheckbox(children)}
+          </span>
+        </li>
+      );
+    },
+
+    h1: heading(1),
+    h2: heading(2),
+    h3: heading(3),
+    h4: heading(4),
+    h5: heading(5),
+    h6: heading(6),
+  };
+
+  return (
+    <div className="markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        // lowlight ships 37 curated common grammars, which is the subset worth
+        // having; passing more only adds to it. Anything unrecognized renders as
+        // plain code rather than failing, so an omission costs colour, not a
+        // page. Highlighting is ~173KB of the bundle: going below this set means
+        // constructing a lowlight instance directly, which is worth doing only
+        // if that number starts to matter.
+        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        components={components}
+        // Raw HTML is deliberately not enabled. These files are written by agents
+        // and by anyone else with the folder, so passing their HTML through would
+        // make every entry author an author of the UI.
+      >
+        {entry.body}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+/**
+ * Drops the disabled <input> remark-gfm puts inside a task list item, since this
+ * renders its own interactive one.
+ */
+function stripRenderedCheckbox(children: React.ReactNode): React.ReactNode {
+  if (!Array.isArray(children)) return children;
+  return children.filter(
+    (c) => !(c && typeof c === "object" && "type" in c && (c as { type?: unknown }).type === "input"),
+  );
+}

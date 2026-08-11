@@ -27,6 +27,9 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
 	srv.mux.HandleFunc("GET /api/tree", srv.handleTree)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
+	// The wildcard has to be the final segment, so the verb leads the path
+	// rather than trailing it.
+	srv.mux.HandleFunc("PUT /api/checkbox/{path...}", srv.handleCheckbox)
 	// Everything not under /api belongs to the app.
 	srv.mux.HandleFunc("GET /", srv.serveUI)
 	return srv

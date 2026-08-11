@@ -13,33 +13,92 @@ export function FolderView({ folder }: { folder: TreeNode }) {
   const empty = folder.entries.length === 0 && folder.children.length === 0;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-fg text-xl font-semibold">{folder.name || "/"}</h1>
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      <h1 className="text-fg text-2xl font-semibold tracking-tight">{folder.name || "/"}</h1>
       <p className="text-muted mt-1 text-sm">
-        {empty ? "This folder is empty." : "No index.md here, so this is a listing."}
+        {empty
+          ? "Nothing here yet."
+          : `${count(folder.children.length, "folder")} · ${count(folder.entries.length, "entry", "entries")}`}
       </p>
 
       {!empty && (
-        <ul className="border-border mt-6 divide-y rounded-lg border">
+        <ul className="mt-6 space-y-1">
           {folder.children.map((c) => (
-            <li key={c.path}>
-              <Link to={"/wiki" + c.path + "/"} className="hover:bg-fg/5 flex items-center gap-3 p-3">
-                <span className="text-muted" aria-hidden>▸</span>
-                <span className="text-fg">{c.name}</span>
-                <span className="text-muted ml-auto text-xs">folder</span>
-              </Link>
-            </li>
+            <Row
+              key={c.path}
+              to={"/wiki" + c.path + "/"}
+              icon={<FolderIcon />}
+              title={c.name}
+              meta={count(c.entries.length + c.children.length, "item")}
+            />
           ))}
           {folder.entries.map((e) => (
-            <li key={e.path}>
-              <Link to={"/wiki" + e.path} className="hover:bg-fg/5 flex items-center gap-3 p-3">
-                <span className="text-fg truncate">{e.title || e.name}</span>
-                {e.type && <span className="text-muted ml-auto text-xs">{e.type}</span>}
-              </Link>
-            </li>
+            <Row
+              key={e.path}
+              to={"/wiki" + e.path}
+              icon={<FileIcon />}
+              title={e.title || e.name}
+              subtitle={e.title ? e.name : undefined}
+              meta={e.type}
+            />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * A row, not a table cell. Dividers are borrowed weight: with an icon, a hover
+ * surface, and space between rows, the list reads as a list without needing
+ * rules between every item.
+ */
+function Row({
+  to,
+  icon,
+  title,
+  subtitle,
+  meta,
+}: {
+  to: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  meta?: string;
+}) {
+  return (
+    <li>
+      <Link
+        to={to}
+        className="hover:bg-fg/[0.04] group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
+      >
+        <span className="text-muted group-hover:text-accent shrink-0 transition-colors">{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="text-fg block truncate text-sm">{title}</span>
+          {subtitle && <span className="text-muted block truncate text-xs">{subtitle}</span>}
+        </span>
+        {meta && <span className="text-muted shrink-0 text-xs tabular-nums">{meta}</span>}
+      </Link>
+    </li>
+  );
+}
+
+function count(n: number, one: string, many = one + "s"): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <path d="M6 3h7l5 5v13H6z M13 3v5h5" strokeLinejoin="round" />
+    </svg>
   );
 }

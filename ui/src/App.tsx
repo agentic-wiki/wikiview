@@ -9,10 +9,15 @@ export function App() {
   const [bundle, setBundle] = useState<BundleInfo | null>(null);
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Bumped whenever the server says content changed. Views depend on it, so a
-  // change refetches what is on screen without anything tracking which entry
-  // that is.
-  const [version, setVersion] = useState(0);
+  // A refetch trigger, not the bundle's version. The SSE stream reports that
+  // content changed; views depend on this so a change refetches what is on
+  // screen without anything tracking which entry that is.
+  //
+  // The *authoritative* version is `bundle.version`, which is fetched alongside
+  // the data and therefore describes what is actually on screen. Writes carry
+  // that one: sending this counter would send 0 until the first event arrived,
+  // and every write would be refused as stale.
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -26,11 +31,11 @@ export function App() {
         if (!ac.signal.aborted) setError(String(e.message ?? e));
       });
     return () => ac.abort();
-  }, [version]);
+  }, [refresh]);
 
   // Subscribed once for the life of the app: the stream reports staleness, and
   // resubscribing per view would drop events between navigations.
-  useEffect(() => onVersion(setVersion), []);
+  useEffect(() => onVersion(() => setRefresh((n) => n + 1)), []);
 
   if (error) {
     return (
@@ -51,7 +56,7 @@ export function App() {
       <Routes>
         {/* The front door is the bundle's own index.md. */}
         <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
-        <Route path="/wiki/*" element={<Router tree={tree} version={version} />} />
+        <Route path="/wiki/*" element={<Router tree={tree} version={bundle.version} refresh={refresh} />} />
       </Routes>
     </Shell>
   );
@@ -65,7 +70,17 @@ export function App() {
  * decision needs the tree, which is why it lives here rather than in the route
  * table.
  */
-function Router({ tree, version }: { tree: TreeNode; version: number }) {
+function Router({
+  tree,
+  version,
+  refresh,
+}: {
+  tree: TreeNode;
+  /** The version the data on screen was read at; travels with writes. */
+  version: number;
+  /** Changes when the server reports new content; forces a refetch. */
+  refresh: number;
+}) {
   // useLocation, not window.location: the latter is not reactive, so a
   // navigation that keeps this component mounted would render the previous
   // path. It happens to work today because <Routes> re-renders on navigation,
@@ -78,7 +93,7 @@ function Router({ tree, version }: { tree: TreeNode; version: number }) {
     if (folder.index) return <Navigate to={"/wiki" + folder.index} replace />;
     return <FolderView folder={folder} />;
   }
-  return <EntryView path={path} version={version} />;
+  return <EntryView path={path} version={version} refresh={refresh} />;
 }
 
 function findFolder(node: TreeNode, path: string): TreeNode | null {
