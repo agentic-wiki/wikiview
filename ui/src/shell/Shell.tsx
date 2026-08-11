@@ -1,10 +1,12 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 import type { BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
 import { Breadcrumbs } from "@/shell/Breadcrumbs";
 import { Tree } from "@/shell/Tree";
 import { Omnibar } from "@/shell/Omnibar";
+import { ScrollRestoration } from "@/shell/ScrollRestoration";
+import { ThemeToggle } from "@/shell/Theme";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -30,6 +32,9 @@ export function Shell({
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
   const location = useLocation();
   const path = location.pathname.replace(/^\/wiki\/?/, "");
+  // The view area scrolls, not the document, so scroll restoration works from
+  // this element rather than from the window.
+  const viewRef = useRef<HTMLElement>(null);
 
   return (
     <div className="flex h-full flex-col">
@@ -55,6 +60,8 @@ export function Shell({
         <div className="hidden w-full max-w-sm shrink justify-center sm:flex">
           <Omnibar tree={tree} />
         </div>
+
+        <ThemeToggle />
       </header>
 
       <div className="relative flex min-h-0 grow">
@@ -78,7 +85,10 @@ export function Shell({
           )}
         </aside>
 
-        <main className="min-w-0 grow overflow-y-auto">{children}</main>
+        <main ref={viewRef} className="min-w-0 grow overflow-y-auto">
+          <ScrollRestoration containerRef={viewRef} />
+          {children}
+        </main>
       </div>
     </div>
   );

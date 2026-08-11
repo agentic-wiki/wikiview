@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { api, onVersion, type BundleInfo, type TreeNode } from "@/api";
 import { Shell } from "@/shell/Shell";
+import { ClearSelection } from "@/shell/ClearSelection";
 import { EntryView } from "@/views/EntryView";
 import { FolderView } from "@/views/FolderView";
+import { NotFound } from "@/views/NotFound";
 
 export function App() {
   const [bundle, setBundle] = useState<BundleInfo | null>(null);
@@ -53,10 +55,14 @@ export function App() {
 
   return (
     <Shell bundle={bundle} tree={tree}>
+      <ClearSelection />
       <Routes>
         {/* The front door is the bundle's own index.md. */}
         <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
         <Route path="/wiki/*" element={<Router tree={tree} version={bundle.version} refresh={refresh} />} />
+        {/* Anything else. Without this a mistyped URL rendered an empty page,
+            which reads as a broken app rather than a wrong address. */}
+        <Route path="*" element={<UnknownRoute />} />
       </Routes>
     </Shell>
   );
@@ -94,6 +100,11 @@ function Router({
     return <FolderView folder={folder} />;
   }
   return <EntryView path={path} version={version} refresh={refresh} />;
+}
+
+function UnknownRoute() {
+  const { pathname } = useLocation();
+  return <NotFound path={pathname} />;
 }
 
 function findFolder(node: TreeNode, path: string): TreeNode | null {

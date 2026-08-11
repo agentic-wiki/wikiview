@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -118,4 +119,97 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatal("condition not met within the deadline")
+}
+
+// http.Server.Shutdown waits for handlers to return, and an SSE handler is
+// running by design — it blocks until its client disconnects, which a client on
+// a working connection never does. Without Close ending the streams, every
+// shutdown waited out its full timeout and reported "context deadline exceeded".
+func TestShutdownDoesNotWaitForOpenStreams(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	readEvent(t, bufio.NewReader(resp.Body)) // connected and streaming
+	waitFor(t, func() bool { return srv.events.count() == 1 })
+
+	done := make(chan struct{})
+	go func() { defer close(done); srv.Close() }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close blocked")
+	}
+	// The handler must return on its own now, releasing the connection that
+	// Shutdown would otherwise wait for.
+	waitFor(t, func() bool { return srv.events.count() == 0 })
+
+	// Idempotent: shutdown paths call it more than once in practice.
+	srv.Close()
+}
+
+// A long-lived server accumulates connections over days. These check the two
+// things that would grow without bound: the subscriber map, and the goroutines
+// behind it.
+func TestStreamsDoNotAccumulate(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	before := runtime.NumGoroutine()
+
+	for range 50 {
+		resp, err := ts.Client().Get(ts.URL + "/api/events")
+		if err != nil {
+			t.Fatal(err)
+		}
+		readEvent(t, bufio.NewReader(resp.Body)) // established, so it is really subscribed
+		resp.Body.Close()
+	}
+
+	// Every subscription is released when its client goes.
+	waitFor(t, func() bool { return srv.events.count() == 0 })
+
+	// And so is every goroutine. Some slack for the test server's own pool.
+	waitFor(t, func() bool { return runtime.NumGoroutine() <= before+5 })
+	if after := runtime.NumGoroutine(); after > before+5 {
+		t.Errorf("goroutines grew from %d to %d over 50 connect/disconnect cycles", before, after)
+	}
+}
+
+// publish walks the subscriber map while holding its lock, so a client that
+// vanishes mid-publish must not wedge it.
+func TestPublishWithChurningClients(t *testing.T) {
+	b := newBroker()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				ch := b.subscribe()
+				b.unsubscribe(ch)
+			}
+		}
+	}()
+
+	for v := range 2000 {
+		b.publish(uint64(v))
+	}
+	close(stop)
+	<-done
+
+	if n := b.count(); n != 0 {
+		t.Errorf("%d subscribers left behind", n)
+	}
 }

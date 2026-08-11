@@ -18,7 +18,7 @@ export function FolderView({ folder }: { folder: TreeNode }) {
       <p className="text-muted mt-1 text-sm">
         {empty
           ? "Nothing here yet."
-          : `${count(folder.children.length, "folder")} · ${count(folder.entries.length, "entry", "entries")}`}
+          : `${count(folder.children.length, "subfolder")} · ${count(folder.entries.length, "entry", "entries")}`}
       </p>
 
       {!empty && (
@@ -37,8 +37,8 @@ export function FolderView({ folder }: { folder: TreeNode }) {
               key={e.path}
               to={"/wiki" + e.path}
               icon={<FileIcon />}
-              title={e.title || e.name}
-              subtitle={e.title ? e.name : undefined}
+              title={e.title}
+              subtitle={e.title.toLowerCase() !== e.name.replace(/\.md$/, "").toLowerCase() ? e.name : undefined}
               meta={e.type}
             />
           ))}
@@ -70,11 +70,15 @@ function Row({
     <li>
       <Link
         to={to}
-        className="hover:bg-fg/[0.04] group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
+        className="hover:bg-fg/[0.04] active:bg-fg/[0.08] group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
       >
-        <span className="text-muted group-hover:text-accent shrink-0 transition-colors">{icon}</span>
+        {/* The icon carries the accent permanently: it is what makes a row
+            scannable as a row rather than a line of text. */}
+        <span className="text-accent shrink-0">{icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="text-fg block truncate text-sm">{title}</span>
+          <span className="text-fg group-hover:text-accent block truncate text-sm transition-colors">
+            {title}
+          </span>
           {subtitle && <span className="text-muted block truncate text-xs">{subtitle}</span>}
         </span>
         {meta && <span className="text-muted shrink-0 text-xs tabular-nums">{meta}</span>}

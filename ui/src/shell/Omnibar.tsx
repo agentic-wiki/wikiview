@@ -144,7 +144,7 @@ function Palette({ tree, onClose }: { tree: TreeNode; onClose: () => void }) {
 
 function flatten(node: TreeNode, out: Item[] = []): Item[] {
   for (const e of node.entries) {
-    out.push({ path: e.path, label: e.title || e.name, hint: e.path });
+    out.push({ path: e.path, label: e.title, hint: e.path });
   }
   for (const c of node.children) flatten(c, out);
   return out;

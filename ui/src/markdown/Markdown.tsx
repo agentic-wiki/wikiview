@@ -67,6 +67,22 @@ export function Markdown({
   const components: Components = {
     a({ href, children, node: _node, ...props }) {
       const link = href ? links.get(href) : undefined;
+
+      // A link out of the bundle is not navigable here: wikiview serves this
+      // bundle and nothing above it. Rendered as marked text rather than as an
+      // anchor, because an anchor with a relative href resolves against the
+      // current route and a click becomes a full page load into a 404.
+      if (link?.outside) {
+        return (
+          <span
+            className="text-muted underline decoration-dotted underline-offset-2"
+            title={`${href} is outside this bundle`}
+          >
+            {children}
+          </span>
+        );
+      }
+
       if (!link) {
         // Not an internal bundle link: an external URL, a bare fragment, or one
         // resolving outside the bundle. Left exactly as authored.

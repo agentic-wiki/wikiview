@@ -65,7 +65,18 @@ func run(root, addr string) error {
 		}
 	}()
 
-	httpSrv := &http.Server{Addr: addr, Handler: srv}
+	httpSrv := &http.Server{
+		Addr:    addr,
+		Handler: srv,
+		// A connection that opens and never sends headers would otherwise hold a
+		// goroutine for as long as the process runs. Cheap to bound, and the only
+		// unbounded resource left once streams release on shutdown.
+		ReadHeaderTimeout: 10 * time.Second,
+		// No WriteTimeout: it applies to the whole response, and an SSE response
+		// is deliberately open for hours. Bounding that would disconnect every
+		// idle reader on a timer.
+		IdleTimeout: 2 * time.Minute,
+	}
 	errc := make(chan error, 1)
 	go func() { errc <- httpSrv.ListenAndServe() }()
 
@@ -76,8 +87,10 @@ func run(root, addr string) error {
 		}
 		return err
 	case <-ctx.Done():
-		// Cancelling ctx already closed every SSE stream, so Shutdown is not
-		// waiting on connections that never end on their own.
+		// Streams first: Shutdown waits for handlers to return, and an SSE
+		// handler is still running by design. Without ending them it waits out
+		// the whole timeout every time.
+		srv.Close()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return httpSrv.Shutdown(shutdownCtx)

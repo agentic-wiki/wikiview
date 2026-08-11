@@ -52,7 +52,12 @@ export function Breadcrumbs({
               …
             </span>
           ) : seg.index === segments.length - 1 ? (
-            <span className="text-fg truncate">{seg.name}</span>
+            // The entry's name, not its filename — the same name the tree, the
+            // palette and a backlink to it show. The filename stays in the URL
+            // and in the tooltip, where it is the identity rather than a label.
+            <span className="text-fg truncate" title={seg.name}>
+              {displayName(root, path) ?? seg.name}
+            </span>
           ) : (
             <Link
               to={"/wiki/" + segments.slice(0, seg.index + 1).join("/") + "/"}
@@ -65,6 +70,20 @@ export function Breadcrumbs({
       ))}
     </nav>
   );
+}
+
+/** The entry's display title, when the path names one. */
+function displayName(root: TreeNode, path: string): string | undefined {
+  const target = "/" + path.replace(/^\//, "").replace(/\/$/, "");
+  const find = (node: TreeNode): string | undefined => {
+    for (const e of node.entries) if (e.path === target) return e.title;
+    for (const c of node.children) {
+      const found = find(c);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return find(root);
 }
 
 /**

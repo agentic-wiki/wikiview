@@ -30,11 +30,18 @@ type TreeNode struct {
 
 // EntryStub is what a listing needs: enough to render a row and navigate,
 // without the body.
+//
+// Title is always populated: the entry's own title when it has one, and a
+// readable name derived from the filename when it does not. Computed here so
+// every place an entry is named — the tree, a folder listing, the palette, a
+// backlink — gets the same answer. Left to the client, each would invent its own
+// fallback, and they already had: some showed "003-watch-and-events.md" while
+// others showed "Watch and events".
 type EntryStub struct {
 	Path  string `json:"path"`
 	Name  string `json:"name"`
 	Type  string `json:"type"`
-	Title string `json:"title,omitempty"`
+	Title string `json:"title"`
 }
 
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
@@ -53,11 +60,15 @@ func buildTree(idx *index.Index) *TreeNode {
 	for _, e := range entries {
 		dir := path.Dir(e.Path)
 		node := folderFor(folders, root, dir)
+		title := e.Field("title")
+		if title == "" {
+			title = titleFromFilename(e.Path)
+		}
 		node.Entries = append(node.Entries, EntryStub{
 			Path:  e.Path,
 			Name:  path.Base(e.Path),
 			Type:  e.Type,
-			Title: e.Field("title"),
+			Title: title,
 		})
 		if path.Base(e.Path) == "index.md" {
 			node.Index = e.Path

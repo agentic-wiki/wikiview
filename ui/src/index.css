@@ -11,8 +11,13 @@
   --color-accent: oklch(55% 0.14 250);
 }
 
+/* Dark applies two ways, and both are needed.
+   The media query is the "auto" case: no attribute is set, so the system
+   decides, and it keeps deciding if the system changes while the tab is open.
+   The attribute is an explicit choice, and it wins in both directions — which is
+   why light has to be spelled out too rather than relying on the default. */
 @media (prefers-color-scheme: dark) {
-  @theme {
+  :root:not([data-theme="light"]) {
     --color-bg: oklch(19% 0.005 260);
     --color-surface: oklch(23% 0.005 260);
     --color-border: oklch(31% 0.008 260);
@@ -20,6 +25,21 @@
     --color-muted: oklch(65% 0.01 260);
     --color-accent: oklch(72% 0.13 250);
   }
+}
+
+/* color-scheme follows the explicit choice, so scrollbars, form controls and the
+   canvas the browser paints before CSS all match. Without it, forcing light on a
+   dark system leaves dark scrollbars around a light page. */
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+:root[data-theme="dark"] {
+  --color-bg: oklch(19% 0.005 260);
+  --color-surface: oklch(23% 0.005 260);
+  --color-border: oklch(31% 0.008 260);
+  --color-fg: oklch(93% 0.004 260);
+  --color-muted: oklch(65% 0.01 260);
+  --color-accent: oklch(72% 0.13 250);
 }
 
 /* Tailwind v4 dropped the preflight cursor on buttons to match the bare browser

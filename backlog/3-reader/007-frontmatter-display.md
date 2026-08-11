@@ -27,6 +27,12 @@ Three kinds of field live in the same block, and they want different treatment:
 
 **Nothing is hidden outright.** A reader that silently drops fields makes the file and the view disagree, and the file is the truth. Collapsed is not hidden.
 
+## Already applied
+
+Keys carry an accent tint and the pair sits in a chip, so the eye separates key from value without a colon or a gap doing the work.
+
+**Values are never coloured by meaning.** Tinting `status: done` green would require knowing that `done` means finished, and the vocabulary belongs to the bundle rather than to this reader — a bundle whose statuses are `visit-only` and `retired` would get an arbitrary palette. Colour distinguishes *key from value*, which is structural and always true, not *value from value*, which is a guess.
+
 ## Open
 
 - **Which fields count as structural.** Deriving it (short scalar, low cardinality across the bundle) adapts to any vocabulary but is unpredictable; naming them in `[tool.wikiview]` is predictable but is configuration nobody wants to write. Leaning derived with a config override, on the same principle as board columns: infer, and let config correct.

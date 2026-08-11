@@ -2,8 +2,12 @@ package server
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
 // One representation of the content, plus lookup tables. The body is the
@@ -106,3 +110,95 @@ func TestTreeEndpoint(t *testing.T) {
 }
 
 func contains(haystack, needle string) bool { return strings.Contains(haystack, needle) }
+
+// Which frontmatter fields hold references is not something to hardcode.
+// `blockers` and `epic` are conventions; a bundle is free to invent `supersedes`
+// or `source`, and a fixed list would make those inert.
+func TestFrontmatterRefsAreFoundByValue(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("wiki.toml", "spec = \"0.1\"\n")
+	write("index.md", "---\nokf_version: \"0.1\"\n---\nhome [a](./a.md)\n")
+	write("target.md", "---\ntype: note\ntitle: The Target\n---\nt\n")
+	write("other.md", "---\ntype: note\n---\no\n")
+	write("a.md", "---\ntype: task\n"+
+		// A scalar reference, a list of them, an invented field name, a value
+		// that names nothing, and a plain string that is not a path at all.
+		"epic: /target.md\n"+
+		"blockers: [/target.md, /other.md]\n"+
+		"supersedes: /target.md\n"+
+		"missing: /never-written.md\n"+
+		"title: Some Note\n"+
+		"---\nbody\n")
+
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got EntryView
+	if code := get(t, New(s, nil), "/api/entry/a.md", &got); code != http.StatusOK {
+		t.Fatalf("code=%d", code)
+	}
+
+	byKey := map[string][]string{}
+	for _, r := range got.FrontmatterRefs {
+		byKey[r.Key] = append(byKey[r.Key], r.To)
+	}
+	// A scalar and a list are the same kind of reference, one of them repeated.
+	if len(byKey["epic"]) != 1 || byKey["epic"][0] != "/target.md" {
+		t.Errorf("epic refs = %v", byKey["epic"])
+	}
+	if len(byKey["blockers"]) != 2 {
+		t.Errorf("blockers refs = %v, want both", byKey["blockers"])
+	}
+	// An invented field is found on the same terms as a conventional one.
+	if len(byKey["supersedes"]) != 1 {
+		t.Errorf("an unconventional field should resolve too: %v", byKey)
+	}
+	// A value naming nothing is ordinary text, not a broken link.
+	if _, ok := byKey["missing"]; ok {
+		t.Errorf("an unresolvable value should not be a reference: %v", byKey)
+	}
+	// And a plain string is not treated as a path, which is what the .md suffix
+	// gate is for — "Some Note" would otherwise resolve against the bundle root.
+	if _, ok := byKey["title"]; ok {
+		t.Errorf("a non-path string became a reference: %v", byKey)
+	}
+	// The target's own title travels, so the client shows a name not a path.
+	for _, r := range got.FrontmatterRefs {
+		if r.To == "/target.md" && r.Title != "The Target" {
+			t.Errorf("ref title = %q, want the target's own", r.Title)
+		}
+	}
+}
+
+// Every place an entry is named must give the same answer. Before this, the
+// tree showed a raw filename while a backlink to the same entry showed a
+// readable one.
+func TestEveryEntryHasADisplayTitle(t *testing.T) {
+	var root TreeNode
+	if code := get(t, newTestServer(t), "/api/tree", &root); code != http.StatusOK {
+		t.Fatalf("code=%d", code)
+	}
+	var check func(n *TreeNode)
+	check = func(n *TreeNode) {
+		for _, e := range n.Entries {
+			if e.Title == "" {
+				t.Errorf("%s has no display title", e.Path)
+			}
+			if strings.HasSuffix(e.Title, ".md") {
+				t.Errorf("%s shows a filename (%q) where a name belongs", e.Path, e.Title)
+			}
+		}
+		for _, c := range n.Children {
+			check(c)
+		}
+	}
+	check(&root)
+}

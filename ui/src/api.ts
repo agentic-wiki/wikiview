@@ -25,10 +25,28 @@ export interface Link {
   line: number;
   /** False when the target names no entry. Not an error: it may be unwritten. */
   exists: boolean;
+  /**
+   * True when the link resolves above the bundle root. `to` is empty for these.
+   *
+   * Reported so the client never has to guess what an unknown href means. Left
+   * as a plain anchor, the browser resolves the relative path against the
+   * current route and a click becomes a full page load into an address the app
+   * does not serve.
+   */
+  outside: boolean;
 }
 
+/**
+ * A link pointing at this entry.
+ *
+ * `title` is the *linking* entry's own title — which entry mentions this one.
+ * `text` is the words it used, which is a different thing: a link is usually
+ * labelled with its target's name, so showing the text alone reads as this
+ * page's own name.
+ */
 export interface Backlink {
   from: string;
+  title: string;
   text: string;
   line: number;
 }
@@ -56,13 +74,30 @@ export interface Checkbox extends Positioned {
   text: string;
 }
 
+/**
+ * A frontmatter value that names an entry in this bundle.
+ *
+ * Which fields these are is not fixed: `blockers` and `epic` are conventions, and
+ * any field whose value resolves is one. The client looks a value up here rather
+ * than deciding for itself what looks like a path.
+ */
+export interface Ref {
+  key: string;
+  value: string;
+  to: string;
+  title: string;
+}
+
 export interface Entry {
   path: string;
+  /** The entry's title, or a readable name from its filename. Always present. */
+  title: string;
   type: string;
   frontmatter: Record<string, unknown>;
   /** The markdown as written. The only representation of the content. */
   body: string;
   links: Link[];
+  frontmatterRefs: Ref[];
   backlinks: Backlink[];
   headings: Heading[];
   checkboxes: Checkbox[];
@@ -72,7 +107,13 @@ export interface EntryStub {
   path: string;
   name: string;
   type: string;
-  title?: string;
+  /**
+   * Always present: the entry's own title, or a readable name derived from its
+   * filename. Computed on the server so every place an entry is named gives the
+   * same answer — they had drifted, some showing "003-watch-and-events.md" and
+   * others "Watch and events".
+   */
+  title: string;
 }
 
 export interface TreeNode {

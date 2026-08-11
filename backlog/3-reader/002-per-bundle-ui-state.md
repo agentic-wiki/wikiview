@@ -33,4 +33,16 @@ Packing several values into one string is the thing to avoid. A comma-separated 
 
 **Anything stored is disposable by definition.** A missing or unparseable key falls back to the default rather than being repaired: this is a view preference, and there is no state here worth writing recovery code for.
 
+## What is *not* stored: the boards themselves
+
+The list of boards is never remembered. It comes from `wiki.toml` through the server on every load, because it is configuration — shared, versioned with the files, and the same for everyone who opens the bundle. Only *which board you were last on* is local.
+
+**So a stored board that no longer exists is a small problem.** The reader is the default view: `/` opens `index.md`, never a board. The stored value is therefore never a startup route, only what the Boards section preselects. When it does not resolve:
+
+- **Drop it and preselect nothing.** Silently — the folder was renamed or deleted by whoever did it, and a dialog about a view preference is noise.
+- **Do not fall through to another board.** Picking "the next one" lands someone on a board they did not ask for, which is worse than landing nowhere.
+- **Do not follow a rename.** `wiki move` could have relocated the folder, and matching it up would be a heuristic that is wrong exactly when it matters.
+
+A folder that is not declared is still boardable by URL, so nothing is lost by forgetting: the address bar and the tree both still reach it.
+
 **Known limitation to accept rather than solve:** the id follows the path, so moving a bundle loses its remembered state. That is the correct failure — it is a *local view preference*, not data, and a bundle has no identity of its own to key from. Anything worth keeping belongs in `wiki.toml`, where it is shared and versioned with the files.

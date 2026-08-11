@@ -45,3 +45,4 @@ Refresh, pull, sync. The first things that reach outside the machine, so each pr
 Built on [`wiki` v0.9.0+](https://github.com/agentic-wiki/wiki), imported directly. Every rule lives there and none is reimplemented here: frontmatter reads and writes, link resolution both ways, checkbox toggling, `--where` parsing. Config is `[tool.wikiview]` inside the bundle's own `wiki.toml`, read through `bundle.DecodeTool`.
 
 Wanted upstream, not blocking: an incremental rebuild (`.wiki` cache), since a long-lived server rebuilds the whole bundle on every change.
+

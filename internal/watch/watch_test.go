@@ -137,3 +137,32 @@ func TestStopsOnContextCancel(t *testing.T) {
 		t.Fatal("Watch did not return after its context was cancelled")
 	}
 }
+
+// fsnotify is not recursive, so a watch is added per directory and never
+// explicitly removed. A long-lived server over a churning bundle would leak
+// them if the kernel did not drop watches for deleted directories.
+func TestWatchesDoNotAccumulate(t *testing.T) {
+	dir, fired := start(t)
+
+	// A directory created and destroyed repeatedly, as a build or a sync would.
+	for i := range 30 {
+		sub := filepath.Join(dir, "tmp"+string(rune('a'+i%10)))
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(sub, "x.md"), "x")
+		if err := os.RemoveAll(sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+	settle()
+
+	// The watcher is internal, so this asserts the observable consequence: it is
+	// still alive and still reporting, rather than having hit a watch limit.
+	before := fired.Load()
+	write(t, filepath.Join(dir, "after.md"), "still working")
+	settle()
+	if fired.Load() <= before {
+		t.Error("the watcher stopped reporting after directory churn")
+	}
+}

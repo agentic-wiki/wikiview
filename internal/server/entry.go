@@ -2,7 +2,11 @@ package server
 
 import (
 	"net/http"
+	path2 "path"
+	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/agentic-wiki/wiki/index"
 	"github.com/agentic-wiki/wikiview/internal/slug"
@@ -31,14 +35,22 @@ import (
 //     client-side would silently break `#anchor` links the engine considers
 //     valid.
 type EntryView struct {
-	Path        string         `json:"path"`
+	Path string `json:"path"`
+	// Title is the entry's own title, or a readable name from its filename — the
+	// same rule the tree and a backlink use, so an entry is never called two
+	// different things depending on where you see it named.
+	Title       string         `json:"title"`
 	Type        string         `json:"type"`
 	Frontmatter map[string]any `json:"frontmatter"`
 	Body        string         `json:"body"`
 	Links       []LinkView     `json:"links"`
-	Backlinks   []BacklinkView `json:"backlinks"`
-	Headings    []HeadingView  `json:"headings"`
-	Checkboxes  []CheckboxView `json:"checkboxes"`
+	// FrontmatterRefs are frontmatter values that name an entry in this bundle.
+	// Keyed by field and value so a client can look one up without deciding for
+	// itself what looks like a path.
+	FrontmatterRefs []RefView      `json:"frontmatterRefs"`
+	Backlinks       []BacklinkView `json:"backlinks"`
+	Headings        []HeadingView  `json:"headings"`
+	Checkboxes      []CheckboxView `json:"checkboxes"`
 }
 
 // LinkView is one outgoing internal link. Raw is the lookup key: it is the href
@@ -53,12 +65,45 @@ type LinkView struct {
 	// format a link may point at knowledge not yet written, so the reader shows
 	// it differently rather than hiding or breaking it.
 	Exists bool `json:"exists"`
+	// Outside marks a link that resolves above the bundle root. To is empty for
+	// these: there is no bundle path, because the target is not in the bundle.
+	//
+	// They are reported rather than omitted so the client does not have to infer
+	// what an unknown href means. Left out, a renderer emits a plain anchor with
+	// the relative href, the browser resolves it against the current route, and
+	// clicking it triggers a full page load into an address the app does not
+	// serve. Knowing it is outside means it can be shown as what it is.
+	Outside bool `json:"outside"`
 }
 
+// RefView is one frontmatter value that resolves to an entry.
+//
+// Which fields these are is not configured or guessed at: any value naming an
+// entry is one. `blockers` and `epic` are conventions, not rules, and a bundle
+// is free to invent `supersedes` or `source` — hardcoding a list would make
+// those inert for no reason.
+//
+// The .md suffix gates the test, matching what `move --include-frontmatter`
+// does upstream: without it an arbitrary string like `title: Some Note` would
+// resolve against the bundle root and become a link by accident.
+type RefView struct {
+	Key   string `json:"key"`
+	Value string `json:"value"` // exactly as written, the lookup key
+	To    string `json:"to"`    // resolved bundle path
+	Title string `json:"title"` // the target entry's own title
+}
+
+// BacklinkView is one link pointing at this entry.
+//
+// Title is the *linking* entry's own title, which is what identifies the source
+// to a reader. Text is the words that entry used for the link, which is a
+// different thing entirely: showing it alone reads as this page's name, because
+// a link is usually labelled with the name of its target.
 type BacklinkView struct {
-	From string `json:"from"`
-	Text string `json:"text"`
-	Line int    `json:"line"`
+	From  string `json:"from"`
+	Title string `json:"title"`
+	Text  string `json:"text"`
+	Line  int    `json:"line"`
 }
 
 // Positions come in two coordinate systems, and both are sent because mixing
@@ -114,15 +159,22 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := strings.Count(raw[:len(raw)-len(body)], "\n")
 
+	title := e.Field("title")
+	if title == "" {
+		title = titleFromFilename(e.Path)
+	}
+
 	view := EntryView{
-		Path:        e.Path,
-		Type:        e.Type,
-		Frontmatter: e.Frontmatter(),
-		Body:        body,
-		Links:       outgoing(idx, e),
-		Backlinks:   incoming(idx, e.Path),
-		Headings:    headings(e, offset),
-		Checkboxes:  checkboxes(e, offset),
+		Path:            e.Path,
+		Title:           title,
+		Type:            e.Type,
+		Frontmatter:     e.Frontmatter(),
+		Body:            body,
+		Links:           outgoing(idx, e),
+		FrontmatterRefs: frontmatterRefs(idx, e),
+		Backlinks:       incoming(idx, e.Path),
+		Headings:        headings(e, offset),
+		Checkboxes:      checkboxes(e, offset),
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -130,7 +182,7 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 // outgoing builds the raw-to-resolved table from the entry's own links, which
 // are the only place the on-disk spelling survives.
 func outgoing(idx *index.Index, e *index.Entry) []LinkView {
-	out := make([]LinkView, 0, len(e.Links))
+	out := make([]LinkView, 0, len(e.Links)+len(e.Outside))
 	for _, l := range e.Links {
 		_, err := idx.Resolve(l.Target)
 		out = append(out, LinkView{
@@ -142,6 +194,64 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 			Exists: err == nil,
 		})
 	}
+	// Links climbing above the bundle root. The engine keeps these separate from
+	// the graph because they are neither an edge nor broken; the reader needs
+	// them so it can decline to make them navigable.
+	for _, l := range e.Outside {
+		out = append(out, LinkView{
+			Raw:     l.Raw,
+			Text:    l.Text,
+			Line:    l.Line,
+			Outside: true,
+		})
+	}
+	return out
+}
+
+// frontmatterRefs finds every frontmatter value that names an entry.
+//
+// Scalars and lists are treated the same, because the format makes no
+// distinction: `epic: /epics/x.md` and `blockers: [/a.md, /b.md]` are the same
+// kind of reference, one of them repeated. FieldList normalizes a lone scalar
+// into a one-element list, which is the same rule matching uses, so this agrees
+// with `--where` rather than being subtly different.
+//
+// Only values that resolve are returned. An unresolved one is left to render as
+// ordinary text: a frontmatter field is not a link by nature, and marking every
+// .md-ish string as broken would put warnings on data that is merely a string.
+func frontmatterRefs(idx *index.Index, e *index.Entry) []RefView {
+	out := []RefView{}
+	for key := range e.Frontmatter() {
+		if strings.HasPrefix(key, "_") {
+			continue // the index's namespace, not the author's
+		}
+		for _, value := range e.FieldList(key) {
+			if !strings.HasSuffix(value, ".md") {
+				continue
+			}
+			target, outside := idx.ResolveLink(e.Path, value)
+			if outside {
+				continue
+			}
+			src, err := idx.Resolve(target)
+			if err != nil {
+				continue // names no entry: ordinary text
+			}
+			title := src.Field("title")
+			if title == "" {
+				title = titleFromFilename(target)
+			}
+			out = append(out, RefView{Key: key, Value: value, To: target, Title: title})
+		}
+	}
+	// Sorted, so the same entry always produces the same response rather than one
+	// whose order depends on map iteration.
+	slices.SortFunc(out, func(a, b RefView) int {
+		if a.Key != b.Key {
+			return strings.Compare(a.Key, b.Key)
+		}
+		return strings.Compare(a.Value, b.Value)
+	})
 	return out
 }
 
@@ -149,9 +259,57 @@ func incoming(idx *index.Index, path string) []BacklinkView {
 	refs := idx.Backlinks(path)
 	out := make([]BacklinkView, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, BacklinkView{From: r.From, Text: r.Text, Line: r.Line})
+		// The source entry's own title, falling back to its filename. A reader
+		// needs to know *which entry* mentions this one, and the link text does
+		// not say that.
+		title := ""
+		if src, err := idx.Resolve(r.From); err == nil {
+			title = src.Field("title")
+		}
+		if title == "" {
+			title = titleFromFilename(r.From)
+		}
+		out = append(out, BacklinkView{From: r.From, Title: title, Text: r.Text, Line: r.Line})
 	}
 	return out
+}
+
+// titleFromFilename makes a readable name out of a path, for an entry with no
+// title of its own.
+//
+// Filenames in this format are slugs by convention — `tidy --slug` enforces it —
+// and often carry an ordering prefix. "003-watch-and-events.md" is meant to read
+// as "Watch and events", so the prefix goes, hyphens become spaces, and the
+// first letter is capitalized. Nothing cleverer: this is a display fallback, and
+// an entry that wants a particular name should carry a `title`.
+func titleFromFilename(p string) string {
+	name := strings.TrimSuffix(path2.Base(p), ".md")
+	// A short leading number is a sort key ("003-watch-and-events"); a longer one
+	// is content ("2024-review"). Three digits is where that turns over: nobody
+	// orders with four, and every year has four.
+	if i := strings.IndexFunc(name, func(r rune) bool { return r < '0' || r > '9' }); i > 0 && i <= 3 {
+		if sep := name[i]; sep == '-' || sep == '_' {
+			name = name[i+1:]
+		}
+	}
+	name = strings.ReplaceAll(strings.ReplaceAll(name, "-", " "), "_", " ")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return path2.Base(p)
+	}
+
+	// Capitalized, because this name is generated: a filename is lowercase by
+	// convention and reads as a filename until something makes it a sentence.
+	// An entry's *own* title is never touched — that is the author's text, and
+	// "correcting" it would be this reader having an opinion about their prose.
+	//
+	// By rune, not by byte: name[:1] takes the first byte, which for "élan" is
+	// half a character, and uppercasing that fragment produces mojibake.
+	first, size := utf8.DecodeRuneInString(name)
+	if first == utf8.RuneError {
+		return name
+	}
+	return string(unicode.ToUpper(first)) + name[size:]
 }
 
 func headings(e *index.Entry, offset int) []HeadingView {

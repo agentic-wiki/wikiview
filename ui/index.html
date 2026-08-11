@@ -9,6 +9,19 @@
          <link> that Vite emits, so nothing else paints unstyled. -->
     <meta name="color-scheme" content="light dark" />
     <title>wikiview</title>
+    <script>
+      // Applied before the first paint, and before any bundle loads. A stored
+      // preference read after React mounts would show the system theme first and
+      // then correct itself — the flash the color-scheme meta above exists to
+      // avoid, reintroduced one layer up.
+      try {
+        var t = localStorage.getItem("wiki:theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {
+        // Storage can be unavailable (private mode, blocked cookies). The system
+        // theme is a fine answer; the toggle just will not persist.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
