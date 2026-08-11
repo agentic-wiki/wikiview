@@ -100,9 +100,9 @@ function Level({
                 isActive ? "text-accent bg-accent/10" : "text-muted hover:text-fg hover:bg-fg/5",
               ].join(" ")
             }
-            title={e.title}
+            title={e.name}
           >
-            {e.title}
+            {e.label}
           </NavLink>
         </li>
       ))}

@@ -26,7 +26,9 @@ func newTestServer(t *testing.T) *Server {
 	}
 	write("wiki.toml", "spec = \"0.1\"\n\n[tool.wikiview]\ndefault_board = \"/\"\n")
 	write("index.md", "---\nokf_version: \"0.1\"\n---\nhome [a](./notes/a.md)\n")
-	write("notes/a.md", "---\ntype: note\ntitle: A\ntags: [ui, api]\n---\n"+
+	// Its title deliberately says something its filename does not, so the two
+	// names an entry can have stay distinguishable in every assertion below.
+	write("notes/a.md", "---\ntype: note\ntitle: The first note\ntags: [ui, api]\n---\n"+
 		"# Heading\n\nSee [b](./b.md) and [gone](./missing.md).\n\n- [ ] open\n- [x] done\n")
 	write("notes/b.md", "---\ntype: note\n---\nb\n")
 

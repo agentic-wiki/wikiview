@@ -108,12 +108,16 @@ export interface EntryStub {
   name: string;
   type: string;
   /**
-   * Always present: the entry's own title, or a readable name derived from its
-   * filename. Computed on the server so every place an entry is named gives the
-   * same answer — they had drifted, some showing "003-watch-and-events.md" and
-   * others "Watch and events".
+   * The filename made readable, and what navigation shows: "003-watch-and-events.md"
+   * becomes "Watch and events". You arrived at a file, so the tree and the
+   * breadcrumb name the file.
    */
-  title: string;
+  label: string;
+  /**
+   * What the entry calls itself, absent when it carries no `title`. Shown on its
+   * own page, and matched by search so an entry is findable by either name.
+   */
+  title?: string;
 }
 
 export interface TreeNode {

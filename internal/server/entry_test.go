@@ -28,7 +28,7 @@ func TestEntryServesSourceNotHTML(t *testing.T) {
 	if contains(got.Body, "<h1") || contains(got.Body, "<a href") {
 		t.Errorf("the body should not be rendered: %q", got.Body)
 	}
-	if got.Frontmatter["title"] != "A" {
+	if got.Frontmatter["title"] != "The first note" {
 		t.Errorf("title=%v", got.Frontmatter["title"])
 	}
 	if tags, ok := got.Frontmatter["tags"].([]any); !ok || len(tags) != 2 {
@@ -178,10 +178,38 @@ func TestFrontmatterRefsAreFoundByValue(t *testing.T) {
 	}
 }
 
-// Every place an entry is named must give the same answer. Before this, the
-// tree showed a raw filename while a backlink to the same entry showed a
-// readable one.
-func TestEveryEntryHasADisplayTitle(t *testing.T) {
+// A tree row names the file you would navigate to. An entry that titles itself
+// something else keeps that title, but nowhere in navigation does it replace
+// the filename: renaming rows out from under you makes the tree unnavigable.
+func TestLabelComesFromTheFilenameNotTheTitle(t *testing.T) {
+	var root TreeNode
+	if code := get(t, newTestServer(t), "/api/tree", &root); code != http.StatusOK {
+		t.Fatalf("code=%d", code)
+	}
+	notes := root.Children[0]
+	a := notes.Entries[0]
+	if a.Name != "a.md" {
+		t.Fatalf("fixture moved: entries[0]=%q", a.Name)
+	}
+	if a.Label != "A" {
+		t.Errorf("label=%q, want %q from the filename", a.Label, "A")
+	}
+	// Carried alongside, for the entry's own page and for search to match.
+	if a.Title != "The first note" {
+		t.Errorf("title=%q, want the entry's own", a.Title)
+	}
+
+	// An entry with no title of its own carries none, rather than a copy of the
+	// label dressed up as one.
+	b := notes.Entries[1]
+	if b.Label != "B" || b.Title != "" {
+		t.Errorf("b.md label=%q title=%q, want %q and empty", b.Label, b.Title, "B")
+	}
+}
+
+// Navigation names every entry, including one with no title of its own, and it
+// never falls back to showing a raw filename.
+func TestEveryEntryHasALabel(t *testing.T) {
 	var root TreeNode
 	if code := get(t, newTestServer(t), "/api/tree", &root); code != http.StatusOK {
 		t.Fatalf("code=%d", code)
@@ -189,11 +217,11 @@ func TestEveryEntryHasADisplayTitle(t *testing.T) {
 	var check func(n *TreeNode)
 	check = func(n *TreeNode) {
 		for _, e := range n.Entries {
-			if e.Title == "" {
-				t.Errorf("%s has no display title", e.Path)
+			if e.Label == "" {
+				t.Errorf("%s has no label", e.Path)
 			}
-			if strings.HasSuffix(e.Title, ".md") {
-				t.Errorf("%s shows a filename (%q) where a name belongs", e.Path, e.Title)
+			if strings.HasSuffix(e.Label, ".md") {
+				t.Errorf("%s shows a filename (%q) where a name belongs", e.Path, e.Label)
 			}
 		}
 		for _, c := range n.Children {

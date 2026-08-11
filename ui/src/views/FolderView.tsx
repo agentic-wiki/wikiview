@@ -37,8 +37,11 @@ export function FolderView({ folder }: { folder: TreeNode }) {
               key={e.path}
               to={"/wiki" + e.path}
               icon={<FileIcon />}
-              title={e.title}
-              subtitle={e.title.toLowerCase() !== e.name.replace(/\.md$/, "").toLowerCase() ? e.name : undefined}
+              title={e.label}
+              // A listing is navigation, so the row is the file. What the entry
+              // calls itself sits underneath, and only when it says something
+              // the filename does not.
+              subtitle={e.title && e.title !== e.label ? e.title : undefined}
               meta={e.type}
             />
           ))}

@@ -28,14 +28,16 @@ const tree: TreeNode = {
   path: "/",
   name: "",
   index: "/index.md",
-  entries: [{ path: "/index.md", name: "index.md", type: "", title: "Index" }],
+  entries: [{ path: "/index.md", name: "index.md", type: "", label: "Index" }],
   children: [
     {
       path: "/notes",
       name: "notes",
       entries: [
-        { path: "/notes/a.md", name: "a.md", type: "note", title: "A Note" },
-        { path: "/notes/b.md", name: "b.md", type: "note", title: "B" },
+        // Its title says something its filename does not, which is what keeps
+        // "shows the label" and "shows the title" telling apart.
+        { path: "/notes/a.md", name: "a.md", type: "note", label: "A", title: "A Note" },
+        { path: "/notes/b.md", name: "b.md", type: "note", label: "B" },
       ],
       children: [],
     },
@@ -297,11 +299,31 @@ test("a checkbox toggle sends the line the server gave, with the version", async
 test("the tree collapses folders except along the path to the current entry", async () => {
   await mountAt("/wiki/index.md");
   const atRoot = [...document.querySelectorAll("nav a, aside a")].map((a) => a.textContent);
-  expect(atRoot).not.toContain("A Note"); // /notes is collapsed
+  expect(atRoot).not.toContain("A"); // /notes is collapsed
 
   await mountAt("/wiki/notes/a.md");
   const deep = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
-  expect(deep).toContain("A Note"); // its folder was opened for it
+  expect(deep).toContain("A"); // its folder was opened for it
+});
+
+// You navigated to a file, so navigation says which file. An entry's own title
+// belongs to the entry, and a tree that swapped one for the other would rename
+// rows out from under the paths you are following.
+test("navigation names the file; the entry names itself", async () => {
+  await mountAt("/wiki/notes/a.md");
+
+  const inTree = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(inTree).toContain("A"); // the filename, made readable
+  expect(inTree).not.toContain("A Note"); // not what the entry calls itself
+
+  const crumbs = document.querySelector('nav[aria-label="Breadcrumb"]')!;
+  expect(crumbs.textContent).toContain("A");
+  expect(crumbs.textContent).not.toContain("A Note");
+  // Not the raw filename either, which is what a failed lookup falls back to.
+  expect(crumbs.textContent).not.toContain("a.md");
+
+  // …while the entry itself still says what it is.
+  expect(document.querySelector("article")?.textContent).toContain("A Note");
 });
 
 // The bundle name is a link to the front door, with README.md as the fallback

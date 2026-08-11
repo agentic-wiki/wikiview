@@ -31,17 +31,22 @@ type TreeNode struct {
 // EntryStub is what a listing needs: enough to render a row and navigate,
 // without the body.
 //
-// Title is always populated: the entry's own title when it has one, and a
-// readable name derived from the filename when it does not. Computed here so
-// every place an entry is named — the tree, a folder listing, the palette, a
-// backlink — gets the same answer. Left to the client, each would invent its own
-// fallback, and they already had: some showed "003-watch-and-events.md" while
-// others showed "Watch and events".
+// Label and Title are different questions. Label is the filename made readable
+// and is what navigation shows: you arrived at a file, and a tree that renamed
+// it out from under you is a tree you cannot find your way back through. Title
+// is what the entry calls itself, which its own page shows and which a search
+// can match, and it is empty for an entry that carries none.
+//
+// Both are derived here rather than in the browser because the same rule names
+// backlinks and frontmatter references, which the client is in no position to
+// compute. One implementation, so an entry is called the same thing wherever it
+// appears.
 type EntryStub struct {
 	Path  string `json:"path"`
 	Name  string `json:"name"`
 	Type  string `json:"type"`
-	Title string `json:"title"`
+	Label string `json:"label"`
+	Title string `json:"title,omitempty"`
 }
 
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
@@ -60,15 +65,12 @@ func buildTree(idx *index.Index) *TreeNode {
 	for _, e := range entries {
 		dir := path.Dir(e.Path)
 		node := folderFor(folders, root, dir)
-		title := e.Field("title")
-		if title == "" {
-			title = titleFromFilename(e.Path)
-		}
 		node.Entries = append(node.Entries, EntryStub{
 			Path:  e.Path,
 			Name:  path.Base(e.Path),
 			Type:  e.Type,
-			Title: title,
+			Label: titleFromFilename(e.Path),
+			Title: e.Field("title"),
 		})
 		if path.Base(e.Path) == "index.md" {
 			node.Index = e.Path

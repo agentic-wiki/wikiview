@@ -55,6 +55,9 @@ interface Item {
   path: string;
   label: string;
   hint: string;
+  /** What the entry calls itself, when that is not what the filename says.
+   *  Matched but not shown: an entry should be findable by either name. */
+  title?: string;
 }
 
 function Palette({ tree, onClose }: { tree: TreeNode; onClose: () => void }) {
@@ -66,15 +69,21 @@ function Palette({ tree, onClose }: { tree: TreeNode; onClose: () => void }) {
   // Flattened once per tree, not per keystroke.
   const all = useMemo(() => flatten(tree), [tree]);
 
-  // Filtering runs here for now because the tree is already in memory and this
-  // is a substring match, not the engine's query language. Anything richer —
-  // `type:task`, `status:!done` — must go to the server: the previous attempt
-  // reimplemented `--where` matching in TypeScript, and the engine being
-  // importable is precisely what makes that unnecessary now.
+  // Filtering runs here because the tree is already in memory and this is a
+  // substring match, not the engine's query language. Anything richer, such as
+  // `type:task` or `status:!done`, goes to the server: the engine being
+  // importable is what makes reimplementing `--where` here unnecessary.
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return all.slice(0, 20);
-    return all.filter((i) => i.label.toLowerCase().includes(q) || i.path.toLowerCase().includes(q)).slice(0, 20);
+    return all
+      .filter(
+        (i) =>
+          i.label.toLowerCase().includes(q) ||
+          i.path.toLowerCase().includes(q) ||
+          (i.title?.toLowerCase().includes(q) ?? false),
+      )
+      .slice(0, 20);
   }, [all, query]);
 
   useEffect(() => setSelected(0), [query]);
@@ -144,7 +153,7 @@ function Palette({ tree, onClose }: { tree: TreeNode; onClose: () => void }) {
 
 function flatten(node: TreeNode, out: Item[] = []): Item[] {
   for (const e of node.entries) {
-    out.push({ path: e.path, label: e.title, hint: e.path });
+    out.push({ path: e.path, label: e.label, hint: e.path, title: e.title });
   }
   for (const c of node.children) flatten(c, out);
   return out;
