@@ -54,10 +54,35 @@ const entry: Entry = {
   title: "A Note",
   type: "note",
   frontmatter: { title: "A Note", status: "todo", blockers: ["/notes/b.md"] },
-  body: "# A Note\n\nThe body of the entry. See [b](./b.md) and [readme](../README.md).\n",
+  body:
+    "# A Note\n\nThe body of the entry. See [b](./b.md) and [readme](../README.md).\n" +
+    "The [contract](./contract.sol) and ![a diagram](./diagram.png).\nAnd [gone](./gone.md).\n",
   links: [
     { raw: "./b.md", to: "/notes/b.md", anchor: "", text: "b", line: 3, exists: true, outside: false },
     { raw: "../README.md", to: "", anchor: "", text: "readme", line: 4, exists: false, outside: true },
+    // A file the bundle carries rather than an entry, and an image of one.
+    {
+      raw: "./contract.sol",
+      to: "/notes/contract.sol",
+      anchor: "",
+      text: "contract",
+      line: 5,
+      exists: false,
+      outside: false,
+      asset: "/raw/notes/contract.sol",
+    },
+    {
+      raw: "./diagram.png",
+      to: "/notes/diagram.png",
+      anchor: "",
+      text: "diagram",
+      line: 6,
+      exists: false,
+      outside: false,
+      asset: "/raw/notes/diagram.png",
+    },
+    // A `.md` nobody has written: not a file to fetch.
+    { raw: "./gone.md", to: "/notes/gone.md", anchor: "", text: "gone", line: 7, exists: false, outside: false },
   ],
   frontmatterRefs: [{ key: "blockers", value: "/notes/b.md", to: "/notes/b.md", label: "B" }],
   backlinks: [{ from: "/index.md", title: "The Front Door", text: "a note", line: 3 }],
@@ -573,6 +598,34 @@ test("frontmatter values that resolve are links; others are text", async () => {
   // A value with no counterpart in the table stays plain text.
   expect(strip.textContent).toContain("todo");
   expect(strip.querySelectorAll("a")).toHaveLength(1);
+});
+
+// A bundle carries files it does not index: an image, a contract, a spreadsheet
+// beside the notes about it. The reader could not tell one of those from an
+// entry nobody has written, and sent both to a page that does not exist.
+test("a file the bundle carries is fetched, not navigated to", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const anchors = [...document.querySelectorAll(".markdown a")];
+
+  const asset = anchors.find((a) => a.textContent === "contract");
+  expect(asset?.getAttribute("href")).toBe("/raw/notes/contract.sol");
+  // A new tab, so looking at a PDF does not cost you the entry you were reading.
+  expect(asset?.getAttribute("target")).toBe("_blank");
+  expect(asset?.getAttribute("rel")).toContain("noopener");
+
+  // An entry nobody has written is still a route, not a download: per the format
+  // a link may point at knowledge that does not exist yet.
+  const unwritten = anchors.find((a) => a.textContent === "gone");
+  expect(unwritten?.getAttribute("href")).toBe("/wiki/notes/gone.md");
+});
+
+// An image needs no mechanism of its own. Given the address, the browser fetches
+// it over HTTP like any other image.
+test("an image in an entry loads from where the server says it is", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const img = document.querySelector(".markdown img");
+  expect(img?.getAttribute("src")).toBe("/raw/notes/diagram.png");
+  expect(img?.getAttribute("alt")).toBe("a diagram");
 });
 
 // A relative href pointing above the bundle resolves against the *current

@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/agentic-wiki/wiki/bundle"
@@ -23,8 +24,9 @@ type Store struct {
 	idx       *index.Index
 	version   uint64
 	digest    string
-	entries   map[string]string // path to content digest, for the next comparison
-	changedAt map[string]uint64 // path to the version its content last moved at
+	entries   map[string]string   // path to content digest, for the next comparison
+	changedAt map[string]uint64   // path to the version its content last moved at
+	files     map[string]struct{} // entries, plus the non-entries they link to
 }
 
 // View is the store's state at one instant.
@@ -44,6 +46,14 @@ type View struct {
 	// Monotonic and per entry, so "changed since you last looked" is one
 	// comparison per entry rather than a diff of two trees. Read-only.
 	ChangedAt map[string]uint64
+	// Files are the bundle paths that exist as files: every entry, plus every
+	// non-entry an entry links to — an image, a contract, a spreadsheet kept
+	// beside the notes about it. Read-only.
+	//
+	// Derived from the index rather than from the directory, which is what keeps
+	// reading one a map lookup instead of a file search. A `.env` next to your
+	// notes is not in here, because nothing refers to it.
+	Files map[string]struct{}
 }
 
 // Open locates the bundle containing dir and builds its index.
@@ -82,9 +92,12 @@ func (s *Store) Rebuild() (changed bool, err error) {
 	}
 	digest := combine(entries)
 
+	files := bundleFiles(idx)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.idx = idx // swap regardless: same content, but entries re-read from disk
+	s.files = files
 	if digest == s.digest {
 		return false, nil
 	}
@@ -117,7 +130,32 @@ func (s *Store) Rebuild() (changed bool, err error) {
 func (s *Store) View() View {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return View{Index: s.idx, Version: s.version, ChangedAt: s.changedAt}
+	return View{Index: s.idx, Version: s.version, ChangedAt: s.changedAt, Files: s.files}
+}
+
+// bundleFiles collects every path the bundle has a file for: its entries, and
+// every link target that names something other than an entry — an image, a
+// diagram, a source file kept beside the notes about it.
+//
+// A missing `.md` is left out. That one is not a file the bundle carries, it is
+// knowledge not yet written, which the format expects and the reader shows as
+// such.
+func bundleFiles(idx *index.Index) map[string]struct{} {
+	out := make(map[string]struct{}, len(idx.Entries))
+	for _, e := range idx.Entries {
+		out[e.Path] = struct{}{}
+	}
+	for _, e := range idx.Entries {
+		for _, l := range e.Links {
+			if strings.HasSuffix(l.Target, ".md") {
+				continue
+			}
+			if _, err := idx.Resolve(l.Target); err != nil {
+				out[l.Target] = struct{}{}
+			}
+		}
+	}
+	return out
 }
 
 // entryDigests hashes each entry's bytes, keyed by path.

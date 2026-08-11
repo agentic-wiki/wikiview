@@ -13,9 +13,9 @@ Scope is deliberately narrow. No watcher, no SSE, no frontend, no writes. Just e
 
 ## What it is
 
-- **`internal/store`** — one bundle, one index, rebuilt on demand. `Rebuild` builds fully before swapping, so a failed rebuild leaves the previous index serving: an entry saved mid-edit with broken frontmatter must not take the server down. `Snapshot` returns the current index, which is immutable until the next rebuild, so a caller reads it lock-free and a request spanning a rebuild sees consistent data.
+- **`internal/store`** — one bundle, one index, rebuilt on demand. `Rebuild` builds fully before swapping, so a failed rebuild leaves the previous index serving: an entry saved mid-edit with broken frontmatter must not take the server down. `View` returns the current index and the version describing it together, immutable until the next rebuild, so a caller reads it lock-free and a request spanning a rebuild sees consistent data.
 - **`internal/server`** — `GET /api/bundle` and `GET /api/entry/{path...}`. Entries carry frontmatter verbatim, the unrendered body, and the graph around them with **every link already resolved to a bundle path**, because turning a written link into a path is the engine's rule and a browser doing it would be a second implementation.
-- **`cmd/wikiview`** — `--root` (matching the engine's flag, so both tools are pointed at a bundle the same way), plus `--host` and `--port`.
+- **`cmd/wikiview`** — a positional bundle path defaulting to the working directory, plus `--host` and `--port`.
 
 ## The path guard
 
@@ -29,7 +29,7 @@ Rooting also matters for a second reason: `Resolve` falls back to a basename sca
 - **Writes.** Checkboxes and frontmatter are next, and they go through the engine's write API, which is atomic and surgical. Nothing here writes.
 - **The watcher, digest, and SSE.** Picked from the previous attempt nearly as-is, but a rebuild trigger with nothing subscribed is plumbing before it is required.
 
-**Acceptance:** the module builds against the engine with no reimplemented rules; `wikiview --root <bundle>` serves both endpoints; the store is safe under concurrent snapshot and rebuild; a failed rebuild keeps the previous index serving; traversal attempts resolve to nothing.
+**Acceptance:** the module builds against the engine with no reimplemented rules; `wikiview <bundle>` serves both endpoints; the store is safe under concurrent snapshot and rebuild; a failed rebuild keeps the previous index serving; traversal attempts resolve to nothing.
 
 ## Done
 

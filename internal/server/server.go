@@ -40,6 +40,9 @@ func New(s *store.Store, ui fs.FS) *Server {
 	// The wildcard has to be the final segment, so the verb leads the path
 	// rather than trailing it.
 	srv.mux.HandleFunc("PUT /api/checkbox/{path...}", srv.handleCheckbox)
+	// Files the bundle links to but does not index. Outside /api because it is
+	// not JSON: an <img src> and a new tab both want the file itself.
+	srv.mux.HandleFunc("GET /raw/{path...}", srv.handleRaw)
 	// Everything not under /api belongs to the app.
 	srv.mux.HandleFunc("GET /", srv.serveUI)
 	return srv

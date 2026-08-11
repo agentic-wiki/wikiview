@@ -65,6 +65,13 @@ type LinkView struct {
 	// format a link may point at knowledge not yet written, so the reader shows
 	// it differently rather than hiding or breaking it.
 	Exists bool `json:"exists"`
+	// Asset is where to fetch a target that is not an entry: an image, a diagram,
+	// a source file kept beside the notes about it. Empty for entries, for a
+	// `.md` not yet written, and for anything outside the bundle.
+	//
+	// Sent as a URL rather than left to the client to assemble, for the same
+	// reason To is: a rule with one implementation cannot disagree with itself.
+	Asset string `json:"asset,omitempty"`
 	// Outside marks a link that resolves above the bundle root. To is empty for
 	// these: there is no bundle path, because the target is not in the bundle.
 	//
@@ -189,6 +196,13 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 	out := make([]LinkView, 0, len(e.Links)+len(e.Outside))
 	for _, l := range e.Links {
 		_, err := idx.Resolve(l.Target)
+		asset := ""
+		// Not an entry and not named like one, so it is a file the bundle
+		// carries. A missing `.md` deliberately gets nothing: that is knowledge
+		// not yet written, not a file to fetch.
+		if err != nil && !strings.HasSuffix(l.Target, ".md") {
+			asset = "/raw" + l.Target
+		}
 		out = append(out, LinkView{
 			Raw:    l.Raw,
 			To:     l.Target,
@@ -196,6 +210,7 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 			Text:   l.Text,
 			Line:   l.Line,
 			Exists: err == nil,
+			Asset:  asset,
 		})
 	}
 	// Links climbing above the bundle root. The engine keeps these separate from

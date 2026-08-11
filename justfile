@@ -118,4 +118,4 @@ ui-dev: ui-install
 # change is invisible here no matter how many times the page is reloaded.
 [group('run')]
 serve root="./backlog" host="localhost" port="8080": ui-build
-    go run ./cmd/wikiview --root {{root}} --host {{host}} --port {{port}}
+    go run ./cmd/wikiview {{root}} --host {{host}} --port {{port}}

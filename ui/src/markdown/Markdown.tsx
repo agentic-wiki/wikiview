@@ -83,6 +83,23 @@ export function Markdown({
         );
       }
 
+      // A file the bundle carries rather than an entry: a diagram, a contract,
+      // a spreadsheet. A new tab, because leaving the reader to look at a PDF
+      // and then having to navigate back is worse than having both.
+      if (link?.asset) {
+        return (
+          <a
+            href={link.asset}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-accent underline decoration-1 underline-offset-2"
+            title={`${link.to} — opens in a new tab`}
+          >
+            {children}
+          </a>
+        );
+      }
+
       if (!link) {
         // Not an internal bundle link: an external URL, a bare fragment, or one
         // resolving outside the bundle. Left exactly as authored.
@@ -112,6 +129,22 @@ export function Markdown({
         >
           {children}
         </RouterLink>
+      );
+    },
+
+    // An image in the bundle is fetched over HTTP like any other image. The
+    // only thing needed here is the address, which arrives resolved in the same
+    // table as every other href; the browser does the rest.
+    img({ src, alt, ...props }) {
+      const asset = typeof src === "string" ? links.get(src)?.asset : undefined;
+      return (
+        <img
+          src={asset ?? (typeof src === "string" ? src : undefined)}
+          alt={alt ?? ""}
+          loading="lazy"
+          className="max-w-full rounded-md"
+          {...props}
+        />
       );
     },
 

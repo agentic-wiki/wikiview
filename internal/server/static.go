@@ -20,7 +20,11 @@ import (
 // bundle paths and all.
 func (s *Server) serveUI(w http.ResponseWriter, r *http.Request) {
 	if s.ui == nil {
-		http.Error(w, "no UI was built into this binary; run the dev server", http.StatusNotFound)
+		// The likeliest way to arrive here is `go install`, which compiles
+		// against an empty ui/dist because the frontend is built and never
+		// committed. Saying so beats leaving someone to wonder why the API
+		// answers and the page does not.
+		http.Error(w, "no UI was built into this binary: build it with `just build`, or run `just ui-dev` and use the Vite server", http.StatusNotFound)
 		return
 	}
 

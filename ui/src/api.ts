@@ -30,6 +30,8 @@ export interface Link {
   line: number;
   /** False when the target names no entry. Not an error: it may be unwritten. */
   exists: boolean;
+  /** Where to fetch a target that is not an entry, absent when there is none. */
+  asset?: string;
   /**
    * True when the link resolves above the bundle root. `to` is empty for these.
    *
