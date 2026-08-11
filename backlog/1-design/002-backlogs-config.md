@@ -1,7 +1,7 @@
 ---
 type: task
 title: "where the config lives, and which folders are backlogs"
-status: todo
+status: done
 priority: high
 tags: [feature, config]
 ---
@@ -53,3 +53,22 @@ So **wikiview validates its own section** and reports on startup: an unknown key
 **Unblocked.** The upstream `[tool.*]` namespace shipped in `wiki` v0.9.0, read through `bundle.DecodeTool`. This bundle's own `wiki.toml` already declares a board with it and `wiki check` stays silent, so the shape above is exercised rather than only proposed. What remains here is code that reads it: the API reports which tool tables exist, but nothing decodes the board yet.
 
 **Acceptance:** a bundle with no `[tool.wikiview]` serves every view correctly; a declared board pins its column order and surfaces in navigation; an entry whose status is undeclared still appears; wikiview reports its own config errors and `wiki check` stays silent about the namespace.
+
+## Done
+
+`internal/config` decodes `[tool.wikiview]` through `bundle.DecodeTool`, fills every default but `path`, and parses `where` with `index.ParseFilter` so the query spelling keeps one implementation. `/api/bundle` reports the boards. Startup reports the problems:
+
+```
+wiki.toml: unknown key [tool.wikiview] backlogs
+wiki.toml: unknown key in board 1: collumns
+wiki.toml: board /gone: no entries there
+wiki.toml: board /: "nonsense" is not a filter: expected key=value or key!=value
+```
+
+None of them stops the server, and every board survives its own mistakes: a bad filter on one does not cost the next its defaults.
+
+Catching a misspelled key needs decoding twice, once into `map[string]any` to see what is written and once into the real shape. A typo otherwise decodes into nothing and is ignored in silence, which is the same footgun the engine surfaces for its own keys.
+
+The config is decoded per request rather than held. It follows the same file the index does, so a board declared in `wiki.toml` is there on the next fetch, and the store keeps one concern.
+
+**Left to the board tasks**, since they are about rendering rather than reading: pinning column order on screen, surfacing boards in navigation, and the rule that an entry whose status is undeclared still gets a column.

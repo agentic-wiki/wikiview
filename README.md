@@ -81,7 +81,29 @@ Boards, dataset tables and git actions are not built yet, and nothing edits pros
 
 ## Configuration
 
-Optional, and it lives in the bundle's own `wiki.toml` under `[tool.wikiview]`, alongside whatever else that file already holds.
+Optional, and it lives in the bundle's own `wiki.toml` under `[tool.wikiview]`, alongside whatever else that file already holds. There is no second config file and nothing to create: a bundle with none of this serves every view.
+
+What it configures is boards. Any folder boards by URL whether you declare it or not, so this decides what the UI offers you, not what it permits:
+
+```toml
+[[tool.wikiview.board]]
+path = "/backlog"
+```
+
+That is a whole board. Every other key has a default, and writing them out is only worth it when one of them is wrong:
+
+```toml
+[[tool.wikiview.board]]
+path    = "/backlog"
+where   = ["type=task"]   # default
+status  = "status"        # default: the frontmatter field the columns come from
+columns = []              # default: column keys inferred from the entries
+lane    = ""              # default: no lanes, which is to say one
+```
+
+An array of tables rather than a list of paths, because every board has its own settings. `where` follows the same spelling as `wiki list --where status!=done`.
+
+**`columns` orders and adds. It never hides.** A status present in your entries but missing from the list still gets a column, appended after the ones you named. Declaring `["todo", "in-progress", "done"]` pins that order and shows `in-progress` while it is still empty, which is the thing inference cannot do for you — but a card whose status you forgot to list appears anyway rather than vanishing off a board while sitting in the folder. Hiding cards is `where`'s job, where it is explicit.
 
 ## HTTP API
 

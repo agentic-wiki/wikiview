@@ -59,6 +59,22 @@ var (
 	defaultStatus = "status"
 )
 
+// Default is the board a folder gets when nothing declares one.
+//
+// Declaring a board decides what the UI surfaces, not what is permitted: any
+// folder boards by URL. So an undeclared folder takes exactly what a bare
+// `[[tool.wikiview.board]]` would have given it, and the two paths through the
+// code cannot drift into two different sets of defaults.
+func Default(path string) Board {
+	b := Board{Path: path, Status: defaultStatus, Where: defaultWhere}
+	for _, w := range b.Where {
+		if f, err := index.ParseFilter(w); err == nil {
+			b.Filters = append(b.Filters, f)
+		}
+	}
+	return b
+}
+
 // Decode reads `[tool.wikiview]` and reports what is wrong with it.
 //
 // A problem is not an error. A board pointing at a folder somebody deleted, or

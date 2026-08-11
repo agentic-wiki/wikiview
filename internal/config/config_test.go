@@ -164,3 +164,35 @@ func TestPathIsRequired(t *testing.T) {
 		t.Errorf("problems=%v, want one about the missing path", problems)
 	}
 }
+
+// The README writes the defaults out so a reader can see what they get without
+// configuring anything. That makes it a second home for values that live here,
+// and the two drift the first time one changes — silently, because nothing
+// executes a README.
+//
+// So the file is read and checked. Not the prose around them, which is free to
+// be rewritten, only the values themselves.
+func TestREADMEDocumentsTheRealDefaults(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(readme)
+
+	for _, want := range []string{
+		`where   = ["type=task"]`,
+		`status  = "status"`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("README does not document the default as %q", want)
+		}
+	}
+	// …and those strings are the defaults, rather than something that merely
+	// used to be.
+	if len(defaultWhere) != 1 || defaultWhere[0] != "type=task" {
+		t.Errorf("defaultWhere=%v, and the README says type=task", defaultWhere)
+	}
+	if defaultStatus != "status" {
+		t.Errorf("defaultStatus=%q, and the README says status", defaultStatus)
+	}
+}

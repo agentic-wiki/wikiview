@@ -37,6 +37,7 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("GET /api/bundle", srv.handleBundle)
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
 	srv.mux.HandleFunc("GET /api/tree", srv.handleTree)
+	srv.mux.HandleFunc("GET /api/board/{path...}", srv.handleBoard)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
 	// The wildcard has to be the final segment, so the verb leads the path
 	// rather than trailing it.
