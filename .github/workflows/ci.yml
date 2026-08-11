@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: oven-sh/setup-bun@v2
+
+      # --ignore-scripts, always: postinstall scripts run arbitrary code from
+      # every transitive dependency, which is the main supply-chain path here.
+      - name: Install UI dependencies
+        run: bun install --ignore-scripts
+        working-directory: ui
+
+      - name: UI typecheck
+        run: bunx tsc -b --noEmit
+        working-directory: ui
+
+      # These mount the real app and drive it, which is the only way to know a
+      # route renders rather than merely returning HTML.
+      - name: UI tests
+        run: bun test
+        working-directory: ui
+
+      # Before the Go build: the binary embeds ui/dist, and on a clean checkout
+      # that directory holds only the .gitkeep //go:embed needs to compile.
+      - name: Build UI
+        run: bunx vite build
+        working-directory: ui
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test -race ./...
+
+      - name: Build
+        run: go build -ldflags "-s -w" -o bin/wikiview ./cmd/wikiview
+
+      - name: Serves a bundle
+        run: bash scripts/smoke.sh ./bin/wikiview
+
+      - name: Cross-compile check
+        run: |
+          GOOS=darwin  GOARCH=arm64 go build -o /dev/null ./cmd/wikiview
+          GOOS=darwin  GOARCH=amd64 go build -o /dev/null ./cmd/wikiview
+          GOOS=linux   GOARCH=arm64 go build -o /dev/null ./cmd/wikiview
+          GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/wikiview
+          GOOS=windows GOARCH=arm64 go build -o /dev/null ./cmd/wikiview
+
+  # Native Windows gate. The watcher and the atomic writes it observes behave
+  # differently there — a replace cannot happen while a file is open — so the Go
+  # suite running natively is the guarantee the daemon works at all. The bash
+  # smoke test is Linux-only by design and is intentionally not run here.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install UI dependencies
+        run: bun install --ignore-scripts
+        working-directory: ui
+
+      - name: Build UI
+        run: bunx vite build
+        working-directory: ui
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test -race ./...
+
+      - name: Build
+        run: go build -ldflags "-s -w" -o bin/wikiview.exe ./cmd/wikiview

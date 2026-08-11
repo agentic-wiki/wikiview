@@ -1,0 +1,46 @@
+version: 2
+
+project_name: wikiview
+
+# The binary embeds ui/dist, so the frontend must be built before Go compiles.
+# Without this the release would ship whatever happened to be in the working
+# directory — or fail outright on a clean checkout, where dist holds only the
+# .gitkeep that //go:embed needs to compile at all.
+#
+# --ignore-scripts, always: postinstall scripts execute arbitrary code from every
+# transitive dependency, and a release build is the last place to allow that.
+before:
+    hooks:
+        - bun install --ignore-scripts --cwd ui
+        - bun --cwd ui x vite build
+
+builds:
+    - main: ./cmd/wikiview
+      binary: wikiview
+      ldflags:
+          - -s -w -X main.Version={{.Version}}
+      goos:
+          - linux
+          - darwin
+          - windows
+      goarch:
+          - amd64
+          - arm64
+
+archives:
+    - formats: [tar.gz]
+      name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+      format_overrides:
+          - goos: windows
+            formats: [zip] # .zip is the Windows convention
+
+checksum:
+    name_template: checksums.txt
+
+changelog:
+    sort: asc
+    filters:
+        exclude:
+            - "^docs:"
+            - "^ci:"
+            - "^chore:"

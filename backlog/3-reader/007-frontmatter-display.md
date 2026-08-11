@@ -1,7 +1,7 @@
 ---
 type: task
 title: "how frontmatter is shown in an entry"
-status: todo
+status: in-progress
 priority: medium
 tags: [feature, reader, design]
 blockers: [/3-reader/005-markdown-and-checkboxes.md]

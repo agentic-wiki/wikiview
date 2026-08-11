@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the UI shell: rail, panel, breadcrumbs, palette"
-status: todo
+status: done
 priority: high
 tags: [feature, reader, ui]
 blockers: [/3-reader/003-resolve-server-side.md]
@@ -83,3 +83,16 @@ Query strings carry view state (`?where=status!=done`), as filters already do: t
 - **Creating entries or boards** from an empty folder.
 
 **Acceptance:** the shell renders with rail, collapsible panel, ellipsizing breadcrumbs and a ⌘K overlay; routes resolve on cold load and on client navigation; a folder with an index redirects to it and one without lists its entries; the panel is a drawer on narrow screens; every rail control is reachable and labelled by keyboard.
+
+## Done
+
+The shell is built as agreed: rail with ephemeral labels, collapsible panel, ellipsizing breadcrumbs, ⌘K overlay, real routes with the SPA fallback, and the folder rule (redirect to `index.md`, else list, else placeholder).
+
+Four things that only surfaced in the building:
+
+- **A selection survives navigation.** React reuses DOM nodes between routes, so a selection made on one entry reappears over whatever text lands in those nodes. A full page load would never do it; it is a consequence of not having one.
+- **Scroll has three cases, not two.** New page to the top, back to where you were, and `#anchor` beating both — the last being the one most easily forgotten, and the reason this reader cannot use hash routing.
+- **A URL outside the routes rendered nothing at all.** `/README.md` served `index.html`, the app booted, no route matched, and the result was a blank page that reads as a broken app rather than a wrong address.
+- **An entry was called three different things** depending on where it was named: raw filename in the tree, de-slugified in a backlink, path segment in the breadcrumb. The display name is now computed once, on the server.
+
+Deferred as planned: markdown editing, a column browser, and creating entries from an empty folder.

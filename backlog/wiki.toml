@@ -6,7 +6,7 @@ types = ["task"]
 # out-of-bundle advisory; without this, `wiki check` warns on every run. (An
 # `ignore` path *inside* a bundle does the other thing: excludes it from the
 # index. Same key, and where the path lands decides which.)
-ignore = ["../README.md"]
+ignore = ["../README.md", "../CHANGELOG.md"]
 
 # Task entries live in the phase folders and are found by query, not by being
 # listed on the board — the board carries goals and epics, which outlast them.

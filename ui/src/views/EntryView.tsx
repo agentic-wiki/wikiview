@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { api, type Entry } from "@/api";
 import { Markdown } from "@/markdown/Markdown";
 import { NotFound } from "@/views/NotFound";
+import { Loading } from "@/views/Loading";
 
 export function EntryView({
   path,
@@ -16,12 +17,28 @@ export function EntryView({
   const [entry, setEntry] = useState<Entry | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Cleared the moment the path changes, so the previous entry's content is
+  // never shown under the new entry's URL and breadcrumb. That is not a polish
+  // question: content attributed to the wrong address is simply wrong, and it
+  // reads as "already loaded" until it silently changes underneath you.
+  //
+  // Not cleared on `refresh`, which is the same entry being refetched after a
+  // change on disk — blanking there would flash the page on every save.
+  useEffect(() => {
+    setEntry(null);
+    setError(null);
+  }, [path]);
+
   useEffect(() => {
     const ac = new AbortController();
-    setError(null);
     api
       .entry(path, ac.signal)
-      .then(setEntry)
+      .then((e) => {
+        if (!ac.signal.aborted) {
+          setEntry(e);
+          setError(null);
+        }
+      })
       .catch((e) => {
         if (!ac.signal.aborted) setError(String(e.message ?? e));
       });
@@ -103,12 +120,6 @@ function alreadyNamed(entry: Entry): boolean {
   const opening = lines[first]!.toLowerCase().replace(/[*_`#>]/g, "").trim();
   const title = entry.title.toLowerCase().trim();
   return title.length > 0 && opening.includes(title);
-}
-
-/** Centred rather than pinned to the corner: it stands in for the whole view,
- *  so it should occupy the same space the content will. */
-function Loading() {
-  return <div className="text-muted grid h-full place-items-center text-sm">Loading…</div>;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { createRoot, type Root } from "react-dom/client";
 import { StrictMode, act } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useNavigate } from "react-router";
 import { App } from "@/App";
 import type { BundleInfo, Entry, TreeNode } from "@/api";
 
@@ -108,10 +108,26 @@ const headingDiffers: Entry = {
   checkboxes: [],
 };
 
+let listeners: Record<string, (e: MessageEvent) => void> = {};
+
+/** Delivers a version on the stream the app is subscribed to. */
+function emitVersion(v: number) {
+  listeners.version?.(new MessageEvent("version", { data: String(v) }));
+}
+
+let fetches = 0;
+/** How many requests the app has made, so a test can assert that a redundant
+ *  event caused none. */
+function fetchCount() {
+  return fetches;
+}
+
 function stubFetch() {
+  fetches = 0;
   const body = (v: unknown) =>
     Promise.resolve(new Response(JSON.stringify(v), { headers: { "content-type": "application/json" } }));
   globalThis.fetch = ((input: RequestInfo | URL) => {
+    fetches++;
     const url = String(input);
     if (url.endsWith("/api/bundle")) return body(bundle);
     if (url.endsWith("/api/tree")) return body(tree);
@@ -131,10 +147,17 @@ function stubFetch() {
       }),
     );
   }) as typeof fetch;
-  // The app subscribes for the whole session; nothing here exercises the stream.
+  // A stream a test can drive, via emitVersion. Installed here rather than per
+  // test because mountAt owns the stubbing, and a test installing its own would
+  // be replaced by this one.
+  listeners = {};
   globalThis.EventSource = class {
-    addEventListener() {}
-    removeEventListener() {}
+    addEventListener(type: string, fn: (e: MessageEvent) => void) {
+      listeners[type] = fn;
+    }
+    removeEventListener(type: string) {
+      delete listeners[type];
+    }
     close() {}
   } as unknown as typeof EventSource;
 }
@@ -148,6 +171,17 @@ afterEach(() => {
   root = undefined;
   container = undefined;
 });
+
+let navigateTo: (to: string) => void = () => {
+  throw new Error("not mounted");
+};
+
+/** Captures the router's navigate, so a test can move between entries the way a
+ *  click does rather than by remounting — which would hide the in-between. */
+function NavCapture() {
+  navigateTo = useNavigate();
+  return null;
+}
 
 async function mountAt(path: string): Promise<string> {
   // Tear down any previous mount first. Without this a test that mounts twice
@@ -166,6 +200,7 @@ async function mountAt(path: string): Promise<string> {
     root!.render(
       <StrictMode>
         <MemoryRouter initialEntries={[path]}>
+          <NavCapture />
           <App />
         </MemoryRouter>
       </StrictMode>,
@@ -389,4 +424,44 @@ test("a prepended title sits below the frontmatter strip, not above it", async (
   const heading = kids.findIndex((n) => n.tagName === "H1");
   expect(strip).toBeGreaterThanOrEqual(0);
   expect(heading).toBeGreaterThan(strip);
+});
+
+// Showing the previous entry's content under the new entry's URL is not a
+// polish problem: it reads as "already loaded" until it silently changes.
+test("navigating does not show the previous entry under the new URL", async () => {
+  await mountAt("/wiki/notes/a.md");
+  expect(document.body.textContent).toContain("The body of the entry.");
+
+  // A fetch that never settles, so the in-between state is observable.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/api/entry/")) return new Promise(() => {});
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  await act(async () => {
+    navigateTo("/wiki/notes/checks.md");
+  });
+
+  // The old content is gone rather than lingering with a new breadcrumb.
+  expect(document.body.textContent).not.toContain("The body of the entry.");
+  globalThis.fetch = realFetch;
+});
+
+// The stream greets every connection with the current version, and EventSource
+// reconnects on its own. Acting on a version already held means the page renders
+// and then replaces itself a moment later for no reason.
+test("a version the client already has does not trigger a refetch", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const before = fetchCount();
+
+  // The greeting, then a reconnect repeating it.
+  await act(async () => emitVersion(1));
+  await act(async () => emitVersion(1));
+  expect(fetchCount()).toBe(before);
+
+  // A version that is genuinely new does refetch.
+  await act(async () => emitVersion(2));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(fetchCount()).toBeGreaterThan(before);
 });

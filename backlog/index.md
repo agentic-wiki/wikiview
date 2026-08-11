@@ -46,3 +46,7 @@ Built on [`wiki` v0.9.0+](https://github.com/agentic-wiki/wiki), imported direct
 
 Wanted upstream, not blocking: an incremental rebuild (`.wiki` cache), since a long-lived server rebuilds the whole bundle on every change.
 
+## Releases
+
+Tagged releases build the frontend into the binary, publish archives for macOS, Linux and Windows, and push a Homebrew formula to `agentic-wiki/homebrew-tap`. See [CHANGELOG.md](../CHANGELOG.md).
+

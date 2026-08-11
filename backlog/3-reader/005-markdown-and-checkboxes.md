@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the markdown reader, and checkboxes that write back"
-status: todo
+status: done
 priority: high
 tags: [feature, reader, write]
 blockers: [/3-reader/004-ui-shell.md]
@@ -47,3 +47,15 @@ The interesting part is not the write, it is what happens around it:
 Editing prose. The layout leaves room for it and the API already serves what an editor would need, but nothing edits markdown in this phase.
 
 **Acceptance:** an entry renders with working internal links, anchors that scroll, and highlighted code; a link to an unwritten entry is visibly different; toggling a checkbox writes the file and survives a reload; a toggle against a stale version is refused rather than applied to the wrong line.
+
+## Done
+
+react-markdown with GFM and highlighting, links resolved by lookup, ids from the server, and checkboxes that write through `SetCheckbox` behind a version guard.
+
+Three bugs found in the building, each invisible to a screenshot:
+
+- **Two coordinate systems.** The engine's line numbers count from the top of the *file*, frontmatter included; the body is served stripped. Every heading and checkbox was off by the frontmatter length, so nothing matched. Both coordinates are now sent, because having one and computing the other is the arithmetic that goes wrong silently.
+- **Every write would have been refused.** The client sent `version: 0` — the version state was only ever set by SSE and never seeded from the bundle. Writes now carry `bundle.version`, the version the data on screen was actually read at.
+- **Matching by walking the document was wrong.** A cursor assumes the renderer visits nodes in source order exactly once; StrictMode's double render exhausted it and silently dropped every id. Matching is by source position, which react-markdown supplies for every node.
+
+The staleness rule works as designed: a replayed version is refused with `409` and the current version, and the file is untouched.

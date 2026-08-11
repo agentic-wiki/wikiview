@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { api, onVersion, type BundleInfo, type TreeNode } from "@/api";
 import { Shell } from "@/shell/Shell";
@@ -35,9 +35,33 @@ export function App() {
     return () => ac.abort();
   }, [refresh]);
 
+  // The last version acted on. A ref rather than state: it is read inside a
+  // subscription that must not be torn down and rebuilt when it changes.
+  const seen = useRef<number | null>(null);
+
   // Subscribed once for the life of the app: the stream reports staleness, and
   // resubscribing per view would drop events between navigations.
-  useEffect(() => onVersion(() => setRefresh((n) => n + 1)), []);
+  //
+  // Only a version we have not already seen counts. The stream greets every
+  // connection with the current version — deliberately, so a client connecting
+  // after a change learns it is stale — and EventSource reconnects on its own,
+  // so acting on every message meant a full refetch on connect and again on each
+  // reconnect. That is visible: the page renders, then replaces itself a moment
+  // later for no reason.
+  useEffect(
+    () =>
+      onVersion((v) => {
+        // The first greeting says what the initial load is already fetching.
+        if (seen.current === null) {
+          seen.current = v;
+          return;
+        }
+        if (v === seen.current) return; // a reconnect repeating itself
+        seen.current = v;
+        setRefresh((n) => n + 1);
+      }),
+    [],
+  );
 
   if (error) {
     return (

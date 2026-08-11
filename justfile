@@ -67,6 +67,35 @@ ui-build: ui-install
 build: ui-build
     go build -o bin/wikiview ./cmd/wikiview
 
+# End-to-end: run the real binary against a real bundle over HTTP
+[group('test')]
+smoke: build
+    bash scripts/smoke.sh ./bin/wikiview
+
+# Everything: unit, UI, and end-to-end
+[group('test')]
+test-all: test ui-test smoke
+
+# Cross-compile every release target without producing artifacts
+[group('build')]
+cross-compile: ui-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64 windows/amd64 windows/arm64; do
+        echo "  $target"
+        GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/wikiview
+    done
+
+# Build a release locally without publishing, and print the Homebrew formula
+[group('release')]
+release-dry: ui-build
+    goreleaser release --snapshot --clean --skip=publish
+
+# Preview the formula that a release would push to the tap
+[group('release')]
+formula-preview: release-dry
+    VERSION=v0.0.0-preview ./scripts/update-formula.sh
+
 # Frontend typecheck
 [group('dev')]
 ui-check:

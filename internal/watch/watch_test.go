@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,8 +16,26 @@ const quiet = 60 * time.Millisecond
 
 // start runs a watcher over a fresh directory and returns it with a counter of
 // how many change notifications have fired.
+//
+// Skipped on Windows, deliberately and at the source rather than in CI, so it
+// applies to anyone running the suite there.
+//
+// These tests assert on *counts within a time window*: write some files, wait
+// out the debounce, expect exactly one notification. That depends on the
+// filesystem delivering events promptly and coalescing them the way inotify
+// does. Windows delivers through a different mechanism with its own batching
+// and latency, so the counts become a race — and a test that fails
+// intermittently is worse than one that does not run, because it trains people
+// to re-run rather than to read.
+//
+// What is lost is coverage of the debounce arithmetic, which is
+// platform-independent. What is kept is TestStopsOnContextCancel, which does not
+// use this helper and does verify the watcher shuts down cleanly on Windows.
 func start(t *testing.T) (dir string, fired *atomic.Int64) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("event timing and coalescing differ here; these assert on counts within a window")
+	}
 	dir = t.TempDir()
 	fired = &atomic.Int64{}
 

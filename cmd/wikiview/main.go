@@ -19,13 +19,26 @@ import (
 	"github.com/agentic-wiki/wikiview/ui"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=...", the same way
+// the engine does it, so a released binary can say which one it is. A package
+// manager needs this: Homebrew's formula test runs the binary and checks the
+// version it reports against the version it installed.
+var Version = "dev"
+
 func main() {
 	// --root, matching the engine's flag, so the two tools are pointed at a
 	// bundle the same way. Defaults to the working directory, which discovery
 	// then walks up from.
 	root := flag.String("root", ".", "bundle directory (walks up to find wiki.toml)")
 	addr := flag.String("addr", "localhost:8080", "listen address")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	// Also accepted as a bare subcommand, matching `wiki version`.
+	if *showVersion || (flag.NArg() > 0 && flag.Arg(0) == "version") {
+		fmt.Println("wikiview", Version)
+		return
+	}
 
 	if err := run(*root, *addr); err != nil {
 		fmt.Fprintln(os.Stderr, "wikiview:", err)
