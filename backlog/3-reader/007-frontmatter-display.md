@@ -1,13 +1,20 @@
 ---
 type: task
 title: "how frontmatter is shown in an entry"
-status: in-progress
-priority: medium
+status: archived
+priority: low
 tags: [feature, reader, design]
 blockers: [/3-reader/005-markdown-and-checkboxes.md]
 ---
 
-Frontmatter is metadata about an entry, not part of its prose, and the format puts no ceiling on what it holds. The reader currently prints every field as a strip, which is fine for four fields and wrong for fifteen.
+Frontmatter is metadata about an entry, not part of its prose, and the format puts no ceiling on what it holds. The reader prints every field as a strip, which is fine for four fields and would be wrong for fifteen.
+
+**Parked, because no bundle here has fifteen.** Entries in this backlog carry five or six short fields and the strip handles them. The disclosure below is the right answer to a problem worth waiting for: an entry whose metadata genuinely pushes its own prose off the screen.
+
+Two things learned from measuring rather than assuming:
+
+- **A field is glanceable when its value is short**, which the value already says. A list of blessed names (`type`, `status`, `priority`) would need configuring for a bundle that invents `severity`, and the length rule needs nothing declared. Measure what is displayed, not what is stored: a `blockers` value renders as "002 Backlogs config" and reads short, though the path behind it does not.
+- **Nested YAML is invisible.** `nested:` with a sub-map arrives as `"nested": ""` — the key survives, the content is gone, because the parser models scalars and string lists. It is out of the format's spec, so this is not urgent, but the reader currently shows a field with nothing in it and no way to see what is really there. `/raw/{path}` now serves the file, so the fix is a link rather than a feature.
 
 ## What it is, which decides how it looks
 

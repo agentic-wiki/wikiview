@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"github.com/agentic-wiki/wikiview/internal/config"
 	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
@@ -68,6 +69,10 @@ type BundleInfo struct {
 	Entries int      `json:"entries"`
 	Tools   []string `json:"tools"`   // [tool.*] tables present in wiki.toml
 	Version uint64   `json:"version"` // matches the SSE stream; compare to know you are stale
+	// Boards are the boards declared in `[tool.wikiview]`, with their defaults
+	// filled in. Declaring one decides what the UI surfaces, not what is
+	// permitted: any folder is boardable by URL whether it is listed or not.
+	Boards []config.Board `json:"boards,omitempty"`
 }
 
 // bundleID identifies a bundle by where it lives, which is the only thing
@@ -88,6 +93,11 @@ func bundleID(dir string) string {
 
 func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
+	// Decoded per request rather than held, because it follows the same file the
+	// index does: editing wiki.toml rebuilds, and the next request should see
+	// the board you just declared. Problems are reported at startup rather than
+	// on every fetch; a malformed board is not a reason to fail this response.
+	boards, _ := config.Decode(v.Index.Bundle, v.Index)
 	writeJSON(w, http.StatusOK, BundleInfo{
 		ID:      s.id,
 		Label:   dirLabel(v.Index.Bundle.Dir),
@@ -96,6 +106,7 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		Entries: len(v.Index.Entries),
 		Tools:   v.Index.Bundle.Tools(),
 		Version: v.Version,
+		Boards:  boards.Board,
 	})
 }
 

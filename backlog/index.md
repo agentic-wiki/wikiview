@@ -11,11 +11,14 @@ Backlog for [wikiview](../README.md), kept as an agentic-wiki bundle and operate
 This board carries the things that outlast a task: the goal, the epics, and where we are in them. Individual tasks are entries, and entries are queried:
 
 ```sh
-wiki list --where type=task --where status!=done      # everything open
-wiki list --where type=task --where status=in-progress # what is being worked
-wiki list --where type=task --prefix /2-server        # one epic's tasks
-wiki property status --counts                         # the shape of the work
+wiki list --where type=task --where status!=done --where status!=archived  # queued
+wiki list --where type=task --where status=in-progress                     # being worked
+wiki list --where type=task --where status=archived                        # thought through, not queued
+wiki list --where type=task --prefix /2-server                             # one epic's tasks
+wiki property status --counts                                              # the shape of the work
 ```
+
+`archived` is a fourth status alongside `todo`, `in-progress` and `done`: a task that has been thought through and deliberately not queued, kept because the thinking is worth more than the ticket. The reasoning lives in the task, including what would change the answer.
 
 Nothing here mirrors a task's state. A task owns its `status`, so the board cannot drift out of sync with one, and a task that is never listed here is still found by the queries above.
 
@@ -31,6 +34,8 @@ A bundle served over HTTP with no UI: the index in memory, a read-only API, and 
 
 **3 — Reader** *(current)*
 Real routes, the front door at `index.md`, navigation by links, datasets rendered as tables. The reader is the product; the board is a view inside it. The engine's rules travel as data, so the client resolves links by lookup and never learns what a bundle root is.
+
+Tables render; sorting and totalling them is parked. The datasets a bundle holds are small enough to read, so a grid buys little, and the version worth building is a sort handler on the table already on screen rather than a view of its own.
 
 The shell is settled: an icon rail, a collapsible panel, ellipsizing breadcrumbs, and a ⌘K overlay. One layout rather than a preference — the three are affordances that compose, and two selectable layouts would mean every future view built twice.
 

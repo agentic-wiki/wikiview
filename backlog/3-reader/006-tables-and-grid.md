@@ -1,26 +1,36 @@
 ---
 type: task
-title: "tables become a grid you can aggregate"
+title: "a table you can sort and total"
 status: todo
 priority: medium
 tags: [feature, reader, datasets]
 blockers: [/3-reader/005-markdown-and-checkboxes.md]
 ---
 
-An entry holding a markdown table is a dataset in the format's terms: uniform records you aggregate, stored as one table rather than one file each. Reading it as prose wastes it.
+Tables already render, with a scrollbar when they are wide. What is missing is sorting a column and totalling one, on a dataset small enough to read.
 
-So a table renders as a table, and gains a grid affordance: sort by column, filter, and a footer per column that can **sum, average, count, min, max** — gently in the direction of a Notion grid, without becoming a spreadsheet.
+## In place, not as a view
 
-## Rules
+`table` is a component in the render map like `a` and `img`, so a header can sort and a footer can total exactly where the table already sits. No route, no overlay, no URL state, and the question "which table" never comes up because you never left the entry.
 
-**The stored cells are never rewritten.** Sorting and aggregation are presentation over the rendered values; the file keeps its rows in the order they were written. Formatting is presentation and the raw value is the data — which is also why the format tells authors to store cells machine-readable, so no cleanup pass is needed before summing them.
+The alternative — opening a table as its own full-width view, addressed by a URL — drags a picker, a route or an overlay, and a decision about which table a URL names, all for a sort handler and a footer row. It answers one real problem, a wide table cramped inside an article column, and horizontal scroll already answers that adequately. If it stops being enough, widening the article beats navigating away from it.
 
-**An entry may hold several tables**, and each renders independently. The engine's `table` command already extracts them by index, and `parse.Tables` is exported, so the boundaries are not something to re-derive.
+Nothing decides this by `type`, either. A `dataset` entry holds prose as well as its table and a `note` can hold the biggest table in the bundle, so the type predicts nothing. Every table gets the same treatment because every table is a table.
 
-**Types are inferred per column, not declared.** A column whose cells all parse as numbers gets numeric aggregations; one that does not gets count only. Inference is a display decision and never written back.
+## The cells come from the render, not from the server
 
-## Open
+The engine has `parse.Tables`, and `wiki table` is right to use it. This does not.
 
-Whether a `type: dataset` entry — one that is *mostly* a table — should open full-width in grid mode rather than as prose with a grid inside it. Probably yes, decided when there is one to look at.
+The client already parses the table, because remark has to in order to draw it. Taking the server's parse as well would not remove a parser; it would add a *reconciliation*: two implementations agreeing on what counts as a table and how cells split, then the server's table N matched to the rendered table N. They disagree at the edges — a table inside a blockquote, a `|` inside a code span — and the failure is a grid showing different numbers than the page above it.
 
-**Acceptance:** a table in any entry renders as a sortable grid with per-column aggregation; several tables in one entry work independently; nothing about sorting or aggregating changes the file.
+The one-implementation rule exists for rules whose disagreement is invisible, like heading ids, where `check` calls an anchor valid and the page silently fails to scroll. A table's cells are on screen. Totalling exactly what is displayed is self-consistent, needs no matching step, and is the only version that can also reflect a sort or a filter the server knows nothing about.
+
+## What it does
+
+- **Sort by column**, ascending and descending, by clicking the header. A numeric column sorts numerically, which needs the same per-column type inference [the totals](./011-grid-aggregates.md) use, so the two are worth building together.
+- **Sorting is not remembered.** It is a question you asked of a table while looking at it, not a preference about the entry. Leaving the entry and coming back gives you the file's order, which is the order the author chose.
+- **The file is never rewritten.** The rows stay as written. The format already asks authors to store cells machine-readable, so there is nothing to clean up before totalling them.
+
+Not in this task: opening a table full-width, exporting it, and filtering it. Each is worth having only once sorting and totalling prove the table is where you actually work, and each is cheap to add afterwards.
+
+**Acceptance:** clicking a column header sorts that table, and clicking again reverses it; a numeric column orders by value rather than by text; several tables in one entry sort independently; navigating away and back restores the file's order; nothing about sorting changes the file.

@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/agentic-wiki/wikiview/internal/config"
 	"github.com/agentic-wiki/wikiview/internal/server"
 	"github.com/agentic-wiki/wikiview/internal/store"
 	"github.com/agentic-wiki/wikiview/internal/watch"
@@ -136,6 +137,16 @@ func run(root, addr string) error {
 	srv := server.New(s, ui.Assets())
 	idx := s.View().Index
 	log.Printf("serving %s (%d entries) on http://%s", s.Dir, len(idx.Entries), addr)
+
+	// `wiki` never looks inside `[tool.*]`, deliberately, so nothing else will
+	// ever tell you that a board points at a folder you renamed or that a key is
+	// misspelled. Said once, at startup, and never fatal: this config is
+	// optional, and the reader does not need it to work.
+	if _, problems := config.Decode(idx.Bundle, idx); len(problems) > 0 {
+		for _, p := range problems {
+			log.Printf("wiki.toml: %s", p)
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
