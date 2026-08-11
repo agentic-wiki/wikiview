@@ -40,6 +40,9 @@ Columns, lanes, drag on pointer events, the card sheet. A view over one folder o
 **5 — Actions**
 Refresh, pull, sync. The first things that reach outside the machine, so each previews before acting, and a failed pull restores the previous state and offers the work as a named branch rather than stranding anyone in a conflicted tree.
 
+**6 — Export**
+A folder and everything under it as one document, in reading order, printed by the browser. Rendering stays in the client so the export cannot disagree with the screen about what an entry looks like.
+
 ## Upstream
 
 Built on [`wiki` v0.9.0+](https://github.com/agentic-wiki/wiki), imported directly. Every rule lives there and none is reimplemented here: frontmatter reads and writes, link resolution both ways, checkbox toggling, `--where` parsing. Config is `[tool.wikiview]` inside the bundle's own `wiki.toml`, read through `bundle.DecodeTool`.

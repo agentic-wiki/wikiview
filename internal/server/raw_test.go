@@ -35,8 +35,12 @@ func newAssetServer(t *testing.T) (*Server, string) {
 	write("notes/n.md", "---\ntype: note\n---\n"+
 		"A [contract](./contract.sol) and ![a diagram](./diagram.png).\n"+
 		"A [page](./page.html) and a [drawing](./drawing.svg).\n"+
+		"A [script](./script.js), an [accented source](./accented.rs), a [blob](./blob.bin).\n"+
 		"A [missing note](./gone.md) and one [above](../../outside.sol).\n")
 	write("notes/contract.sol", "pragma solidity ^0.8.0;\n")
+	write("notes/script.js", "alert('hi')\n")
+	write("notes/accented.rs", "// café — a note about naïve résumés\nfn main() {}\n")
+	write("notes/blob.bin", "\x00\x01\x02binary\x00")
 	write("notes/diagram.png", "\x89PNG\r\n\x1a\nnot really")
 	write("notes/page.html", "<script>alert(1)</script>")
 	write("notes/drawing.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"><script/></svg>")
@@ -258,5 +262,80 @@ func TestEntryReportsWhereToFetchANonEntry(t *testing.T) {
 	above := byRaw["../../outside.sol"]
 	if !above.Outside || above.Asset != "" {
 		t.Errorf("outside link = %+v, want outside with no asset", above)
+	}
+}
+
+// A source file is readable, and there is no list of every extension someone
+// might keep beside their notes. Downloading a `.sol` to look at three lines of
+// it is the wrong answer, so the bytes decide.
+func TestRawDisplaysAnythingThatReadsAsText(t *testing.T) {
+	srv, _ := newAssetServer(t)
+
+	for _, path := range []string{
+		"/raw/notes/contract.sol",
+		"/raw/notes/script.js",
+		"/raw/notes/accented.rs", // multi-byte characters are still text
+	} {
+		rec := rawGet(t, srv, path)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d", path, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+			t.Errorf("%s content-type=%q, want text/plain", path, ct)
+		}
+		if cd := rec.Header().Get("Content-Disposition"); cd != "" {
+			t.Errorf("%s should display rather than download, got %q", path, cd)
+		}
+	}
+
+	// A `.js` served as text/plain is source to read. nosniff is what stops the
+	// browser deciding otherwise.
+	if got := rawGet(t, srv, "/raw/notes/script.js").Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("script nosniff=%q", got)
+	}
+}
+
+// Bytes decide for unknown extensions, but not for markup a browser executes,
+// and not for something that is plainly not text.
+func TestRawStillDownloadsBinariesAndMarkup(t *testing.T) {
+	srv, _ := newAssetServer(t)
+
+	for _, path := range []string{
+		"/raw/notes/blob.bin",  // NUL bytes: binary whatever it is called
+		"/raw/notes/page.html", // valid UTF-8, and exactly what must not render
+	} {
+		rec := rawGet(t, srv, path)
+		if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
+			t.Errorf("%s content-type=%q, want application/octet-stream", path, ct)
+		}
+		if cd := rec.Header().Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
+			t.Errorf("%s content-disposition=%q, want an attachment", path, cd)
+		}
+	}
+}
+
+// The 512-byte window can land mid-character, which is not a reason to call a
+// file binary.
+func TestIsTextHandlesAMultiByteRuneOnTheBoundary(t *testing.T) {
+	dir := t.TempDir()
+	// Pad so that a three-byte rune straddles byte 512.
+	body := strings.Repeat("a", 511) + "日本語" + strings.Repeat("b", 40)
+	p := filepath.Join(dir, "wide.txt")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	if !isText(f) {
+		t.Error("a file split mid-rune at the window edge was called binary")
+	}
+	// And it left the file where it found it, or the response would be truncated.
+	var first [1]byte
+	if _, err := f.Read(first[:]); err != nil || first[0] != 'a' {
+		t.Errorf("file not rewound: read %q, err %v", first, err)
 	}
 }

@@ -28,6 +28,12 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 
 ### Fixed
 
+- On Windows the bundle name read as the whole path to it. The rule that makes a filename readable is right for bundle paths, which use `/` on every machine, and wrong for the folder the bundle lives in, which uses whatever the OS does.
+
+- A backlink from a folder's `index.md` says which folder: "1 Design (index)" rather than "Index", which every folder has one of. The tree and the breadcrumb still say "Index", because there the folder is already on screen.
+
+- The icon rail expands when you hover the icons, not when the pointer crosses the empty column below them on its way somewhere else.
+
 - Going back returns to where you were. The view no longer blanks while an entry loads, so the container keeps its height and there is somewhere to put the old position. Coming back to a long entry from a short one retries until the incoming content is tall enough, rather than settling for the short one's maximum.
 
 ### New
@@ -38,7 +44,11 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 
   Only paths the index refers to are servable, so a request stays a map lookup rather than a file search. A `.env` sitting next to your notes has no key and cannot be asked for.
 
+  Anything that reads as text displays as text, so a `.sol` or a `.rs` opens as source instead of landing in your downloads folder. The bytes decide rather than a list of extensions, which would always be missing the language someone actually uses.
+
   Content types are declared and never sniffed. `.html` downloads rather than displays, since an entry's HTML is deliberately not rendered and serving it from this origin would undo that. SVG displays, under a policy that blocks script and sandboxes the document: a diagram works, and a script inside one cannot reach the API.
+
+- The console says what moved: `v4, /notes/a.md /notes/b.md, 2 listening`. One line per version announced to clients, whether it moved because the watcher saw an edit or because a checkbox was ticked. Long lists are cut off after five paths, since a `tidy --all` would otherwise bury whatever happens next.
 
 - The tree remembers which folders you left open, scoped per bundle, so five knowledge bases in one browser keep their preferences apart.
 

@@ -2,7 +2,10 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 )
 
@@ -74,8 +77,45 @@ func (b *broker) count() int {
 	return len(b.clients)
 }
 
-// Notify publishes the store's current version to every connected client.
-func (s *Server) Notify(version uint64) { s.events.publish(version) }
+// Notify publishes the store's current version to every connected client, and
+// says on the console what moved and who was told.
+//
+// Logged here rather than at each caller because this is the one place a
+// version reaches listeners, whether it moved because the watcher saw an edit
+// or because a checkbox was ticked through the API. A server you are watching
+// in a terminal should account for every version its clients are asked to
+// refetch at.
+func (s *Server) Notify(version uint64) {
+	v := s.store.View()
+	// changedAt equals the current version exactly for the entries this rebuild
+	// moved, so there is nothing to diff.
+	var moved []string
+	for path, at := range v.ChangedAt {
+		if at == version {
+			moved = append(moved, path)
+		}
+	}
+	slices.Sort(moved)
+	log.Printf("v%d, %s, %d listening", version, summarize(moved), s.events.count())
+
+	s.events.publish(version)
+}
+
+// listedChanges is how many paths a log line names before it starts counting.
+// A `tidy --all` moves hundreds at once, and a terminal full of them buries the
+// next thing that happens.
+const listedChanges = 5
+
+func summarize(paths []string) string {
+	switch {
+	case len(paths) == 0:
+		return "no entry content moved" // a rename or a delete can do this
+	case len(paths) <= listedChanges:
+		return strings.Join(paths, " ")
+	default:
+		return fmt.Sprintf("%s and %d more", strings.Join(paths[:listedChanges], " "), len(paths)-listedChanges)
+	}
+}
 
 // Close ends every open event stream.
 //

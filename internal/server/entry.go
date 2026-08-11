@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	path2 "path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -281,30 +282,73 @@ func incoming(idx *index.Index, path string) []BacklinkView {
 			title = src.Field("title")
 		}
 		if title == "" {
-			title = titleFromFilename(r.From)
+			title = backlinkName(r.From)
 		}
 		out = append(out, BacklinkView{From: r.From, Title: title, Text: r.Text, Line: r.Line})
 	}
 	return out
 }
 
-// titleFromFilename makes a readable name out of a path.
+// titleFromFilename makes a readable name out of a bundle path.
+//
+// Bundle paths are slash-separated whatever the machine is, which is why this
+// takes the base with `path` rather than `path/filepath`. A directory on disk
+// is a different thing and goes through dirLabel.
+func titleFromFilename(p string) string {
+	base := path2.Base(p)
+	name := strings.TrimSuffix(base, ".md")
+	if readable := readableName(name); readable != "" {
+		return readable
+	}
+	return base
+}
+
+// backlinkName names the entry a backlink comes from, for one with no title of
+// its own.
+//
+// Only here does an `index.md` get qualified by its folder. In the tree it sits
+// inside that folder and the breadcrumb spells the path out, so "Index" is the
+// shorter, truer name there. A backlinks footer has neither, and rows all
+// reading "Index" say nothing about which entries link here.
+func backlinkName(p string) string {
+	if strings.TrimSuffix(path2.Base(p), ".md") == "index" {
+		if dir := path2.Dir(p); dir != "/" && dir != "." && dir != "" {
+			if folder := readableName(path2.Base(dir)); folder != "" {
+				return folder + " (index)"
+			}
+		}
+	}
+	return titleFromFilename(p)
+}
+
+// dirLabel names a directory on this machine, whose separators are the OS's
+// rather than the format's. `path.Base` would find nothing to split in
+// `C:\Users\my-kb` and hand back the whole thing.
+func dirLabel(dir string) string {
+	base := filepath.Base(dir)
+	if readable := readableName(base); readable != "" {
+		return readable
+	}
+	return base
+}
+
+// readableName turns a slug into something to read, or returns "" when nothing
+// is left of it.
 //
 // Filenames in this format are slugs by convention, since `tidy --slug`
 // enforces it, and they often carry a leading number. So separators become
-// spaces and the name is capitalized: "003-watch-and-events.md" reads as
+// spaces and the name is capitalized: "003-watch-and-events" reads as
 // "003 Watch and events".
 //
 // The number stays. It is why the file is called what it is: it orders the
 // folder, and a reader that dropped it would sort its tree one way while
 // showing names that explain a different order. Removing information a person
 // deliberately put in a filename is not this function's business.
-func titleFromFilename(p string) string {
-	name := strings.TrimSuffix(path2.Base(p), ".md")
+func readableName(name string) string {
 	name = strings.ReplaceAll(strings.ReplaceAll(name, "-", " "), "_", " ")
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return path2.Base(p)
+		return ""
 	}
 
 	// Capitalized, because this name is generated: a filename is lowercase by

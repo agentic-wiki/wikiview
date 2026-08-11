@@ -1,11 +1,15 @@
 package server
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // inlineTypes are the content types served for display. Everything else is
@@ -33,6 +37,18 @@ var inlineTypes = map[string]string{
 	".csv":  "text/plain; charset=utf-8",
 	".log":  "text/plain; charset=utf-8",
 	".md":   "text/markdown; charset=utf-8",
+}
+
+// activeTypes are markup a browser would execute if it rendered it. They are
+// downloaded whatever their bytes look like: an entry's HTML is deliberately
+// not rendered, and serving one from this origin as text/html would hand back
+// the thing that decision closed off.
+var activeTypes = map[string]bool{
+	".html":  true,
+	".htm":   true,
+	".xhtml": true,
+	".shtml": true,
+	".mhtml": true,
 }
 
 // svgPolicy lets an SVG draw and nothing else.
@@ -96,22 +112,76 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Declared, never sniffed. Without this the browser is free to decide a file
-	// is HTML because it starts with a tag, which is the whole exposure this
-	// list exists to close.
+	// is HTML because it starts with a tag, which is the whole exposure the
+	// rules below exist to close.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	ext := strings.ToLower(filepath.Ext(full))
-	if ct, ok := inlineTypes[ext]; ok {
-		w.Header().Set("Content-Type", ct)
+	switch {
+	case activeTypes[ext]:
+		// Markup the browser would execute if it were allowed to render it.
+		download(w, full)
+	case inlineTypes[ext] != "":
+		w.Header().Set("Content-Type", inlineTypes[ext])
 		if ext == ".svg" {
 			w.Header().Set("Content-Security-Policy", svgPolicy)
 		}
-	} else {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filepath.Base(full)))
+	case isText(f):
+		// A `.sol`, a `.rs`, a `.zig`: readable, and there is no list of every
+		// extension anyone will ever keep beside their notes. Served as plain
+		// text, which nosniff holds the browser to, so a `.js` displays as
+		// source rather than running.
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	default:
+		download(w, full)
 	}
 	// ServeContent rather than a copy: it answers a range request and a
 	// conditional one, which is what makes a large image or a PDF behave.
 	http.ServeContent(w, r, filepath.Base(full), info.ModTime(), f)
+}
+
+func download(w http.ResponseWriter, full string) {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filepath.Base(full)))
+}
+
+// isText reports whether a file reads as text, leaving it positioned back at
+// the start.
+//
+// Asking the bytes rather than keeping a list of every extension a person might
+// store beside their notes. A source file is worth showing whatever it is
+// called, and the list would always be missing the language someone actually
+// uses.
+//
+// A NUL byte means binary in practice: text encodings do not contain one, and
+// almost every binary format does within the first block. Valid UTF-8 does the
+// rest. Nothing here decides whether the content is *safe* to display, which is
+// the job of the extension rules above — a file can be perfectly good UTF-8 and
+// still be HTML.
+func isText(f *os.File) bool {
+	var buf [512]byte
+	n, err := io.ReadFull(f, buf[:])
+	if _, seekErr := f.Seek(0, io.SeekStart); seekErr != nil {
+		return false
+	}
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return false
+	}
+	head := buf[:n]
+	if bytes.IndexByte(head, 0) >= 0 {
+		return false
+	}
+	// A 512-byte window can end mid-rune, which is not a reason to call a file
+	// binary. Drop a trailing partial character before validating.
+	for len(head) > 0 && !utf8.Valid(head) {
+		if r, size := utf8.DecodeLastRune(head); r != utf8.RuneError || size != 1 {
+			break
+		}
+		head = head[:len(head)-1]
+		if n-len(head) > utf8.UTFMax {
+			return false // more than one rune's worth of junk at the end
+		}
+	}
+	return utf8.Valid(head)
 }
 
 // within reports whether p is root itself or inside it. Both are expected to be

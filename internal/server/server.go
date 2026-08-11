@@ -90,7 +90,7 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
 	writeJSON(w, http.StatusOK, BundleInfo{
 		ID:      s.id,
-		Label:   titleFromFilename(v.Index.Bundle.Dir),
+		Label:   dirLabel(v.Index.Bundle.Dir),
 		Dir:     v.Index.Bundle.Dir,
 		Spec:    v.Index.Bundle.Spec,
 		Entries: len(v.Index.Entries),
