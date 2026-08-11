@@ -1,0 +1,43 @@
+---
+type: task
+title: "keep entries already read, and refresh them behind what is shown"
+status: todo
+priority: medium
+tags: [feature, reader, api]
+---
+
+Every navigation is a round trip today, so there is a window with nothing correct to show. The reader keeps the outgoing entry on screen through it, which holds the layout together and lets a back navigation land on the position it was left at, but the content under the new address is the wrong content until the fetch lands.
+
+Keep what has already been read, render it at once, and fetch behind it.
+
+## Two questions that look like one
+
+**"Is there anything to show right now?"** is about latency. It is answered by a copy taken on the way past, and it is wrong for at most one round trip.
+
+**"Did the file change?"** is about truth. It is answered by the version on the event stream, and it is already answered today.
+
+Conflating them produces the usual cache: a guess about freshness with a timeout attached. Kept apart, neither needs a heuristic.
+
+## The version makes revalidation exact
+
+The bundle's version is a digest of its content, so it moves when and only when something on disk changed. Store it with each copy and the comparison stops being a guess:
+
+- Version unchanged since the copy was taken: no file changed, so the copy *is* current. Nothing to fetch.
+- Version moved: something changed, though not necessarily this entry. Show the copy and refresh it.
+
+Most navigation in a session happens with a still version, which means most of it should involve no request at all.
+
+## Decisions worth making before building
+
+- **Swapping in a refresh must be invisible when nothing differs.** Replacing state with an equal value re-renders for no reason, and this is the reader's most-trodden path. Compare before setting, and the common refresh becomes a no-op rather than a repaint.
+- **What a stale copy is allowed to look like.** A spinner over readable content is worse than the content: it says "do not read this" about something correct. Nothing, or a mark small enough to ignore.
+- **A write updates the copy.** Ticking a checkbox already updates what is on screen optimistically; if it does not also update the stored copy, navigating away and back shows the box unticked until the refresh lands, which reads as the write having failed.
+- **What bounds it.** One entry per entry visited, so it is bounded by browsing rather than by bundle size. Worth a cap only once a session can plausibly hold enough to matter, and worth measuring before guessing where that is.
+
+## Where it meets the rest
+
+[Marking entries that changed](./008-unseen-changes.md) needs the server to report *which* paths changed on a rebuild rather than only that something did. That is the same information this needs to stop dropping every copy whenever any file moves, so building that one first makes this one a smaller change.
+
+Scroll restoration retries when the position it is applying does not fit the height on screen, which is what happens when the entry being returned to has not rendered yet. A copy rendered on the same commit as the navigation fits on the first attempt, so the retry stops being the normal path and goes back to being the fallback it reads as.
+
+**Acceptance:** returning to an entry read earlier in the session renders it in the same frame as the navigation, with no request when the bundle's version has not moved since; a refresh that finds nothing different causes no re-render; a checkbox ticked, navigated away from, and returned to is still ticked; an entry read before a file changed on disk is refreshed rather than trusted.

@@ -43,9 +43,9 @@ export function ScrollRestoration({ containerRef }: { containerRef: RefObject<HT
     if (!el) return;
 
     if (location.hash) {
-      // The content may not be rendered yet on a cold load, so this retries
-      // briefly rather than giving up on the first miss. It stops as soon as it
-      // finds the target, and after a short window regardless.
+      // On a cold load the content is not rendered yet, so this retries briefly
+      // rather than giving up on the first miss. It stops as soon as it finds
+      // the target, and after a short window regardless.
       let cancelled = false;
       const deadline = Date.now() + 1000;
       const find = () => {
@@ -67,7 +67,26 @@ export function ScrollRestoration({ containerRef }: { containerRef: RefObject<HT
       const saved = positions.current.get(location.key);
       if (saved !== undefined) {
         el.scrollTop = saved;
-        return;
+        // It took, because the entry being returned to is already on screen.
+        if (el.scrollTop === saved) return;
+
+        // It did not, because this runs against the height the container has
+        // now, which belongs to the entry being navigated away from. A shorter
+        // one cannot hold the position, so the browser clamps it to what fits.
+        // Retry until the incoming entry is tall enough to accept it, which is
+        // a question only the assignment itself can answer.
+        let cancelled = false;
+        const deadline = Date.now() + 1000;
+        const fit = () => {
+          if (cancelled) return;
+          el.scrollTop = saved;
+          if (el.scrollTop === saved) return;
+          if (Date.now() < deadline) requestAnimationFrame(fit);
+        };
+        requestAnimationFrame(fit);
+        return () => {
+          cancelled = true;
+        };
       }
     }
     el.scrollTop = 0;

@@ -21,7 +21,7 @@ Nothing here mirrors a task's state. A task owns its `status`, so the board cann
 
 ## Epics
 
-Each step is finished before the next begins. The order is load-bearing rather than tidy: a reader built on top of a board inherits the board's shape, and that is not something you undo later.
+Each step is finished before the next begins. The order matters, it is not just tidiness: a reader built on top of a board inherits the board's shape, and that is not something you undo later.
 
 **1 — Design** *(settled)*
 One index rebuilt on change, no view privileged in the store. Rules stay in the engine and the server answers rather than the browser asking. Config is `[tool.wikiview]` in the bundle's own `wiki.toml`, and all of it is optional.

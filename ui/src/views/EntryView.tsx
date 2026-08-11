@@ -14,20 +14,18 @@ export function EntryView({
   version: number;
   refresh: number;
 }) {
-  const [entry, setEntry] = useState<Entry | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Cleared the moment the path changes, so the previous entry's content is
-  // never shown under the new entry's URL and breadcrumb. That is not a polish
-  // question: content attributed to the wrong address is simply wrong, and it
-  // reads as "already loaded" until it silently changes underneath you.
+  // What is on screen, and which path it is. The two travel together because
+  // the fetch below is what makes them agree, and until it lands they do not:
+  // the outgoing entry stays rendered while the incoming one is in flight.
   //
-  // Not cleared on `refresh`, which is the same entry being refetched after a
-  // change on disk — blanking there would flash the page on every save.
-  useEffect(() => {
-    setEntry(null);
-    setError(null);
-  }, [path]);
+  // That is deliberate. Blanking instead would be honest for the few
+  // milliseconds a local read takes, and it would cost the whole layout: the
+  // view collapses to nothing, so the browser clamps the scroll position to
+  // zero, and the restored position for a back navigation is lost before the
+  // content that could hold it exists. A brief stale render is cheaper than a
+  // reader that cannot go back.
+  const [loaded, setLoaded] = useState<{ path: string; entry: Entry } | null>(null);
+  const [error, setError] = useState<{ path: string; message: string } | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -35,42 +33,53 @@ export function EntryView({
       .entry(path, ac.signal)
       .then((e) => {
         if (!ac.signal.aborted) {
-          setEntry(e);
+          setLoaded({ path, entry: e });
           setError(null);
         }
       })
       .catch((e) => {
-        if (!ac.signal.aborted) setError(String(e.message ?? e));
+        if (!ac.signal.aborted) setError({ path, message: String(e.message ?? e) });
       });
     return () => ac.abort();
   }, [path, refresh]);
 
+  const entry = loaded?.entry ?? null;
+
   const toggle = useCallback(
     async (line: number, done: boolean) => {
-      if (!entry) return;
+      // A checkbox belongs to the entry it was rendered from. While a
+      // navigation is in flight that entry is not the one at `path`, and a line
+      // number means nothing across two files.
+      if (!loaded || loaded.path !== path) return;
       // Applied optimistically, then confirmed by the refetch the version bump
       // triggers. A refused write leaves this correction visible only until that
       // refetch replaces it with the truth.
-      setEntry({
-        ...entry,
-        checkboxes: entry.checkboxes.map((c) => (c.line === line ? { ...c, done } : c)),
+      const e = loaded.entry;
+      setLoaded({
+        path,
+        entry: { ...e, checkboxes: e.checkboxes.map((c) => (c.line === line ? { ...c, done } : c)) },
       });
       try {
         await api.setCheckbox(path, line, done, version);
-      } catch (e) {
+      } catch (err) {
         // A conflict means the file moved underneath: refetch rather than retry,
         // because the line number this was addressed by may no longer mean the
         // same thing.
-        setError(String((e as Error).message));
-        api.entry(path).then(setEntry).catch(() => {});
+        setError({ path, message: String((err as Error).message) });
+        api
+          .entry(path)
+          .then((fresh) => setLoaded({ path, entry: fresh }))
+          .catch(() => {});
       }
     },
-    [entry, path, version],
+    [loaded, path, version],
   );
 
   // A missing entry is not an error in this format: a link may point at
   // knowledge not yet written. It gets a placeholder, not a stack of red text.
-  if (error && !entry) {
+  // Only the current path's failure counts — a 404 left over from an entry you
+  // have already navigated away from is not about this one.
+  if (error?.path === path) {
     return <NotFound path={path} hint="There is no entry here yet" />;
   }
   if (!entry) return <Loading />;

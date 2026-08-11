@@ -1,15 +1,15 @@
 ---
 type: task
-title: "what to pick from the previous attempt, and what to leave"
+title: "what to pick from wikanban, and what to leave"
 status: todo
 priority: high
 tags: [design, architecture]
 blockers: [/1-design/001-design.md]
 ---
 
-A working board UI exists in the `wikanban` repo. It is not the starting point: an attempt to treat it as one produced three link resolvers, two frontmatter writers in one module, and two config files with two parsers, every one of them a migration artifact from preserving decisions that were right for *a board over one folder* and wrong for *a reader over a bundle*. It was reverted.
+A working board UI exists in the `wikanban` repo. It is not the starting point. Its decisions were right for *a board over one folder* and are wrong for *a reader over a bundle*, so taking it wholesale imports a migration artifact per decision that disagrees.
 
-So this repo is built from its intended shape, and pieces are **picked deliberately, one at a time, with a reason**. The list below is the picking order, not a port.
+This repo is built from its intended shape instead, and pieces are **picked deliberately, one at a time, with a reason**. The list below is the picking order, not a port.
 
 ## Take, nearly as-is
 

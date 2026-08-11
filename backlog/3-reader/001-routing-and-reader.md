@@ -29,7 +29,7 @@ The bundle path is carried verbatim, `.md` and all, consistent with the rule tha
 - To an entry **on the board you are viewing** → open that card. The board keeps its context.
 - To **any other entry** → leave the board and navigate the reader to it (`/wiki/<path>`).
 
-That resolves the original problem outright: a link out of a board's slice is no longer unreachable, so the "marked as off-board" treatment can be deleted rather than kept as decoration. A link now either resolves or is genuinely unwritten, and unwritten is the `unresolved` case, which reads differently and belongs elsewhere.
+So a link out of a board's slice is never unreachable, and there is no "off-board" state to mark. A link either resolves or is genuinely unwritten, and unwritten is the `unresolved` case, which reads differently and belongs elsewhere.
 
 ## Toggling a folder as a board
 

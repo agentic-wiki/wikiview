@@ -8,11 +8,11 @@ tags: [design, architecture]
 
 wikiview is a web UI over a bundle: a markdown **reader** first, with kanban boards and dataset tables as views onto the same index. It is its own module, importing the engine rather than shelling out to it, so `wiki` stays a zero-dependency neutral engine.
 
-**Nothing gets written until this task is settled.** An attempt was made by porting a working board UI in wholesale, and the result is the reason this task exists: three implementations of "resolve a link to a bundle path", two frontmatter writers inside one module, two config files with two parsers, a README that had become false, and public API on `index` added reactively to unblock a port rather than because it was the right surface. All of it was reverted. The lesson is not "port more carefully"; it is that a UI shaped around *a board over one folder* cannot be retrofitted into a *reader over a whole bundle*, because the difference is structural, not cosmetic.
+**Nothing gets written until this task is settled.** A UI shaped around *a board over one folder* cannot be retrofitted into a *reader over a whole bundle*: the difference is structural, not cosmetic. Retrofitting it produces a second copy of every rule the two shapes disagree about, and the copies drift.
 
 ## What has to be decided here, not discovered later
 
-**The public surface of `index`.** This module needs to read arbitrary frontmatter, filter, walk the graph, and search. Today `Entry` keeps `fm` unexported with no generic accessor, so none of it is reachable. That surface is now a hard prerequisite rather than a nicety, and it is designed upstream (wiki backlog, *promote the core packages*). **The bar is that nothing here should ever need to reimplement a rule**; every accessor missing from the engine becomes a second implementation over here, which is exactly how the last attempt failed.
+**The public surface of `index`.** This module needs to read arbitrary frontmatter, filter, walk the graph, and search. Today `Entry` keeps `fm` unexported with no generic accessor, so none of it is reachable. That surface is a hard prerequisite rather than a nicety, and it is designed upstream (wiki backlog, *promote the core packages*). **The bar is that nothing here should ever need to reimplement a rule**; every accessor missing from the engine becomes a second implementation over here.
 
 **Where the config lives.** Two files describing one directory is the wrong answer, and so is a second parser for either. See [where the config lives](./002-backlogs-config.md).
 

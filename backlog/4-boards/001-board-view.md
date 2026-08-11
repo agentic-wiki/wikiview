@@ -11,15 +11,15 @@ A kanban over one folder: `/kanban/<folder>`. A view onto the same index as ever
 
 ## Shape
 
-Columns come from the entries in that folder, not from the bundle's whole vocabulary. Inferring the status vocabulary bundle-wide was a real bug in the first attempt: a backlog folder that also held notes showed a column per foreign status (`published`, `retired`). `--where` on the vocabulary commands exists upstream now, but deriving from the board's own filtered entries is both more accurate and one fewer question to ask.
+Columns come from the entries in that folder, not from the bundle's whole vocabulary. A bundle-wide vocabulary gives a backlog folder that also holds notes a column per foreign status (`published`, `retired`). `--where` on the vocabulary commands would narrow it, but deriving from the board's own filtered entries is more accurate and one fewer question to ask.
 
 `[[tool.wikiview.board]]` config pins order and declares columns that are empty — which inference alone can never do — and names a `lane` field. All of it optional.
 
 **No card may be invisible.** A status present in the entries but absent from `columns` gets a column appended; entries with no status key get one too, shown only when non-empty. Config orders and adds; it never filters. Filtering is `where`'s job, where it is explicit.
 
-## Taken from the first attempt, deliberately
+## Two details worth taking from `wikanban`
 
-Two details that were solved properly there and should not be rediscovered:
+Solved properly there, and not worth rediscovering:
 
 - **Drag on Pointer Events**, not HTML5 drag-and-drop. Touch works at all, and drag state is not tied to an element React unmounts mid-move.
 - **Suppress the synthesized click after a drag**, or finishing a drag also opens the card.

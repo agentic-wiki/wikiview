@@ -29,15 +29,15 @@ Both travel as lookup tables beside the body, so the client owns neither rule an
 
 The client renders with its own markdown stack and resolves each href by **dictionary lookup on `raw`**. Anything absent from the table — an external URL, a link out of the bundle — is left exactly as authored, which is the correct default rather than a special case.
 
-## What this replaced, and why it was wrong
+## Why the server does not render HTML
 
-The first attempt at this rendered markdown to HTML in Go and shipped the HTML. It kept the rules in one place, and it was the wrong trade:
+Rendering the markdown to HTML in Go would keep the rules in one place too, and it is the wrong trade:
 
 - **Two representations of the same content** on every request, since the source is still needed.
 - **It forecloses editing.** An editor saves the source back, and any scheme that rewrites links inside the markdown needs a reverse transform at save time.
 - **It forecloses markdown plugins.** Task lists, mermaid, and highlighting want to be components in the tree; injected HTML puts the body outside it, so every interaction becomes manual delegation over a foreign DOM subtree.
 
-The goal was never rendering server-side — it was *resolving* server-side. Shipping data gets that without any of the cost. `goldmark` was removed.
+The goal is *resolving* server-side, not rendering server-side. Shipping data gets that without any of the cost.
 
 ## Also decided here
 

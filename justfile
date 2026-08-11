@@ -113,6 +113,9 @@ ui-dev: ui-install
     cd ui && bunx vite
 
 # Serve a bundle (defaults to this repo's own backlog)
+#
+# Depends on ui-build because the binary embeds ui/dist: without it, a frontend
+# change is invisible here no matter how many times the page is reloaded.
 [group('run')]
-serve root="./backlog" addr="localhost:8080":
+serve root="./backlog" addr="localhost:8080": ui-build
     go run ./cmd/wikiview --root {{root}} --addr {{addr}}

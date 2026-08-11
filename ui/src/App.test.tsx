@@ -426,9 +426,11 @@ test("a prepended title sits below the frontmatter strip, not above it", async (
   expect(heading).toBeGreaterThan(strip);
 });
 
-// Showing the previous entry's content under the new entry's URL is not a
-// polish problem: it reads as "already loaded" until it silently changes.
-test("navigating does not show the previous entry under the new URL", async () => {
+// The outgoing entry stays rendered until the incoming one arrives. Blanking
+// instead collapses the view to nothing, and a container with no height cannot
+// hold a scroll position: the browser clamps it to zero, so going back loses
+// where you were before the content that could hold it exists.
+test("navigating keeps the previous entry rendered until the new one arrives", async () => {
   await mountAt("/wiki/notes/a.md");
   expect(document.body.textContent).toContain("The body of the entry.");
 
@@ -443,8 +445,35 @@ test("navigating does not show the previous entry under the new URL", async () =
     navigateTo("/wiki/notes/checks.md");
   });
 
-  // The old content is gone rather than lingering with a new breadcrumb.
-  expect(document.body.textContent).not.toContain("The body of the entry.");
+  // Still on screen, so the layout keeps its height across the navigation.
+  expect(document.body.textContent).toContain("The body of the entry.");
+  globalThis.fetch = realFetch;
+});
+
+// A checkbox is addressed by a line number, which means nothing across two
+// files. While a navigation is in flight the entry on screen is not the one the
+// URL names, so a click must not be sent against the new path.
+test("a checkbox on a superseded entry does not write to the entry being loaded", async () => {
+  await mountAt("/wiki/notes/checks.md");
+  const box = document.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  expect(box).not.toBeNull();
+
+  const realFetch = globalThis.fetch;
+  const writes: string[] = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "PUT") writes.push(String(input));
+    if (String(input).includes("/api/entry/")) return new Promise(() => {});
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  await act(async () => {
+    navigateTo("/wiki/notes/a.md");
+  });
+  await act(async () => {
+    box!.click();
+  });
+
+  expect(writes).toEqual([]);
   globalThis.fetch = realFetch;
 });
 
