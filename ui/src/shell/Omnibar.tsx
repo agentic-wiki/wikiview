@@ -15,7 +15,7 @@ import type { TreeNode } from "@/api";
  * filters, or a readable placeholder; the palette opens centred, with room for
  * all three.
  */
-export function Omnibar({ tree }: { tree: TreeNode }) {
+export function Omnibar({ tree, unseen }: { tree: TreeNode; unseen: Set<string> }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function Omnibar({ tree }: { tree: TreeNode }) {
           ⌘K
         </kbd>
       </button>
-      {open && <Palette tree={tree} onClose={() => setOpen(false)} />}
+      {open && <Palette tree={tree} unseen={unseen} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -60,7 +60,15 @@ interface Item {
   title?: string;
 }
 
-function Palette({ tree, onClose }: { tree: TreeNode; onClose: () => void }) {
+function Palette({
+  tree,
+  unseen,
+  onClose,
+}: {
+  tree: TreeNode;
+  unseen: Set<string>;
+  onClose: () => void;
+}) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const navigate = useNavigate();
@@ -141,6 +149,13 @@ function Palette({ tree, onClose }: { tree: TreeNode; onClose: () => void }) {
                 ].join(" ")}
               >
                 <span className="truncate">{item.label}</span>
+                {unseen.has(item.path) && (
+                  <span
+                    className="bg-accent size-1.5 shrink-0 self-center rounded-full"
+                    title="Changed since you last opened it"
+                    aria-label="changed"
+                  />
+                )}
                 <span className="text-muted ml-auto shrink-0 truncate text-xs">{item.hint}</span>
               </button>
             </li>

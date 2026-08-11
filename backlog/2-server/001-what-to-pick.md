@@ -1,7 +1,7 @@
 ---
 type: task
 title: "what to pick from wikanban, and what to leave"
-status: todo
+status: done
 priority: high
 tags: [design, architecture]
 blockers: [/1-design/001-design.md]
@@ -23,12 +23,12 @@ These were solved on their own terms and do not encode the board's shape.
 ## Take the idea, rewrite the code
 
 - **The path guard.** "A request path is only ever a map key, never a file operation" is the right rule and should survive verbatim. But the map is now every entry in the bundle rather than the cards on one board, so it is a different index with a different lifetime.
-- **`--where` filtering in the browser.** The vocabulary and the URL form are right. The implementation must come from the engine, not a second parser: the previous version reimplemented `--where` matching in TypeScript and kept it honest with a "copy as CLI" escape hatch, which is a clever fix for a problem that should not exist once the engine is importable.
+- **`--where` filtering in the browser.** The vocabulary and the URL form are right. The implementation must come from the engine rather than a second parser: matching reimplemented in TypeScript needs a "copy as CLI" escape hatch to stay honest, which is a clever fix for a problem the engine being importable removes.
 
 ## Do not take
 
-- **The frontmatter writer.** It existed only because `setFrontmatterValue` was unreachable. It is a second implementation of a rule the engine owns, and importing the engine is the entire reason this repo is a separate module rather than a shell-out.
-- **The link resolver.** Same story: `normalizeLink` is the one correct home. The previous attempt had three.
+- **The frontmatter writer.** A second implementation of a rule the engine owns through `setFrontmatterValue`, and importing the engine is the entire reason this repo is a separate module rather than a shell-out.
+- **The link resolver.** Same story: `normalizeLink` is the one correct home.
 - **The board-shaped store.** One filtered slice held as *the* index is the assumption the reader breaks. One bundle, one index, many views over it, no view privileged by living in the store.
 - **The config loader.** See [where the config lives](../1-design/002-backlogs-config.md).
 - **`--path` meaning "the board".** The board's folder is a view setting with a default, not a launch flag.

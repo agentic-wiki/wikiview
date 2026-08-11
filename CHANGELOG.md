@@ -2,6 +2,36 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.2.0 — 2026-08-11
+
+### Breaking
+
+- `--addr` is replaced by `--host` and `--port`, one flag per decision, because the decisions are different: which machines may reach the server, and where it answers.
+
+  ```sh
+  wikiview --host 0.0.0.0 --port 3000
+  ```
+
+  Binding to anything but a loopback interface now says so on startup. wikiview has no authentication and writes to the bundle, so reachable from the network means anyone who can reach it can read every entry and tick boxes in them.
+
+### Changed
+
+- Navigation names files rather than titles. The tree, the breadcrumb, a folder listing and a frontmatter reference all show the filename made readable, so `/2-server/001-what-to-pick.md` reads as "2 Server" and "001 What to pick". You arrived at a file, and a tree that renames its rows out from under you is one you cannot find your way back through. What an entry calls itself is shown on the entry, and search still matches it.
+
+### Fixed
+
+- Going back returns to where you were. The view no longer blanks while an entry loads, so the container keeps its height and the position being restored has somewhere to land. Returning to a long entry from a short one retries until the incoming content can hold the position, instead of settling for the shorter one's maximum.
+
+### New
+
+- The tree remembers which folders you left open, scoped to the bundle they belong to, so serving several knowledge bases from one browser keeps their preferences apart.
+
+- Entries that changed since you last opened them are marked, in the tree, in the search palette, and on the folders above them. An agent editing this bundle while you read it no longer does so silently.
+
+  Each entry now reports the bundle version its content last moved at, so the question is one comparison per entry rather than a diff of two trees, and a client that missed ten events still gets the right answer from the eleventh. Which entry you have seen is one person's attention in one browser, so it stays there rather than being written into the files.
+
+  Arriving for the first time marks nothing: this means *changed since you were here*, not *unread*.
+
 ## v0.1.0 — 2026-08-11
 
 First release. `wikiview --root my-kb` serves a folder of markdown at `http://localhost:8080`, and you can read it.

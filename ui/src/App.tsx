@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { api, onVersion, type BundleInfo, type TreeNode } from "@/api";
+import { useSeen } from "@/seen";
 import { Shell } from "@/shell/Shell";
 import { ClearSelection } from "@/shell/ClearSelection";
 import { EntryView } from "@/views/EntryView";
@@ -78,8 +79,33 @@ export function App() {
   }
 
   return (
-    <Shell bundle={bundle} tree={tree}>
+    <Reader bundle={bundle} tree={tree} refresh={refresh} />
+  );
+}
+
+/**
+ * The mounted app, once the bundle and tree are in hand.
+ *
+ * Split out so `useSeen` can be called with them rather than with nulls, and
+ * called exactly once: the marks in the tree and the clearing done by opening
+ * an entry are the same state, and two copies of the hook would be two Reacts
+ * states over one storage key, agreeing only after a reload.
+ */
+function Reader({
+  bundle,
+  tree,
+  refresh,
+}: {
+  bundle: BundleInfo;
+  tree: TreeNode;
+  refresh: number;
+}) {
+  const { unseen, markSeen } = useSeen(bundle.id, tree, entryPath(useLocation().pathname));
+
+  return (
+    <Shell bundle={bundle} tree={tree} unseen={unseen}>
       <ClearSelection />
+      <MarkSeen onSeen={markSeen} />
       <Routes>
         {/* The front door is the bundle's own index.md. */}
         <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
@@ -124,6 +150,29 @@ function Router({
     return <FolderView folder={folder} />;
   }
   return <EntryView path={path} version={version} refresh={refresh} />;
+}
+
+/**
+ * Clears an entry's mark by being on it.
+ *
+ * Opening is the trigger, not looking: a scroll or dwell heuristic would clear
+ * marks without you doing anything, and a mark that vanishes on its own is
+ * worse than one that stays. Reads the route rather than being called by the
+ * view, so nothing has to be threaded through the reader to reach it.
+ *
+ * Marking again when the version moves is deliberate. A checkbox you ticked
+ * changes the entry you are looking at, and you plainly saw it.
+ */
+function MarkSeen({ onSeen }: { onSeen: (path: string) => void }) {
+  const { pathname } = useLocation();
+  const path = entryPath(pathname);
+  useEffect(() => onSeen(path), [path, onSeen]);
+  return null;
+}
+
+/** The bundle path a route names, which is the route with /wiki off the front. */
+function entryPath(pathname: string): string {
+  return "/" + decodeURIComponent(pathname).replace(/^\/wiki\/?/, "");
 }
 
 function UnknownRoute() {

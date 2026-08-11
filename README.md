@@ -5,8 +5,23 @@
 A bundle is a folder of Markdown that an agent maintains and the `wiki` CLI queries like a database. wikiview is the screen for it: a reader you can browse, with kanban boards and dataset tables as views onto the same index.
 
 ```sh
-wikiview --root my-kb    # serves on http://localhost:8080
+wikiview    # serves the current bundle on http://localhost:8080
 ```
+
+Run inside a bundle and there is nothing to configure: `--root` defaults to the working directory and walks up to find `wiki.toml`, the same way `wiki` does.
+
+| Flag | Default | |
+| --- | --- | --- |
+| `--root` | `.` | bundle directory; walks up to find `wiki.toml` |
+| `--host` | `localhost` | interface to listen on, `0.0.0.0` for all of them |
+| `--port` | `8080` | port to listen on |
+| `--version` | | print the version and exit |
+
+```sh
+wikiview --root my-kb --host 0.0.0.0 --port 3000
+```
+
+`--host 0.0.0.0` makes the server reachable from your network. wikiview has no authentication and writes to the bundle, so anyone who can reach it can read every entry and tick boxes in them. It says so on startup.
 
 ## What it is
 

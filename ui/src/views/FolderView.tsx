@@ -28,7 +28,7 @@ export function FolderView({ folder }: { folder: TreeNode }) {
               key={c.path}
               to={"/wiki" + c.path + "/"}
               icon={<FolderIcon />}
-              title={c.name}
+              title={c.label ?? c.name}
               meta={count(c.entries.length + c.children.length, "item")}
             />
           ))}

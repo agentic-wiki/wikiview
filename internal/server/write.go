@@ -27,17 +27,20 @@ func (s *Server) handleCheckbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Checked before resolving, so the guard covers the whole operation rather
-	// than a window inside it.
-	if current := s.store.Version(); req.Version != current {
+	// One read, so the version checked and the index written against are the
+	// same rebuild. Taken separately, a rebuild landing between them would let
+	// the guard pass on one version and the write land on another — which is
+	// exactly the staleness the guard exists to catch.
+	v := s.store.View()
+	if req.Version != v.Version {
 		writeJSON(w, http.StatusConflict, conflictBody{
 			Error:   "the entry changed since you read it",
-			Version: current,
+			Version: v.Version,
 		})
 		return
 	}
 
-	idx := s.store.Snapshot()
+	idx := v.Index
 	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
 	e, err := idx.Resolve(path)
 	if err != nil {
@@ -59,7 +62,7 @@ func (s *Server) handleCheckbox(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, errorBody{err.Error()})
 		return
 	}
-	version := s.store.Version()
+	version := s.store.View().Version
 	s.Notify(version)
 
 	writeJSON(w, http.StatusOK, map[string]uint64{"version": version})

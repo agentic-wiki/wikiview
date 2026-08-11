@@ -2,6 +2,11 @@
 // internal/server; if one drifts the other should be changed with it.
 
 export interface BundleInfo {
+  /** Scopes anything this browser remembers, so preferences never leak between
+   *  bundles. Computed by the server: identity has one definition. */
+  id: string;
+  /** The bundle's folder made readable, named by the rule that names entries. */
+  label: string;
   dir: string;
   spec: string;
   entries: number;
@@ -85,7 +90,8 @@ export interface Ref {
   key: string;
   value: string;
   to: string;
-  title: string;
+  /** The target's filename made readable, the same name the tree gives it. */
+  label: string;
 }
 
 export interface Entry {
@@ -118,11 +124,17 @@ export interface EntryStub {
    * own page, and matched by search so an entry is findable by either name.
    */
   title?: string;
+  /** The bundle version this entry's content last moved at. Compared against the
+   *  version you last saw it at, which is what marks it as changed. */
+  changedAt: number;
 }
 
 export interface TreeNode {
   path: string;
   name: string;
+  /** `name` made readable, by the rule that names entries. Absent for the root,
+   *  which has no name of its own. */
+  label?: string;
   /** The folder's own index.md, absent when it has none. */
   index?: string;
   entries: EntryStub[];

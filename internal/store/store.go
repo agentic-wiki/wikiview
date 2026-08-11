@@ -19,10 +19,31 @@ import (
 type Store struct {
 	Dir string
 
-	mu      sync.RWMutex
-	idx     *index.Index
-	version uint64
-	digest  string
+	mu        sync.RWMutex
+	idx       *index.Index
+	version   uint64
+	digest    string
+	entries   map[string]string // path to content digest, for the next comparison
+	changedAt map[string]uint64 // path to the version its content last moved at
+}
+
+// View is the store's state at one instant.
+//
+// Index, Version and ChangedAt are read together under one lock because they
+// describe each other. Taken separately, a caller could pair an index with a
+// version from a different rebuild — and then a write guarded by "the version
+// you read" would be checked against one index and applied to another, which is
+// the staleness the version exists to catch.
+//
+// ChangedAt is replaced on every rebuild rather than mutated, so a View that has
+// already been handed out stays true for as long as its holder reads it.
+type View struct {
+	Index   *index.Index
+	Version uint64
+	// ChangedAt gives the version at which each entry's content last changed.
+	// Monotonic and per entry, so "changed since you last looked" is one
+	// comparison per entry rather than a diff of two trees. Read-only.
+	ChangedAt map[string]uint64
 }
 
 // Open locates the bundle containing dir and builds its index.
@@ -31,7 +52,7 @@ func Open(dir string) (*Store, error) {
 	if _, err := s.Rebuild(); err != nil {
 		return nil, err
 	}
-	s.Dir = s.Snapshot().Bundle.Dir // the discovered root, which may be above dir
+	s.Dir = s.View().Index.Bundle.Dir // the discovered root, which may be above dir
 	return s, nil
 }
 
@@ -55,10 +76,11 @@ func (s *Store) Rebuild() (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	digest, err := contentDigest(idx)
+	entries, err := entryDigests(idx)
 	if err != nil {
 		return false, err
 	}
+	digest := combine(entries)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -68,61 +90,73 @@ func (s *Store) Rebuild() (changed bool, err error) {
 	}
 	s.digest = digest
 	s.version++
+
+	// A fresh map rather than an edit, because the previous one is being read
+	// without a lock by anyone still holding a View of it. An entry whose digest
+	// is unchanged keeps the version it last moved at; a new one, or one whose
+	// content differs, moves to now. One that is gone is simply absent.
+	changedAt := make(map[string]uint64, len(entries))
+	for path, digest := range entries {
+		if s.entries[path] == digest {
+			changedAt[path] = s.changedAt[path]
+		} else {
+			changedAt[path] = s.version
+		}
+	}
+	s.entries, s.changedAt = entries, changedAt
 	return true, nil
 }
 
-// Snapshot returns the current index.
+// View returns the current state.
 //
-// The returned index is immutable until the next Rebuild, and a Rebuild replaces
-// the pointer rather than mutating what it points at. So a caller takes one
-// snapshot, then reads it lock-free for as long as it likes: a request that
-// started before a rebuild finishes against consistent data rather than seeing
-// the bundle change underneath it.
-func (s *Store) Snapshot() *index.Index {
+// What it points at is immutable until the next Rebuild, which replaces the
+// pointers rather than mutating what they point at. So a caller takes one View
+// and reads it lock-free for as long as it likes: a request that started before
+// a rebuild finishes against consistent data rather than watching the bundle
+// change underneath it.
+func (s *Store) View() View {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.idx
+	return View{Index: s.idx, Version: s.version, ChangedAt: s.changedAt}
 }
 
-// Version identifies the current content. It moves when the bundle's content
-// does, and is what clients compare against to know they are stale.
-func (s *Store) Version() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.version
-}
-
-// contentDigest hashes every entry's path and bytes.
+// entryDigests hashes each entry's bytes, keyed by path.
 //
 // Content rather than modification times, which is the whole point: a save that
 // edited nothing, or a `tidy` that found nothing to fix, must not read as a
 // change. Measured at roughly a third of a rebuild's cost on a 5k-entry bundle,
 // paid only when something already triggered that rebuild.
-//
-// Paths are sorted so the digest does not depend on directory walk order.
-func contentDigest(idx *index.Index) (string, error) {
-	paths := make([]string, 0, len(idx.Entries))
+func entryDigests(idx *index.Index) (map[string]string, error) {
+	out := make(map[string]string, len(idx.Entries))
 	for _, e := range idx.Entries {
-		paths = append(paths, e.Path)
+		raw, err := e.Raw()
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256([]byte(raw))
+		out[e.Path] = hex.EncodeToString(sum[:])
+	}
+	return out, nil
+}
+
+// combine reduces per-entry digests to one describing the whole bundle.
+//
+// Sorted, so the result does not depend on map or directory-walk order. Each
+// path is hashed alongside its digest, so renaming an entry to a name whose
+// content already exists still reads as a change.
+func combine(entries map[string]string) string {
+	paths := make([]string, 0, len(entries))
+	for path := range entries {
+		paths = append(paths, path)
 	}
 	slices.Sort(paths)
 
 	h := sha256.New()
-	for _, p := range paths {
-		e, err := idx.Resolve(p)
-		if err != nil {
-			return "", err
-		}
-		raw, err := e.Raw()
-		if err != nil {
-			return "", err
-		}
-		// The path is hashed alongside the body so that renaming an entry to a
-		// name whose content already exists still reads as a change.
-		h.Write([]byte(p))
+	for _, path := range paths {
+		h.Write([]byte(path))
 		h.Write([]byte{0})
-		h.Write([]byte(raw))
+		h.Write([]byte(entries[path]))
 		h.Write([]byte{0})
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(h.Sum(nil))
 }

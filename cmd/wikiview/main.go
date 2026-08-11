@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -30,7 +32,8 @@ func main() {
 	// bundle the same way. Defaults to the working directory, which discovery
 	// then walks up from.
 	root := flag.String("root", ".", "bundle directory (walks up to find wiki.toml)")
-	addr := flag.String("addr", "localhost:8080", "listen address")
+	host := flag.String("host", "localhost", "interface to listen on (0.0.0.0 for all of them)")
+	port := flag.Int("port", 8080, "port to listen on")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
@@ -40,10 +43,32 @@ func main() {
 		return
 	}
 
-	if err := run(*root, *addr); err != nil {
+	// Reachable from this machine and reachable from the network are different
+	// choices, and only one of them is the default. wikiview has no
+	// authentication and writes to the bundle, so anyone who can reach it can
+	// read every entry and tick boxes in them. Said once, where the choice is
+	// made, rather than assumed to be understood.
+	if !loopback(*host) {
+		log.Printf("warning: %s accepts connections from the network, and wikiview has no authentication", *host)
+	}
+
+	// Joined here rather than carried as two values: JoinHostPort is what knows
+	// that an IPv6 host needs brackets, and every layer below this wants one
+	// address anyway.
+	if err := run(*root, net.JoinHostPort(*host, strconv.Itoa(*port))); err != nil {
 		fmt.Fprintln(os.Stderr, "wikiview:", err)
 		os.Exit(1)
 	}
+}
+
+// loopback reports whether a host is reachable only from this machine. An empty
+// host is not: to a listener it means every interface.
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func run(root, addr string) error {
@@ -52,7 +77,7 @@ func run(root, addr string) error {
 		return err
 	}
 	srv := server.New(s, ui.Assets())
-	idx := s.Snapshot()
+	idx := s.View().Index
 	log.Printf("serving %s (%d entries) on http://%s", s.Dir, len(idx.Entries), addr)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -70,7 +95,7 @@ func run(root, addr string) error {
 				return
 			}
 			if changed {
-				srv.Notify(s.Version())
+				srv.Notify(s.View().Version)
 			}
 		})
 		if err != nil {

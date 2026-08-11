@@ -90,7 +90,11 @@ type RefView struct {
 	Key   string `json:"key"`
 	Value string `json:"value"` // exactly as written, the lookup key
 	To    string `json:"to"`    // resolved bundle path
-	Title string `json:"title"` // the target entry's own title
+	// Label is the target's filename made readable, matching what the tree and
+	// the breadcrumb call it. A reference names a file you can navigate to, and
+	// an entry answering to two different names depending on where you met it
+	// is the thing that makes a bundle hard to hold in your head.
+	Label string `json:"label"`
 }
 
 // BacklinkView is one link pointing at this entry.
@@ -130,7 +134,7 @@ type CheckboxView struct {
 }
 
 func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
-	idx := s.store.Snapshot()
+	idx := s.store.View().Index
 
 	// The request path is only ever a map key, never a file operation. Rooting it
 	// keeps Resolve on its lookup branch (a bare name would trigger a basename
@@ -233,15 +237,10 @@ func frontmatterRefs(idx *index.Index, e *index.Entry) []RefView {
 			if outside {
 				continue
 			}
-			src, err := idx.Resolve(target)
-			if err != nil {
+			if _, err := idx.Resolve(target); err != nil {
 				continue // names no entry: ordinary text
 			}
-			title := src.Field("title")
-			if title == "" {
-				title = titleFromFilename(target)
-			}
-			out = append(out, RefView{Key: key, Value: value, To: target, Title: title})
+			out = append(out, RefView{Key: key, Value: value, To: target, Label: titleFromFilename(target)})
 		}
 	}
 	// Sorted, so the same entry always produces the same response rather than one
@@ -274,24 +273,19 @@ func incoming(idx *index.Index, path string) []BacklinkView {
 	return out
 }
 
-// titleFromFilename makes a readable name out of a path, for an entry with no
-// title of its own.
+// titleFromFilename makes a readable name out of a path.
 //
-// Filenames in this format are slugs by convention — `tidy --slug` enforces it —
-// and often carry an ordering prefix. "003-watch-and-events.md" is meant to read
-// as "Watch and events", so the prefix goes, hyphens become spaces, and the
-// first letter is capitalized. Nothing cleverer: this is a display fallback, and
-// an entry that wants a particular name should carry a `title`.
+// Filenames in this format are slugs by convention, since `tidy --slug`
+// enforces it, and they often carry a leading number. So separators become
+// spaces and the name is capitalized: "003-watch-and-events.md" reads as
+// "003 Watch and events".
+//
+// The number stays. It is why the file is called what it is: it orders the
+// folder, and a reader that dropped it would sort its tree one way while
+// showing names that explain a different order. Removing information a person
+// deliberately put in a filename is not this function's business.
 func titleFromFilename(p string) string {
 	name := strings.TrimSuffix(path2.Base(p), ".md")
-	// A short leading number is a sort key ("003-watch-and-events"); a longer one
-	// is content ("2024-review"). Three digits is where that turns over: nobody
-	// orders with four, and every year has four.
-	if i := strings.IndexFunc(name, func(r rune) bool { return r < '0' || r > '9' }); i > 0 && i <= 3 {
-		if sep := name[i]; sep == '-' || sep == '_' {
-			name = name[i+1:]
-		}
-	}
 	name = strings.ReplaceAll(strings.ReplaceAll(name, "-", " "), "_", " ")
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -303,13 +297,21 @@ func titleFromFilename(p string) string {
 	// An entry's *own* title is never touched — that is the author's text, and
 	// "correcting" it would be this reader having an opinion about their prose.
 	//
-	// By rune, not by byte: name[:1] takes the first byte, which for "élan" is
-	// half a character, and uppercasing that fragment produces mojibake.
-	first, size := utf8.DecodeRuneInString(name)
-	if first == utf8.RuneError {
-		return name
+	// The first word that begins with a letter, not simply the first character:
+	// a leading number has no case, and "001 what to pick" wants the w. Nor any
+	// letter anywhere, which would reach inside a word and make "2024review"
+	// into "2024Review".
+	//
+	// Decoding a rune rather than indexing a byte: name[:1] of "élan" is half a
+	// character, and uppercasing that fragment produces mojibake.
+	offset := 0
+	for _, word := range strings.Split(name, " ") {
+		if r, size := utf8.DecodeRuneInString(word); unicode.IsLetter(r) {
+			return name[:offset] + string(unicode.ToUpper(r)) + name[offset+size:]
+		}
+		offset += len(word) + 1
 	}
-	return string(unicode.ToUpper(first)) + name[size:]
+	return name // no word starts with a letter: all digits, or a script without case
 }
 
 func headings(e *index.Entry, offset int) []HeadingView {

@@ -20,10 +20,13 @@ import { ThemeToggle } from "@/shell/Theme";
 export function Shell({
   bundle,
   tree,
+  unseen,
   children,
 }: {
   bundle: BundleInfo;
   tree: TreeNode;
+  /** Entries changed since they were last opened, marked wherever they appear. */
+  unseen: Set<string>;
   children: ReactNode;
 }) {
   const [section, setSection] = useState<RailSection>("entries");
@@ -54,11 +57,11 @@ export function Shell({
         {/* Breadcrumbs shrink and ellipsize; the omnibar keeps a workable
             width. The path orients you, the omnibar moves you. */}
         <div className="min-w-0 flex-1">
-          <Breadcrumbs bundleName={basename(bundle.dir)} root={tree} path={path} />
+          <Breadcrumbs bundleName={bundle.label} root={tree} path={path} />
         </div>
 
         <div className="hidden w-full max-w-sm shrink justify-center sm:flex">
-          <Omnibar tree={tree} />
+          <Omnibar tree={tree} unseen={unseen} />
         </div>
 
         <ThemeToggle />
@@ -76,7 +79,11 @@ export function Shell({
             panelOpen ? "w-64" : "w-0 border-r-0",
           ].join(" ")}
         >
-          {panelOpen && section === "entries" && <div className="py-2"><Tree node={tree} /></div>}
+          {panelOpen && section === "entries" && (
+            <div className="py-2">
+              <Tree node={tree} bundleId={bundle.id} unseen={unseen} />
+            </div>
+          )}
           {panelOpen && section === "boards" && (
             <p className="text-muted p-3 text-sm">No boards declared yet.</p>
           )}
@@ -92,9 +99,4 @@ export function Shell({
       </div>
     </div>
   );
-}
-
-function basename(dir: string): string {
-  const parts = dir.replace(/\/$/, "").split("/");
-  return parts[parts.length - 1] ?? dir;
 }

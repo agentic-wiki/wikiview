@@ -22,7 +22,7 @@ printf 'spec = "0.1"\n' >"$bundle/wiki.toml"
 printf -- '---\nokf_version: "0.1"\n---\n# Home\n\nSee [a note](./notes/a.md).\n' >"$bundle/index.md"
 printf -- '---\ntype: task\nstatus: todo\n---\n## A Heading_here\n\n- [ ] first\n' >"$bundle/notes/a.md"
 
-"$BIN" --root "$bundle" --addr "localhost:${PORT}" &
+"$BIN" --root "$bundle" --host localhost --port "${PORT}" &
 pid=$!
 
 # Poll rather than sleep: a fixed wait is either slow or flaky, and on a loaded

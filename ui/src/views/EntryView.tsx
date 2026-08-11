@@ -174,7 +174,7 @@ function Frontmatter({ entry }: { entry: Entry }) {
                   className="text-accent underline decoration-1 underline-offset-2"
                   title={ref.value}
                 >
-                  {ref.title}
+                  {ref.label}
                 </Link>
               ) : (
                 <span key={i}>{v}</span>

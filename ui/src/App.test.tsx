@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createRoot, type Root } from "react-dom/client";
 import { StrictMode, act } from "react";
 import { MemoryRouter, useNavigate } from "react-router";
@@ -17,6 +17,8 @@ import type { BundleInfo, Entry, TreeNode } from "@/api";
  */
 
 const bundle: BundleInfo = {
+  id: "abc123",
+  label: "My kb",
   dir: "/tmp/my-kb",
   spec: "0.1",
   entries: 3,
@@ -28,16 +30,19 @@ const tree: TreeNode = {
   path: "/",
   name: "",
   index: "/index.md",
-  entries: [{ path: "/index.md", name: "index.md", type: "", label: "Index" }],
+  entries: [{ path: "/index.md", name: "index.md", type: "", label: "Index", changedAt: 1 }],
   children: [
     {
       path: "/notes",
       name: "notes",
+      // Prefixed on disk, readable in the UI, so the two are distinguishable.
+      label: "Notes",
       entries: [
         // Its title says something its filename does not, which is what keeps
         // "shows the label" and "shows the title" telling apart.
-        { path: "/notes/a.md", name: "a.md", type: "note", label: "A", title: "A Note" },
-        { path: "/notes/b.md", name: "b.md", type: "note", label: "B" },
+        { path: "/notes/a.md", name: "a.md", type: "note", label: "A", title: "A Note", changedAt: 1 },
+        { path: "/notes/b.md", name: "b.md", type: "note", label: "B", changedAt: 1 },
+        { path: "/notes/checks.md", name: "checks.md", type: "task", label: "Checks", changedAt: 1 },
       ],
       children: [],
     },
@@ -54,7 +59,7 @@ const entry: Entry = {
     { raw: "./b.md", to: "/notes/b.md", anchor: "", text: "b", line: 3, exists: true, outside: false },
     { raw: "../README.md", to: "", anchor: "", text: "readme", line: 4, exists: false, outside: true },
   ],
-  frontmatterRefs: [{ key: "blockers", value: "/notes/b.md", to: "/notes/b.md", title: "Second Note" }],
+  frontmatterRefs: [{ key: "blockers", value: "/notes/b.md", to: "/notes/b.md", label: "B" }],
   backlinks: [{ from: "/index.md", title: "The Front Door", text: "a note", line: 3 }],
   headings: [{ level: 1, text: "A Note", id: "a-note", line: 5, bodyLine: 1 }],
   checkboxes: [],
@@ -167,6 +172,11 @@ function stubFetch() {
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 
+// The reader remembers view preferences per bundle, so without this each test
+// would start inside the last one's browser and the tree would open where a
+// previous test left it.
+beforeEach(() => localStorage.clear());
+
 afterEach(() => {
   act(() => root?.unmount());
   container?.remove();
@@ -218,8 +228,8 @@ async function mountAt(path: string): Promise<string> {
 test("a deep entry URL renders that entry, not a blank shell", async () => {
   const text = await mountAt("/wiki/notes/a.md");
 
-  // The shell came up.
-  expect(text).toContain("my-kb");
+  // The shell came up, naming the bundle the way it names everything else.
+  expect(text).toContain("My kb");
   // …and so did the entry the URL names. This is the assertion a status code
   // cannot make.
   expect(text).toContain("A Note");
@@ -228,8 +238,8 @@ test("a deep entry URL renders that entry, not a blank shell", async () => {
 
 test("the tree renders the bundle's folders and entries", async () => {
   const text = await mountAt("/wiki/index.md");
-  expect(text).toContain("notes");
-  expect(text).toContain("A Note");
+  expect(text).toContain("Notes"); // the folder, named the way its entries are
+  expect(text).toContain("Index");
 });
 
 test("a folder with an index redirects to it rather than listing", async () => {
@@ -243,7 +253,7 @@ test("a folder without an index lists its entries", async () => {
   // /notes has no index.md in the fixture, so the reader synthesizes a listing
   // rather than writing one into the bundle.
   const text = await mountAt("/wiki/notes/");
-  expect(text).toContain("2 entries");
+  expect(text).toContain("3 entries");
   expect(text).toContain("A Note");
 });
 
@@ -306,6 +316,174 @@ test("the tree collapses folders except along the path to the current entry", as
   expect(deep).toContain("A"); // its folder was opened for it
 });
 
+// Expanding a folder is a view preference, and losing it on every reload makes
+// the tree something you re-navigate rather than something you keep open.
+test("the tree opens where this bundle was left, and ignores another bundle's", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:tree:expanded`, JSON.stringify(["/notes"]));
+  await mountAt("/wiki/index.md");
+  const restored = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(restored).toContain("A"); // /notes was left open, though nothing here is under it
+
+  // The same preference filed under a different bundle does not apply here.
+  localStorage.clear();
+  localStorage.setItem(`wiki:other-bundle:tree:expanded`, JSON.stringify(["/notes"]));
+  await mountAt("/wiki/index.md");
+  const isolated = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(isolated).not.toContain("A");
+});
+
+/** Serves a tree in which one entry has moved to a later version. */
+function withChange(path: string, at: number): TreeNode {
+  const bump = (n: TreeNode): TreeNode => ({
+    ...n,
+    entries: n.entries.map((e) => (e.path === path ? { ...e, changedAt: at } : e)),
+    children: n.children.map(bump),
+  });
+  return bump(tree);
+}
+
+/** The marks currently rendered in the panel, by the row they sit on. */
+function marked(): string[] {
+  return [...document.querySelectorAll("aside a, aside button")]
+    .filter((row) => row.querySelector('[aria-label="changed"]'))
+    .map((row) => row.textContent ?? "");
+}
+
+// An agent edits the bundle while it is open. The screen follows along and the
+// tree says nothing, so a change you were not looking at is one you never learn
+// about.
+test("an entry that changed since you saw it is marked, and opening it clears the mark", async () => {
+  // Arriving for the first time: everything counts as seen, or the whole tree
+  // would be marked on first open and the mark would mean nothing.
+  await mountAt("/wiki/notes/a.md");
+  expect(marked()).toEqual([]);
+
+  // /notes/b.md changes on disk while /notes/a.md is open.
+  const changed = withChange("/notes/b.md", 2);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/api/tree")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(changed), { headers: { "content-type": "application/json" } }),
+      );
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  // The greeting first, which is what the server sends on connect, then the
+  // version that actually reports the change.
+  await act(async () => emitVersion(1));
+  await act(async () => emitVersion(2));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(marked()).toContain("B");
+  expect(marked()).not.toContain("A"); // the one you are looking at is not news
+
+  // Opening it is what clears it. Not looking at it: a mark that clears without
+  // you doing anything is worse than one that stays.
+  await act(async () => navigateTo("/wiki/notes/b.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(marked()).toEqual([]);
+
+  globalThis.fetch = realFetch;
+});
+
+// Ticking a checkbox changes the file, which moves that entry's version like
+// any other change. Marking it would be telling you about your own edit, in the
+// entry you are looking at.
+test("a change you made yourself does not mark the entry you made it in", async () => {
+  await mountAt("/wiki/notes/checks.md");
+
+  const realFetch = globalThis.fetch;
+  const bumped = withChange("/notes/checks.md", 2);
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "PUT") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ version: 2 }), { headers: { "content-type": "application/json" } }),
+      );
+    }
+    if (String(input).endsWith("/api/tree")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(bumped), { headers: { "content-type": "application/json" } }),
+      );
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  const box = document.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  await act(async () => box!.click());
+
+  // The write bumps the version, and the server tells every client — including
+  // the one that asked for it.
+  await act(async () => emitVersion(1));
+  await act(async () => emitVersion(2));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(marked()).toEqual([]);
+  globalThis.fetch = realFetch;
+});
+
+// Same rule, for a change you did not make: the entry on screen updates in front
+// of you, so marking it is telling you about something you just watched happen.
+// Derived from the current route rather than cleared afterwards, or the mark
+// would appear for a frame on the one entry certain to be under your eyes.
+test("the entry you are reading is not marked when it changes underneath you", async () => {
+  await mountAt("/wiki/notes/a.md");
+
+  const realFetch = globalThis.fetch;
+  const bumped = withChange("/notes/a.md", 2);
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/api/tree")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(bumped), { headers: { "content-type": "application/json" } }),
+      );
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  await act(async () => emitVersion(1));
+  await act(async () => emitVersion(2));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(marked()).toEqual([]);
+
+  // …and it stays cleared once you leave, rather than reappearing as unseen.
+  await act(async () => navigateTo("/wiki/notes/b.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(marked()).toEqual([]);
+
+  globalThis.fetch = realFetch;
+});
+
+// An entry created while you were away is absent from the record entirely, not
+// merely older than it. Treating "never seen" as "seen" would make every new
+// entry arrive silently, which is the case this whole mark exists for.
+test("an entry that did not exist when you were last here is marked", async () => {
+  localStorage.setItem(
+    `wiki:${bundle.id}:seen`,
+    JSON.stringify({ "/index.md": 1, "/notes/a.md": 1 }), // b.md is new
+  );
+  await mountAt("/wiki/notes/a.md");
+  expect(marked()).toContain("B");
+});
+
+// The mark is one person's attention in one browser, so it must not appear in
+// another bundle where the paths may not even exist.
+test("marks do not carry into another bundle", async () => {
+  localStorage.setItem(
+    `wiki:${bundle.id}:seen`,
+    JSON.stringify({ "/index.md": 1, "/notes/a.md": 1, "/notes/b.md": 0 }),
+  );
+  await mountAt("/wiki/index.md");
+  expect(marked().join()).toContain("Notes"); // the folder above the changed entry
+
+  localStorage.clear();
+  localStorage.setItem(
+    `wiki:another-bundle:seen`,
+    JSON.stringify({ "/index.md": 1, "/notes/a.md": 1, "/notes/b.md": 0 }),
+  );
+  await mountAt("/wiki/index.md");
+  expect(marked()).toEqual([]);
+});
+
 // You navigated to a file, so navigation says which file. An entry's own title
 // belongs to the entry, and a tree that swapped one for the other would rename
 // rows out from under the paths you are following.
@@ -321,6 +499,9 @@ test("navigation names the file; the entry names itself", async () => {
   expect(crumbs.textContent).not.toContain("A Note");
   // Not the raw filename either, which is what a failed lookup falls back to.
   expect(crumbs.textContent).not.toContain("a.md");
+  // Folders are walked the same way, so the trail does not read half-slugged.
+  expect(crumbs.textContent).toContain("Notes");
+  expect(crumbs.textContent).not.toContain("notes");
 
   // …while the entry itself still says what it is.
   expect(document.querySelector("article")?.textContent).toContain("A Note");
@@ -385,7 +566,10 @@ test("frontmatter values that resolve are links; others are text", async () => {
   const strip = document.querySelector("dl")!;
   const link = strip.querySelector("a");
   expect(link?.getAttribute("href")).toBe("/wiki/notes/b.md");
-  expect(link?.textContent).toBe("Second Note");
+  // Named the way the tree names it: a reference points at a file, and an entry
+  // answering to two names depending on where you met it is what makes a bundle
+  // hard to hold in your head.
+  expect(link?.textContent).toBe("B");
   // A value with no counterpart in the table stays plain text.
   expect(strip.textContent).toContain("todo");
   expect(strip.querySelectorAll("a")).toHaveLength(1);

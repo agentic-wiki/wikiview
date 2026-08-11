@@ -1,10 +1,10 @@
 ---
 type: task
 title: "mark entries that changed since you last saw them"
-status: todo
+status: done
 priority: medium
 tags: [feature, reader]
-blockers: [/3-reader/005-markdown-and-checkboxes.md]
+blockers: [/3-reader/005-markdown-and-checkboxes.md, /3-reader/002-per-bundle-ui-state.md]
 ---
 
 An agent edits this bundle while it is open. Right now the screen quietly updates and the tree gives no sign, so a change you were not looking at is a change you never learn about.

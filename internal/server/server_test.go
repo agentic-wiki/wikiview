@@ -51,6 +51,35 @@ func get(t *testing.T, srv *Server, path string, into any) int {
 	return rec.Code
 }
 
+// The id scopes what a browser remembers, so it has to be the same on every
+// request for one bundle and different for another — including one reached by a
+// relative path, since that is how the server is usually started.
+func TestBundleIDIsStablePerLocation(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	first, again := bundleID(a), bundleID(a)
+	if first != again {
+		t.Errorf("the same directory produced two ids: %q then %q", first, again)
+	}
+	if bundleID(a) == bundleID(b) {
+		t.Error("two directories share an id: preferences would leak between them")
+	}
+	if bundleID(".") != bundleID(mustAbs(t, ".")) {
+		t.Error("a relative root produced a different id than its absolute form")
+	}
+	if id := bundleID(a); len(id) != 12 {
+		t.Errorf("id=%q, want 12 hex characters", id)
+	}
+}
+
+func mustAbs(t *testing.T, p string) string {
+	t.Helper()
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return abs
+}
+
 func TestBundleEndpoint(t *testing.T) {
 	var got BundleInfo
 	if code := get(t, newTestServer(t), "/api/bundle", &got); code != http.StatusOK {

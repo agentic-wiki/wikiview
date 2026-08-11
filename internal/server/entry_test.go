@@ -95,6 +95,11 @@ func TestTreeEndpoint(t *testing.T) {
 		t.Fatalf("children=%+v", root.Children)
 	}
 	notes := root.Children[0]
+	// A folder is a navigation step like any other, so it is named by the same
+	// rule its entries are.
+	if notes.Label != "Notes" {
+		t.Errorf("folder label=%q, want %q", notes.Label, "Notes")
+	}
 	// This folder has no index.md, which is what tells the reader that
 	// navigating to it has to synthesize a listing rather than redirect.
 	if notes.Index != "" {
@@ -170,10 +175,12 @@ func TestFrontmatterRefsAreFoundByValue(t *testing.T) {
 	if _, ok := byKey["title"]; ok {
 		t.Errorf("a non-path string became a reference: %v", byKey)
 	}
-	// The target's own title travels, so the client shows a name not a path.
+	// A readable name travels, so the client shows a name rather than a path —
+	// and it is the target's filename, the same name the tree gives it, not the
+	// title the target happens to carry.
 	for _, r := range got.FrontmatterRefs {
-		if r.To == "/target.md" && r.Title != "The Target" {
-			t.Errorf("ref title = %q, want the target's own", r.Title)
+		if r.To == "/target.md" && r.Label != "Target" {
+			t.Errorf("ref label = %q, want the target's filename made readable", r.Label)
 		}
 	}
 }

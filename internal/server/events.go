@@ -110,7 +110,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	// The current version up front, so a client that connects after a change
 	// discovers it is stale without waiting for the next one.
-	writeEvent(w, flusher, s.store.Version())
+	writeEvent(w, flusher, s.store.View().Version)
 
 	for {
 		select {

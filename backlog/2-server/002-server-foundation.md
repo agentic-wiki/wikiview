@@ -15,7 +15,7 @@ Scope is deliberately narrow. No watcher, no SSE, no frontend, no writes. Just e
 
 - **`internal/store`** — one bundle, one index, rebuilt on demand. `Rebuild` builds fully before swapping, so a failed rebuild leaves the previous index serving: an entry saved mid-edit with broken frontmatter must not take the server down. `Snapshot` returns the current index, which is immutable until the next rebuild, so a caller reads it lock-free and a request spanning a rebuild sees consistent data.
 - **`internal/server`** — `GET /api/bundle` and `GET /api/entry/{path...}`. Entries carry frontmatter verbatim, the unrendered body, and the graph around them with **every link already resolved to a bundle path**, because turning a written link into a path is the engine's rule and a browser doing it would be a second implementation.
-- **`cmd/wikiview`** — `--root` (matching the engine's flag, so both tools are pointed at a bundle the same way) and `--addr`.
+- **`cmd/wikiview`** — `--root` (matching the engine's flag, so both tools are pointed at a bundle the same way), plus `--host` and `--port`.
 
 ## The path guard
 
