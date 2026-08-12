@@ -792,6 +792,7 @@ const boardFixture = {
   field: "status",
   lane: "priority",
   where: ["type=task", "priority!=low"],
+  blockers: "blockers",
   declared: true,
   // What the folder holds, taken before the board's own filter — which is why
   // `type=note` is offerable even though no card is one. `title` has too many
@@ -809,7 +810,7 @@ const boardFixture = {
       value: "todo",
       pinned: true,
       cards: [
-        { path: "/notes/a.md", label: "A", title: "A Note", type: "task", lane: "high" },
+        { path: "/notes/a.md", label: "A", title: "A Note", type: "task", lane: "high", blockedBy: 2, blocks: 1 },
         { path: "/notes/checks.md", label: "Checks", type: "task" },
       ],
     },
@@ -909,12 +910,41 @@ test("lanes group a column only when the board declares one", async () => {
   await act(async () => navigateTo("/kanban/notes"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  const todo = [...document.querySelectorAll("main section[aria-label]")].find(
-    (s) => s.getAttribute("aria-label") === "todo",
-  )!;
-  const lanes = [...todo.querySelectorAll("h3")].map((h) => h.textContent);
-  expect(lanes).toEqual(["high", "none"]);
+  // At rest a column shows only the bands it has cards in: an empty one is there
+  // to be dropped into, and a board of five lanes by five columns would
+  // otherwise be mostly headings for rows that hold nothing.
+  const lanes = (column: string) =>
+    [...columnEl(column).querySelectorAll("h3")].map((h) => h.textContent);
+  expect(lanes("todo")).toEqual(["high", "none"]);
+  expect(lanes("blocked")).toEqual(["low"]);
+  // The unnamed band is last, being a fact about the cards rather than a lane
+  // anybody chose.
   restore();
+});
+
+// A lane is a row, so every column has every one of them — but only while a card
+// is in the air, which is when an empty band means something.
+test("empty lanes appear while a card is being dragged", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const lanes = () => [...columnEl("in-progress").querySelectorAll("h3")].map((h) => h.textContent);
+  expect(lanes()).toEqual([]); // nothing in it, so nothing to show
+
+  const card = cardIn("todo", "A")!;
+  const press = (type: string, x: number, y: number) =>
+    (type === "pointerdown" ? card : (window as unknown as EventTarget)).dispatchEvent(
+      new PointerEvent(type, { bubbles: true, button: 0, pointerType: "mouse", clientX: x, clientY: y }),
+    );
+  await act(async () => void press("pointerdown", 10, 10));
+  await act(async () => void press("pointermove", 300, 40));
+
+  // Mid-drag: every lane the board has, so there is somewhere to aim.
+  expect(lanes()).toEqual(["high", "low", "none"]);
+
+  await act(async () => void press("pointerup", 300, 40));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(lanes()).toEqual([]);
 });
 
 function columnEl(value: string): HTMLElement {
@@ -937,15 +967,24 @@ function cardIn(column: string, label: string): HTMLElement | undefined {
  * every other part of the gesture is the real one, dispatched as the browser
  * would in three separate turns.
  */
-async function dragTo(card: Element, onto: Element | null) {
+async function dragTo(card: Element, onto: Element | null | (() => Element | null)) {
   const real = document.elementFromPoint;
-  document.elementFromPoint = () => onto;
-  const at = (type: string, x: number, y: number) =>
-    card.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }));
+  // happy-dom renders nothing, so hit testing is the one thing supplied here.
+  // Resolved on each call rather than once, because a drop target can appear
+  // *because* a drag started: empty lane bands do exactly that.
+  document.elementFromPoint = () => (typeof onto === "function" ? onto() : onto);
+  // The press is the element's own handler; everything after it belongs to the
+  // document, which is what lets a drag outlive the thing that started it.
+  const press = (x: number, y: number) =>
+    card.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse", clientX: x, clientY: y }),
+    );
+  const then = (type: string, x: number, y: number) =>
+    window.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: "mouse", clientX: x, clientY: y }));
   try {
-    await act(async () => void at("pointerdown", 10, 10));
-    await act(async () => void at("pointermove", 300, 40));
-    await act(async () => void at("pointerup", 300, 40));
+    await act(async () => void press(10, 10));
+    await act(async () => void then("pointermove", 300, 40));
+    await act(async () => void then("pointerup", 300, 40));
     await act(async () => new Promise((r) => setTimeout(r, 0)));
   } finally {
     document.elementFromPoint = real;
@@ -988,8 +1027,10 @@ test("dropping a card in another column moves it and writes the change", async (
   expect(cardIn("todo", "A")).toBeUndefined();
 
   // The column's value, and the version the board was read at.
+  // The lane half is empty: released over the column but not over one of its
+  // bands, the drop says nothing about lanes and the card keeps the one it had.
   expect(writes).toEqual([
-    { url: "/api/card/notes/notes/a.md", body: { value: "blocked", version: 1 } },
+    { url: "/api/card/notes/notes/a.md", body: { value: "blocked", lane: "", version: 1 } },
   ]);
 });
 
@@ -1331,6 +1372,7 @@ test("dragging a column header writes the new order", async () => {
         name: "Notes",
         status: "status",
         lane: "priority",
+        blockers: "blockers",
         where: ["type=task", "priority!=low"],
         // The unnamed column is left out: it is not a status anybody declared.
         columns: ["blocked", "todo", "in-progress"],
@@ -1456,6 +1498,7 @@ test("saving the settings form writes them", async () => {
         name: "Notes",
         status: "status",
         lane: "priority",
+        blockers: "blockers",
         where: ["type=task", "priority!=low"],
         columns: ["todo", "in-progress"],
       },
@@ -1765,3 +1808,85 @@ function withChangedAt(node: TreeNode, path: string, at: number): TreeNode {
     children: node.children.map((c) => withChangedAt(c, path, at)),
   };
 }
+
+// One drag says where in both directions. Resolving only the column would make
+// moving a card between lanes impossible without editing the file by hand.
+test("dropping a card in a lane moves it there and to that column", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  // The `low` band of `in-progress`, which holds no card and so does not exist
+  // until the drag starts: a lane a column has not used yet is exactly the one
+  // you cannot reach any other way.
+  const band = () =>
+    [...columnEl("in-progress").querySelectorAll("[data-lane]")].find(
+      (el) => el.getAttribute("data-lane") === "low",
+    ) ?? null;
+  expect(band()).toBeNull();
+  await dragTo(cardIn("todo", "A")!, band);
+
+  expect(writes).toEqual([
+    {
+      url: "/api/card/notes/notes/a.md",
+      body: { value: "in-progress", lane: "low", version: 1 },
+    },
+  ]);
+  // And on screen at once, in the band it was dropped in.
+  const moved = [...columnEl("in-progress").querySelectorAll("[data-lane]")].find(
+    (el) => el.getAttribute("data-lane") === "low",
+  )!;
+  expect(moved.textContent).toContain("A");
+});
+
+// The unnamed band is not a lane anybody chose, so dropping into it would mean
+// removing the field: the same operation the unnamed column refuses.
+test("the band of cards with no lane takes no drops", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const unnamed = [...columnEl("todo").querySelectorAll("div")].find(
+    (d) => d.querySelector("h3")?.textContent === "none",
+  );
+  expect(unnamed).toBeTruthy();
+  expect(unnamed!.hasAttribute("data-lane")).toBe(false);
+});
+
+// Two opposite facts, so two badges: being blocked is a reason not to start,
+// blocking others is a reason to. One mark would have said neither.
+test("a card says what it waits on and what waits on it", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const card = cardIn("todo", "A")!;
+  const badges = [...card.querySelectorAll("[title]")].map((b) => b.getAttribute("title"));
+  expect(badges).toEqual(["Waiting on 2 entries", "Holding up 1 entry"]);
+
+  // A card with no edges reports neither, rather than showing a row of noughts.
+  expect(cardIn("blocked", "B")!.querySelectorAll("[title]").length).toBe(0);
+});
+
+// A card is an anchor, and an anchor is draggable by default: the browser starts
+// its own link-drag on the first movement and stops sending pointer events, so
+// no drag of ours ever begins.
+//
+// This is the one thing here a test cannot actually prove — a DOM with no
+// renderer has no native drag to start, so every drag test passed while it was
+// broken in every browser. Pinned instead, so removing the attribute is loud.
+test("a card is not natively draggable", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(cardIn("todo", "A")!.getAttribute("draggable")).toBe("false");
+});
+
+// A flex child shrinks below its content by default, so a column with more cards
+// than height drew them over each other.
+test("cards and lane bands do not shrink", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(cardIn("todo", "A")!.className).toContain("shrink-0");
+  const band = [...columnEl("todo").querySelectorAll("[data-lane]")][0]!;
+  expect(band.className).toContain("shrink-0");
+});

@@ -64,14 +64,21 @@ func (s *Server) handleCheckbox(w http.ResponseWriter, r *http.Request) {
 	s.committed(w)
 }
 
-// cardRequest moves one card to another column.
+// cardRequest moves one card, by column and by lane.
 //
-// Value rather than a field name: which frontmatter key a column stands for is
-// the board's `status`, which is decoded here already. A client naming the key
-// would be a second copy of that rule, and an API that writes any key on any
-// entry — a general frontmatter editor, which this reader is deliberately not.
+// Values rather than field names: which frontmatter keys a column and a lane
+// stand for are the board's `status` and `lane`, which are decoded here already.
+// A client naming them would be a second copy of that rule, and an API that
+// writes any key on any entry — a general frontmatter editor, which this reader
+// is deliberately not.
 type cardRequest struct {
-	Value   string `json:"value"`
+	Value string `json:"value"`
+	// Lane is the band the card was dropped in, empty when the drop said nothing
+	// about lanes: released over a column but not over any of its bands, or on a
+	// board that has none. Empty leaves the field alone rather than clearing it,
+	// for the same reason the unnamed column takes no drops — removing a field is
+	// a different operation from moving a card.
+	Lane    string `json:"lane"`
 	Version uint64 `json:"version"`
 }
 
@@ -122,7 +129,18 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := e.SetField(board.Status, req.Value); err != nil {
+	// One pass, because one drag is one change. Written separately, a board with
+	// lanes would leave a card in its new column and its old lane if the second
+	// write failed — which is a card somewhere nobody put it.
+	fields := map[string]any{board.Status: req.Value}
+	if req.Lane != "" {
+		if board.Lane == "" {
+			writeJSON(w, http.StatusUnprocessableEntity, errorBody{"this board has no lanes"})
+			return
+		}
+		fields[board.Lane] = req.Lane
+	}
+	if err := e.SetFields(fields); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
 		return
 	}

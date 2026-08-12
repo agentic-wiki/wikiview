@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -185,11 +186,17 @@ func TestREADMEDocumentsTheRealDefaults(t *testing.T) {
 	}
 	doc := string(readme)
 
+	// Whitespace-insensitive: the keys are lined up in the README and the width
+	// changes whenever a longer one is added, which says nothing about whether
+	// the values are right.
+	spacing := regexp.MustCompile(` +`)
+	flat := spacing.ReplaceAllString(doc, " ")
 	for _, want := range []string{
-		`where   = ["type=task"]`,
-		`status  = "status"`,
+		`where = ["type=task"]`,
+		`status = "status"`,
+		`blockers = "blockers"`,
 	} {
-		if !strings.Contains(doc, want) {
+		if !strings.Contains(flat, want) {
 			t.Errorf("README does not document the default as %q", want)
 		}
 	}
@@ -200,6 +207,9 @@ func TestREADMEDocumentsTheRealDefaults(t *testing.T) {
 	}
 	if defaultStatus != "status" {
 		t.Errorf("defaultStatus=%q, and the README says status", defaultStatus)
+	}
+	if defaultBlockers != "blockers" {
+		t.Errorf("defaultBlockers=%q, and the README says blockers", defaultBlockers)
 	}
 }
 

@@ -169,6 +169,10 @@ export interface Card {
   type?: string;
   /** This card's value for the board's lane field, absent when it has none. */
   lane?: string;
+  /** How many entries this one waits on, and how many wait on it. Absent at
+   *  zero: two opposite facts, and a card with no edges reports neither. */
+  blockedBy?: number;
+  blocks?: number;
 }
 
 export interface Column {
@@ -198,6 +202,9 @@ export interface BoardSettings {
   name: string;
   status: string;
   lane: string;
+  /** The field naming what an entry waits on. A workflow convention rather than
+   *  something the format defines, so a bundle that says `waits_on` is right. */
+  blockers: string;
   where: string[];
   columns: string[];
 }
@@ -217,6 +224,8 @@ export interface Board {
   field: string;
   /** The field rows group by, absent when the board has no lanes. */
   lane?: string;
+  /** The field naming what an entry waits on. */
+  blockers: string;
   /** The filter deciding which entries are cards, in the `--where` spelling. */
   where: string[];
   columns: Column[];
@@ -294,9 +303,10 @@ export const api = {
    * frontmatter key its columns are made of, and it says so on the server where
    * the config is parsed. Same version guard as a checkbox, refused the same way.
    */
-  moveCard: (board: string, path: string, value: string, version: number) =>
+  moveCard: (board: string, path: string, value: string, lane: string, version: number) =>
     put<{ version: number }>("/api/card/" + encodeURIComponent(board) + "/" + encode(path), {
       value,
+      lane,
       version,
     }),
 

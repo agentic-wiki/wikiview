@@ -51,3 +51,15 @@ A card is a route, `/kanban/<id>/<entry path>`, rendered as a dialog over the bo
 The rail follows the route rather than the last click. Arriving at `/kanban/root` by URL used to light the Entries icon and open the file tree beside a board, because the section was a piece of state that only a click ever corrected.
 
 **Not here:** [moving a card](./004-moving-a-card.md), which is the write.
+
+## What a card says
+
+Added after the first version, which showed a filename and a title.
+
+**Two badges, because they are opposite facts.** Being blocked is a reason not to start; blocking others is a reason to. One shared mark said neither, and a single number could not distinguish them. Counts rather than verdicts: nothing here knows which of a bundle's status values mean finished, so it reports the edges and leaves the judgement.
+
+Absent at zero. A row of noughts on every card says nothing and costs the space that the ones with something to report need.
+
+**The field is configurable, defaulting to `blockers`.** The format does not define it — it is a workflow convention, and a bundle that says `waits_on` is not wrong — so this follows `status` and `lane`: a default that covers the starter workflows and a key for the rest.
+
+**Counted across the bundle rather than the board.** "This is holding up three things" is true whether or not those three are on the board you happen to be looking at, and counting only the board's would make one task read differently from two places. A blocker naming an entry nobody has written yet counts too: waiting on something unwritten is waiting, and this format expects the link before the file.

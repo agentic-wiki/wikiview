@@ -42,9 +42,23 @@ Refusals are all on the server, and each says which rule it is: `409` for a vers
 
 Two things a drag has to get right, both of them from `wikanban`:
 
-- **Pointer events**, so touch works and the gesture survives React unmounting the card mid-move. Cards are `touch-none`, or the browser scrolls the column instead and there is no way to move a card by touch at all.
+- **Pointer events**, so touch works and the gesture survives React unmounting the card mid-move.
 - **The click is suppressed after a drag.** The browser synthesizes one from the press and the release however far the pointer travelled between them, so without this, finishing a drag also opens the card. A 5px threshold keeps the opposite true: a press that barely moves is still a click, because a card that needs a steady hand to open is broken.
 
-Whether the drag has started lives in a ref beside the state. The handler that ends a drag would otherwise ask a render that has not happened: a move and the release right after it are one batch, and the release would read the drag as never having begun.
-
 **Not here:** moving a card without a pointer. Drag is the only way to change a status from the board, so there is nothing for a keyboard. The card sheet is where that belongs — it already shows the frontmatter — and it is a field editor rather than a gesture, so it is [customizing a board](./003-customizing-a-board.md)'s neighbour rather than this.
+
+## Both axes, and touch that scrolls
+
+The first version moved a card by column only, and got touch wrong. Both fixed by taking the shape `wikanban` had already proven.
+
+**A drop says where in both directions.** A band inside a column carries `data-lane`, so one diagonal drag resolves the column and the lane together, and the write sets both fields in one `SetFields` pass. Written separately, a failure between them leaves a card in its new column and its old lane, which is a card somewhere nobody put it.
+
+**Every lane appears in every column**, empty ones included, because a lane is a *row*. Derived from the cards in each column instead — which is what the first version did — a lane exists only where a card already sits in it, so there is nowhere to drop a card into a lane that column has not used yet. That is most of the reason to drag one.
+
+**The unnamed band takes no drops**, like the unnamed column: dropping into it would mean removing the field, which is a different operation wearing the same gesture. A drop released over a column but not over any band says nothing about lanes, and the card keeps the one it had.
+
+**Touch is press-and-hold**, which is the part the first version got wrong. It made cards `touch-action: none` so a drag could never be read as a scroll, and that costs scrolling entirely: a column longer than the screen could not be read with a finger. A press that moves before the hold elapses is a scroll and is left alone; one that stays put becomes a drag, and from then on `touchmove` is cancelled so the board does not slide underneath. A long press is also no longer a context menu.
+
+**Dragging near the edge scrolls the board**, or a column off the side of the screen cannot be dropped into at all. Only when there is something to scroll to, since otherwise it runs an animation frame per pointer move to move by zero.
+
+**The listeners moved from the card to the document.** `setPointerCapture` ties the gesture to an element React unmounts the moment the card re-renders into its new place — the very thing choosing pointer events was meant to avoid. The synthesized click is now swallowed by a flag cleared on the next press rather than a listener armed for a few hundred milliseconds: a drag released over nothing synthesizes no click at all, and the timer would then eat a real one arriving just after. That was not theoretical — it ate the first click of the next test.

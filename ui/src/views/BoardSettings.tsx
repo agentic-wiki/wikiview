@@ -119,6 +119,19 @@ export function BoardSettings({
             </Field>
           </div>
 
+          {/* Which field says what an entry waits on, which the badges on the
+              cards count. A convention rather than part of the format, so a
+              bundle that spells it `waits_on` is not wrong. */}
+          <Field label="Waiting on">
+            <KeyPicker
+              value={settings.blockers}
+              fields={board.fields}
+              label="Blockers field"
+              none="— not tracked —"
+              onChange={(blockers) => set({ blockers })}
+            />
+          </Field>
+
           <div className="space-y-2">
             <span className="text-fg block text-xs font-medium">Columns</span>
             <p className="text-muted text-xs">
@@ -403,6 +416,7 @@ function current(board: Board): Settings {
     name: board.name,
     status: board.field,
     lane: board.lane ?? "",
+    blockers: board.blockers ?? "",
     where: board.where ?? [],
     columns: board.columns.filter((c) => c.pinned).map((c) => c.value),
   };

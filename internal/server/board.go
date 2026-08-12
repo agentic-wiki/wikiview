@@ -34,8 +34,11 @@ type BoardView struct {
 	// Where is the filter deciding which entries are cards, in the `--where`
 	// spelling. Reported so an editor can show what a board is currently doing
 	// rather than making somebody read wiki.toml to find out.
-	Where   []string `json:"where"`
-	Columns []Column `json:"columns"`
+	Where []string `json:"where"`
+	// Blockers is the field naming what an entry waits on, so an editor can show
+	// which one this board reads.
+	Blockers string   `json:"blockers"`
+	Columns  []Column `json:"columns"`
 	// Fields are the frontmatter keys the board's folder uses, with their values.
 	//
 	// So choosing a status field, a lane or a filter is picking from what is
@@ -90,6 +93,15 @@ type Card struct {
 	// none. A card missing the field gets its own lane rather than joining the
 	// first one.
 	Lane string `json:"lane,omitempty"`
+	// BlockedBy is how many entries this one is waiting on, and Blocks how many
+	// are waiting on it.
+	//
+	// Two opposite facts, so two numbers. Being blocked is a reason not to start
+	// and blocking others is a reason to, and one figure could say neither.
+	// Counts rather than verdicts: nothing here knows which of a bundle's status
+	// values mean finished, so it reports the edges and leaves the judgement.
+	BlockedBy int `json:"blockedBy,omitempty"`
+	Blocks    int `json:"blocks,omitempty"`
 }
 
 func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +170,7 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 		Field:    board.Status,
 		Lane:     board.Lane,
 		Where:    board.Where,
+		Blockers: board.Blockers,
 		Declared: declared,
 	}
 
@@ -175,15 +188,19 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 	// Grouped first, then ordered, because the two rules are different: which
 	// columns exist comes from the entries, and what order they sit in comes
 	// from the config.
+	waiting, blocking := blockerEdges(v.Index, board.Blockers)
+
 	cards := map[string][]Card{}
 	for _, e := range entries {
 		value := e.Field(board.Status)
 		cards[value] = append(cards[value], Card{
-			Path:  e.Path,
-			Label: titleFromFilename(e.Path),
-			Title: e.Field("title"),
-			Type:  e.Type,
-			Lane:  laneOf(e, board.Lane),
+			Path:      e.Path,
+			Label:     titleFromFilename(e.Path),
+			Title:     e.Field("title"),
+			Type:      e.Type,
+			Lane:      laneOf(e, board.Lane),
+			BlockedBy: waiting[e.Path],
+			Blocks:    blocking[e.Path],
 		})
 	}
 
@@ -246,6 +263,40 @@ func fieldsIn(entries []*index.Entry) []Field {
 	}
 	slices.SortFunc(out, func(a, b Field) int { return strings.Compare(a.Key, b.Key) })
 	return out
+}
+
+// blockerEdges counts, per entry path, what it is waiting on and what waits on
+// it.
+//
+// Over the whole bundle rather than the board's own cards: "this is holding up
+// three things" is true whether or not those three are on the board you happen
+// to be looking at, and counting only the board's would make the same task read
+// differently from two places.
+//
+// A blocker resolves the way any frontmatter reference does — a `.md` value,
+// resolved relative to the entry, inside the bundle — so what counts as one has
+// a single rule. It is counted whether or not the file exists yet: a task
+// waiting on something nobody has written is waiting all the same, and this
+// format expects the link before the file.
+func blockerEdges(idx *index.Index, field string) (waiting, blocking map[string]int) {
+	waiting, blocking = map[string]int{}, map[string]int{}
+	if field == "" {
+		return waiting, blocking
+	}
+	for _, e := range idx.Entries {
+		for _, value := range e.FieldList(field) {
+			if !strings.HasSuffix(value, ".md") {
+				continue
+			}
+			target, outside := idx.ResolveLink(e.Path, value)
+			if outside {
+				continue
+			}
+			waiting[e.Path]++
+			blocking[target]++
+		}
+	}
+	return waiting, blocking
 }
 
 // laneOf reads a card's lane, or "" when the board has no lanes or the entry

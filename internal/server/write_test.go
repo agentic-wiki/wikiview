@@ -463,3 +463,55 @@ func TestBoardSettingsRefuseAListAsAGrouping(t *testing.T) {
 		}
 	}
 }
+
+// One drag says where in both directions, and one write puts it there. Written
+// separately, a board with lanes could leave a card in its new column and its
+// old lane — a card somewhere nobody put it.
+func TestMoveCardWritesTheLaneToo(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	code, _ := put(t, srv, "/api/card/backlog/backlog/a.md", cardRequest{
+		Value: "in-progress", Lane: "low", Version: versionOf(t, srv),
+	})
+	if code != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", code)
+	}
+	got := raw(t, srv, "backlog/a.md")
+	if !strings.Contains(got, "status: in-progress") || !strings.Contains(got, "priority: low") {
+		t.Errorf("a.md = %q", got)
+	}
+}
+
+// A drop released over a column but not over one of its bands says nothing about
+// lanes, and the card keeps the one it had. Clearing it instead would be
+// removing a field, which is a different operation.
+func TestMoveCardWithoutALaneLeavesItAlone(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	code, _ := put(t, srv, "/api/card/backlog/backlog/a.md", cardRequest{
+		Value: "done", Version: versionOf(t, srv),
+	})
+	if code != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", code)
+	}
+	if got := raw(t, srv, "backlog/a.md"); !strings.Contains(got, "priority: high") {
+		t.Errorf("the lane was disturbed: %q", got)
+	}
+}
+
+func TestMoveCardRefusesALaneOnABoardWithNone(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id   = "backlog"
+path = "/backlog"
+`)
+	before := raw(t, srv, "backlog/a.md")
+	code, _ := put(t, srv, "/api/card/backlog/backlog/a.md", cardRequest{
+		Value: "done", Lane: "low", Version: versionOf(t, srv),
+	})
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT = %d, want 422", code)
+	}
+	if raw(t, srv, "backlog/a.md") != before {
+		t.Error("a refused move wrote anyway")
+	}
+}

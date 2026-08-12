@@ -2,6 +2,68 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.3.0 — 2026-08-12
+
+### New
+
+- **Kanban boards.** Every bundle has one at `/kanban/root` without configuring anything: the whole bundle, as columns of the tasks in it. Cards come from `type: task` entries and the columns from their `status`.
+
+  Boards beyond that are declared in the bundle's own `wiki.toml`:
+
+  ```toml
+  [[tool.wikiview.board]]
+  id   = "backlog"
+  path = "/backlog"
+  ```
+
+  The `id` is the board's address, at `/kanban/backlog`. It is written rather than derived from the path, which is what lets a card live in the address too: `/kanban/backlog/backlog/design.md` splits at the first segment and everything after it is a bundle path. Two boards can sit over one folder, which is the reason ids exist at all: everything and just bugs, or the same tasks grouped two ways.
+
+  A card opens as a dialog over the board rather than navigating away from it, so the columns stay in view. It is a route, so back closes it and a link to it reopens the same thing. A link inside a card that points at another card on the same board opens that card; anything else leaves for the reader.
+
+  Columns come from the entries, and config orders them and adds the ones that are still empty. A status present in the entries but missing from `columns` still gets a column: config orders and adds, and never filters, because filtering is `where`'s job where it is visible.
+
+- **Dragging a card moves it by column and by lane at once.** One diagonal drag resolves both, so a card can be sent to another status and another lane in one gesture, and both fields are written in one pass: a board with lanes cannot end up with a card in its new column and its old lane.
+
+  Every lane appears in every column, including the ones with nothing in them, because a lane is a row. Derived per column instead, there would be nowhere to drop a card into a lane that column had not used yet.
+
+  Pointer events rather than HTML5 drag-and-drop, which never fires for touch. On touch a press-and-hold starts the drag and a press that moves first scrolls the board, so a long column is still reachable with a finger. Dragging towards the edge of the board scrolls it, or a column off the side could not be dropped into at all. The click a gesture synthesizes afterwards is swallowed, so finishing a drag does not also open what was dragged.
+
+  The move carries the version the board was read at, so a board somebody else changed underneath refuses the write and puts the card back rather than leaving the screen claiming something the file does not say.
+
+- **Cards say what they are waiting on and what is waiting on them.** Two badges, because they are opposite facts: being blocked is a reason not to start and blocking others is a reason to, and one mark would have said neither. Counts rather than verdicts, since nothing here knows which of your status values mean finished.
+
+  The field is `blockers` by default and configurable per board, because it is a workflow convention rather than part of the format. Counted across the whole bundle rather than the board, so "this is holding up three things" is true wherever those three live, and a blocker naming an entry nobody has written yet counts too.
+
+- **Boards can be created and configured from the UI.** With none declared, the Boards panel offers a folder to pick and writes the config for you. A board's settings dialog edits its name, filter, status field, lane field and columns.
+
+  Both write `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive. A value written across several lines is reported rather than edited around.
+
+  The filter is rows rather than syntax: a key, `is`/`is not`, and a value. Keys come from the frontmatter the folder actually uses, so choosing one is picking rather than recalling whether this bundle says `status` or `state`. Values are typed with those keys' values as suggestions, since a filter is often written before the entries catch up.
+
+  A setting that cannot mean anything is refused rather than written: an id that is not a word or is already taken, a folder with no cards under it, a filter that does not parse, and a list-valued field as a column or lane, which is one value where a list has many.
+
+- **Entries already read are kept for the session**, so returning to one renders it in the same frame as the navigation with no request at all. Each entry reports the version its content last moved at, so a copy taken later than that *is* the file rather than probably being it, and there is no timeout anywhere.
+
+  Per entry rather than per bundle, which is what makes it hold up while an agent edits: something else changing no longer refetches what you are reading.
+
+### Changed
+
+- The icon rail does two things, decided separately: an icon you are not on takes you there, and the icon you are on opens or closes its panel. The panel's width is remembered per section, so the tree keeps its width beside what you are reading while a list of one board does not spend any.
+
+### Fixed
+
+- The server could crash with `concurrent map writes` while a board was open and the tree refetched beside it. The engine's TOML decoder records what it has read as it goes, so it writes to what it reads from, and two requests decoding one bundle at the same moment is a fatal race. Decoding is serialised now, and the race detector runs in the quality gate that missed it.
+
+- Editing `wiki.toml` while the server was running reached nobody. The change was detected and the index rebuilt, but the version never moved, so no browser was told and the new board appeared only for whoever reloaded next.
+
+- Every version announced now says why it moved. A deleted entry has nothing pointing at it, so a version that moved because of one used to report `no entry content moved` while the bundle was visibly changing. Deletions and config edits are named, and a version with no nameable reason says so.
+
+- Rebuilding and announcing are one step. Taken apart, two overlapping rebuilds each read the version after both had landed, so one was announced twice and the one between it never at all.
+
+- A board whose filter matched nothing rendered a blank page. It says what is missing instead, and offers a board over a folder that does have tasks in it.
+
+- Switching between the reader and a board no longer plays an empty panel collapsing before the view arrives. The router defers navigation while a state update here was immediate, so the panel moved a frame early and the entry you were still reading reflowed into the new width.
+
 ## v0.2.0 — 2026-08-11
 
 ### Breaking

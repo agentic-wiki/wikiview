@@ -14,16 +14,17 @@ import (
 // offers and every key here has a rule. `id` and `path` are not among them: they
 // are what the board *is*, and changing an id silently breaks every link to it.
 type Settings struct {
-	Name    string   `json:"name"`
-	Status  string   `json:"status"`
-	Lane    string   `json:"lane"`
-	Where   []string `json:"where"`
-	Columns []string `json:"columns"`
+	Name     string   `json:"name"`
+	Status   string   `json:"status"`
+	Lane     string   `json:"lane"`
+	Blockers string   `json:"blockers"`
+	Where    []string `json:"where"`
+	Columns  []string `json:"columns"`
 }
 
 // settingKeys is the order new keys are appended in, so a table this has edited
 // reads the same way as one written by hand.
-var settingKeys = []string{"name", "where", "status", "columns", "lane"}
+var settingKeys = []string{"name", "where", "status", "columns", "lane", "blockers"}
 
 // Update rewrites a board's settings in the bundle's wiki.toml, in place.
 //
@@ -136,11 +137,12 @@ func complete(value string) bool {
 // applySettings replaces, adds and removes the setting lines inside one table.
 func applySettings(lines []string, body span, s Settings) ([]string, error) {
 	values := map[string]string{
-		"name":    optional(s.Name),
-		"status":  optional(s.Status),
-		"lane":    optional(s.Lane),
-		"where":   list(s.Where),
-		"columns": list(s.Columns),
+		"name":     optional(s.Name),
+		"status":   optional(s.Status),
+		"lane":     optional(s.Lane),
+		"blockers": optional(s.Blockers),
+		"where":    list(s.Where),
+		"columns":  list(s.Columns),
 	}
 
 	kept := make([]string, 0, body.to-body.from)
@@ -243,6 +245,8 @@ func declareRoot(path, raw string, s Settings) error {
 			writeIf(&out, key, optional(s.Status))
 		case "lane":
 			writeIf(&out, key, optional(s.Lane))
+		case "blockers":
+			writeIf(&out, key, optional(s.Blockers))
 		case "where":
 			writeIf(&out, key, list(s.Where))
 		case "columns":
@@ -285,7 +289,7 @@ func list(values []string) string {
 // validSettings refuses what cannot be written as a TOML basic string. Whether a
 // `where` expression parses is the caller's to check, with the engine's parser.
 func validSettings(s Settings) error {
-	for _, v := range append([]string{s.Name, s.Status, s.Lane}, append(s.Where, s.Columns...)...) {
+	for _, v := range append([]string{s.Name, s.Status, s.Lane, s.Blockers}, append(s.Where, s.Columns...)...) {
 		if !writable(v) {
 			return errors.New("a setting holds a character that cannot be written to wiki.toml")
 		}

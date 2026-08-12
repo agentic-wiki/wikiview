@@ -377,3 +377,70 @@ func TestBoardMarksListValuedFields(t *testing.T) {
 		}
 	}
 }
+
+// Being blocked is a reason not to start and blocking others is a reason to, so
+// a card carries both counts and the board says neither which is which.
+func TestCardsCountBlockerEdges(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	dir := srv.store.View().Index.Bundle.Dir
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// a waits on b and on one nobody has written yet; c waits on a.
+	write("backlog/a.md", "---\ntype: task\nstatus: todo\nblockers: [/backlog/b.md, /backlog/unwritten.md]\n---\nA\n")
+	write("backlog/c.md", "---\ntype: task\nstatus: blocked\nblockers: [/backlog/a.md]\n---\nC\n")
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string][2]int{}
+	for _, c := range board(t, srv, "/api/board/backlog").Columns {
+		for _, card := range c.Cards {
+			counts[card.Path] = [2]int{card.BlockedBy, card.Blocks}
+		}
+	}
+	// An unwritten blocker counts: a task waiting on something nobody has
+	// written is waiting all the same, and this format expects the link first.
+	if got := counts["/backlog/a.md"]; got != [2]int{2, 1} {
+		t.Errorf("a.md = %v, want waiting on 2 and holding up 1", got)
+	}
+	if got := counts["/backlog/b.md"]; got != [2]int{0, 1} {
+		t.Errorf("b.md = %v, want holding up 1", got)
+	}
+	if got := counts["/backlog/d.md"]; got != [2]int{0, 0} {
+		t.Errorf("d.md = %v, want no edges at all", got)
+	}
+}
+
+// The field is a workflow convention rather than something the format defines,
+// so a bundle that says `waits_on` is not wrong.
+func TestBlockerFieldIsConfigurable(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id       = "backlog"
+path     = "/backlog"
+blockers = "waits_on"
+`)
+	dir := srv.store.View().Index.Bundle.Dir
+	// Deliberately different counts, so reading the wrong field is visible rather
+	// than agreeing with the right one by accident.
+	if err := os.WriteFile(filepath.Join(dir, "backlog", "a.md"),
+		[]byte("---\ntype: task\nstatus: todo\nwaits_on: [/backlog/b.md]\nblockers: [/backlog/c.md, /backlog/d.md]\n---\nA\n"),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range board(t, srv, "/api/board/backlog").Columns {
+		for _, card := range c.Cards {
+			if card.Path == "/backlog/a.md" && card.BlockedBy != 1 {
+				t.Errorf("a.md waits on %d, want only what `waits_on` names", card.BlockedBy)
+			}
+		}
+	}
+}

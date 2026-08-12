@@ -61,6 +61,12 @@ type Board struct {
 	Columns []string `toml:"columns" json:"columns,omitempty"`
 	// Lane groups rows within the board. Empty means no lanes.
 	Lane string `toml:"lane" json:"lane,omitempty"`
+	// Blockers is the frontmatter field naming what an entry is waiting on.
+	//
+	// Configurable rather than fixed because the format does not define it: it is
+	// a workflow convention, and a bundle that says `waits_on` is not wrong. The
+	// default is what the starter workflows write.
+	Blockers string `toml:"blockers" json:"blockers,omitempty"`
 
 	// Filters is Where, parsed. Built here so a consumer never re-implements the
 	// query spelling: `index.ParseFilter` is the one that a CLI flag, a board
@@ -75,8 +81,9 @@ type Config struct {
 // Defaults applied to a board that leaves a key out. A backlog is tasks with a
 // `status`, which is what every starter workflow produces.
 var (
-	defaultWhere  = []string{"type=task"}
-	defaultStatus = "status"
+	defaultWhere    = []string{"type=task"}
+	defaultStatus   = "status"
+	defaultBlockers = "blockers"
 )
 
 // RootID names the board every bundle has without configuring one.
@@ -103,6 +110,9 @@ func Root() Board {
 func Defaults(b Board) Board {
 	if b.Status == "" {
 		b.Status = defaultStatus
+	}
+	if b.Blockers == "" {
+		b.Blockers = defaultBlockers
 	}
 	if b.Where == nil {
 		b.Where = defaultWhere
@@ -169,6 +179,9 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 		}
 		if board.Status == "" {
 			board.Status = defaultStatus
+		}
+		if board.Blockers == "" {
+			board.Blockers = defaultBlockers
 		}
 		if board.Where == nil {
 			board.Where = defaultWhere
@@ -243,7 +256,8 @@ func IsList(entries []*index.Entry, key string) bool {
 var (
 	topKeys   = map[string]bool{"board": true}
 	boardKeys = map[string]bool{
-		"path": true, "id": true, "name": true, "where": true, "status": true, "columns": true, "lane": true,
+		"path": true, "id": true, "name": true, "where": true, "status": true, "columns": true,
+		"lane": true, "blockers": true,
 	}
 )
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Board, type Card, type Column, type TreeNode } from "@/api";
 import { BoardSettings } from "@/views/BoardSettings";
-import { useDrag } from "@/views/drag";
+import { useDrag, type Drag as DragState } from "@/views/drag";
 import { EntryView } from "@/views/EntryView";
 import { Loading } from "@/views/Loading";
 import { NewBoard } from "@/views/NewBoard";
@@ -67,12 +67,18 @@ export function BoardView({
   const { drag, handlers } = useDrag<Card>((card, to) => {
     const before = current.current;
     if (!before) return;
+    // A drop says where in both directions at once, and the lane half is only
+    // as good as the band it landed in: released over a column but not over one
+    // of its bands, it says nothing about lanes and the card keeps the one it
+    // had.
+    const lane = to.lane ?? "";
+    if (to.drop === columnOf(before, card) && lane === (card.lane ?? "")) return;
     // Optimistic, because a card that sits still for a round trip after you
     // dropped it reads as a drag that failed. The write bumps the version, the
     // refetch that follows is what the screen finally agrees with, and a card
     // that snaps back is telling you the truth arrived.
-    setBoard(moved(before, card, to));
-    api.moveCard(before.id, card.path, to, version).catch(() => setBoard(before));
+    setBoard(moved(before, card, to.drop, lane));
+    api.moveCard(before.id, card.path, to.drop, lane, version).catch(() => setBoard(before));
   });
 
   /**
@@ -84,11 +90,11 @@ export function BoardView({
    */
   const reorder = useDrag<string>((value, onto) => {
     const before = current.current;
-    if (!before || value === onto) return;
+    if (!before || value === onto.drop) return;
     const order = reordered(
       before.columns.map((c) => c.value),
       value,
-      onto,
+      onto.drop,
     );
     setBoard({ ...before, columns: order.map((v) => column(before, v)) });
     api
@@ -96,6 +102,7 @@ export function BoardView({
         name: before.name,
         status: before.field,
         lane: before.lane ?? "",
+        blockers: before.blockers ?? "",
         where: before.where ?? [],
         columns: order.filter((v) => v !== ""),
       })
@@ -107,6 +114,9 @@ export function BoardView({
 
   const cards = board.columns.reduce((n, c) => n + c.cards.length, 0);
   if (cards === 0) return <EmptyBoard board={board} tree={tree} rootLabel={rootLabel} />;
+
+  // Every lane on the board, so every column can show every one of them.
+  const axis = laneAxis(board);
 
   // Every path this board holds, which is what decides whether a link inside a
   // card stays here or leaves for the reader.
@@ -129,8 +139,9 @@ export function BoardView({
       </header>
 
       {/* Columns scroll sideways as a set while each scrolls its own cards, so a
-          long column does not push the board's own height around. */}
-      <div className="flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4">
+          long column does not push the board's own height around. Marked as the
+          scroller so a drag towards the edge can bring the rest into reach. */}
+      <div data-scroller className="flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4">
         {board.columns.map((column) => (
           <BoardColumn
             key={column.value || " unset"}
@@ -140,13 +151,15 @@ export function BoardView({
             lane={board.lane}
             handlers={handlers}
             headerHandlers={reorder.handlers}
+            axis={axis}
             dragging={drag?.item.path}
-            over={(drag ?? reorder.drag)?.over === column.value}
+            over={(drag ?? reorder.drag)?.over?.drop === column.value}
+            overLane={drag?.over?.drop === column.value ? drag.over.lane : null}
           />
         ))}
       </div>
 
-      {drag && <Ghost card={drag.item} x={drag.x} y={drag.y} />}
+      {drag && <Ghost card={drag.item} drag={drag} />}
       {editing && <BoardSettings board={board} onClose={() => setEditing(false)} />}
 
       {card && (
@@ -212,8 +225,10 @@ function BoardColumn({
   lane,
   handlers,
   headerHandlers,
+  axis,
   dragging,
   over,
+  overLane,
 }: {
   /** The board id, which every card address starts with. */
   board: string;
@@ -223,15 +238,28 @@ function BoardColumn({
   handlers: (card: Card) => Record<string, unknown>;
   /** Dragging the header, which reorders the columns rather than moving a card. */
   headerHandlers: (value: string) => Record<string, unknown>;
+  /** Every lane the board has, so a column can offer one it does not yet use. */
+  axis: string[];
   /** The path of the card being dragged, so its place is left showing. */
   dragging?: string;
   /** Whether a drop here is what would happen if the pointer let go now. */
   over: boolean;
+  /** The band within this column a drop would land in, when it would land in
+   *  one, so a diagonal drag shows both halves of where it is going. */
+  overLane?: string | null;
 }) {
   // Grouped here rather than by the server, because a lane is a way of reading
   // one column rather than a property of the board's contents: the cards and
   // their lane values are the data, and this is an arrangement of them.
-  const lanes = useMemo(() => groupByLane(column.cards, lane), [column.cards, lane]);
+  //
+  // Condensed while nothing is being dragged: a band with no cards is only there
+  // to be dropped into, and a board of five lanes by five columns is otherwise
+  // mostly headings for rows that hold nothing. They appear the moment a card is
+  // in the air, which is the moment they mean something.
+  const lanes = useMemo(
+    () => groupByLane(column.cards, lane, axis).filter(([, cards]) => cards.length > 0 || dragging),
+    [column.cards, lane, axis, dragging],
+  );
 
   return (
     <section
@@ -284,7 +312,22 @@ function BoardColumn({
           <p className="text-muted px-1 py-2 text-xs">Empty</p>
         )}
         {lanes.map(([name, cards]) => (
-          <div key={name || " unset"} className="flex flex-col gap-2">
+          <div
+            key={name || " unset"}
+            // A band is a drop target of its own, so one diagonal drag says both
+            // which column and which lane. The unnamed band carries none, for
+            // the same reason the unnamed column does: dropping into it would
+            // mean removing the field.
+            data-lane={lane && name ? name : undefined}
+            className={[
+              "flex shrink-0 flex-col gap-2 rounded-md",
+              lane ? "p-1" : "",
+              // An empty band is only there to be aimed at, so it is drawn as a
+              // place rather than as a row that happens to hold nothing.
+              lane && cards.length === 0 ? "border-border/60 min-h-10 border border-dashed" : "",
+              lane && name && overLane === name ? "bg-accent/10" : "",
+            ].join(" ")}
+          >
             {lane && (
               <h3 className="text-muted px-1 pt-1 text-xs font-medium tracking-wide uppercase">
                 {name || "none"}
@@ -321,14 +364,19 @@ function BoardCard({
     // Opens beside the board rather than navigating away from it. A card is
     // something you look at while keeping the columns in view.
     //
-    // `touch-none` because a touch drag has to be a drag: left to the browser it
-    // scrolls the column instead, and there is then no way to move a card by
-    // touch at all.
+    // `draggable={false}` because this is an anchor, and an anchor is draggable
+    // by default: the browser starts its own link-drag on the first movement and
+    // stops sending pointer events, so no drag of ours ever began. Invisible to
+    // a test, since a DOM without a renderer has no native drag to start.
+    //
+    // `shrink-0` because a flex child shrinks below its content by default, and
+    // a column with more cards than height then draws them over each other.
     <Link
       {...handlers(card)}
+      draggable={false}
       to={cardHref(board, card.path)}
       className={[
-        "border-border/70 bg-bg hover:border-muted/60 block touch-none rounded-md border p-2 transition-colors",
+        "border-border/70 bg-bg hover:border-muted/60 block shrink-0 rounded-md border p-2 transition-colors",
         // Left in place rather than removed, so the column does not reflow under
         // the pointer while you are deciding where to drop.
         dragging ? "opacity-40" : "",
@@ -340,6 +388,8 @@ function BoardCard({
 }
 
 function CardFace({ card }: { card: Card }) {
+  const blockedBy = card.blockedBy ?? 0;
+  const blocks = card.blocks ?? 0;
   return (
     <>
       <span className="text-fg block truncate text-sm">{card.label}</span>
@@ -348,7 +398,70 @@ function CardFace({ card }: { card: Card }) {
       {card.title && card.title !== card.label && (
         <span className="text-muted mt-0.5 block truncate text-xs">{card.title}</span>
       )}
+      {/* Two opposite facts, so two badges: being blocked is a reason not to
+          start and blocking others is a reason to, and one mark would say
+          neither. Absent at zero, since a card with no edges has nothing to
+          report and a row of noughts on every card says nothing. */}
+      {(blockedBy > 0 || blocks > 0) && (
+        <span className="mt-1.5 flex items-center gap-1.5">
+          {blockedBy > 0 && (
+            <Badge
+              count={blockedBy}
+              className="text-amber-600 dark:text-amber-500"
+              title={`Waiting on ${blockedBy} ${blockedBy === 1 ? "entry" : "entries"}`}
+            >
+              {/* A barred circle: the universal "blocked" mark. */}
+              <circle cx="8" cy="8" r="6.25" />
+              <path d="M3.75 12.25 12.25 3.75" />
+            </Badge>
+          )}
+          {blocks > 0 && (
+            <Badge
+              count={blocks}
+              className="text-accent"
+              title={`Holding up ${blocks} ${blocks === 1 ? "entry" : "entries"}`}
+            >
+              {/* An arrow branching outward, pointing away rather than at, so the
+                  two read as opposites at a glance. */}
+              <path d="M2.75 8h6.5m0 0L6.5 5.25M9.25 8 6.5 10.75M12.5 3.25v9.5" />
+            </Badge>
+          )}
+        </span>
+      )}
     </>
+  );
+}
+
+function Badge({
+  count,
+  title,
+  className,
+  children,
+}: {
+  count: number;
+  title: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      className={["bg-fg/5 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs", className].join(" ")}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        className="size-2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        {children}
+      </svg>
+      {count}
+    </span>
   );
 }
 
@@ -360,11 +473,14 @@ function CardFace({ card }: { card: Card }) {
  * It takes no pointer events, or it would be the only thing ever found beneath
  * the cursor and every drop would land on itself.
  */
-function Ghost({ card, x, y }: { card: Card; x: number; y: number }) {
+function Ghost({ card, drag }: { card: Card; drag: DragState<Card> }) {
   return (
     <div
-      style={{ left: x, top: y }}
-      className="border-accent bg-bg pointer-events-none fixed z-50 w-64 -translate-x-4 -translate-y-4 rotate-1 rounded-md border p-2 shadow-lg"
+      // Offset by where the card was grabbed and sized as it was, so it sits
+      // under the pointer exactly where it was picked up rather than jumping to
+      // a corner the moment it lifts.
+      style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
+      className="border-accent bg-bg pointer-events-none fixed z-50 rotate-1 rounded-md border p-2 shadow-lg"
     >
       <CardFace card={card} />
     </div>
@@ -372,13 +488,14 @@ function Ghost({ card, x, y }: { card: Card; x: number; y: number }) {
 }
 
 /**
- * The board with one card in another column, before the server has said so.
+ * The board with one card moved, before the server has said so.
  *
- * Only a rearrangement of what is already on screen: the card object is
- * unchanged, because a card carries no status of its own — the column it sits in
- * is what says one.
+ * The column it sits in is what says its status, so that half is a
+ * rearrangement. Its lane is on the card, so that half is an edit to it — and
+ * an empty lane is one the drop did not name, which leaves the card's alone.
  */
-function moved(board: Board, card: Card, to: string): Board {
+function moved(board: Board, card: Card, to: string, lane: string): Board {
+  const carried = lane === "" ? card : { ...card, lane };
   const columns = board.columns.map((c) => ({
     ...c,
     cards: c.cards.filter((x) => x.path !== card.path),
@@ -388,8 +505,14 @@ function moved(board: Board, card: Card, to: string): Board {
   // Path order, which is the order the server puts cards in and the order the
   // filenames encode. Compared as plain strings for the same reason: a locale
   // comparison would land the card somewhere the next fetch disagrees with.
-  target.cards = [...target.cards, card].sort((a, b) => (a.path < b.path ? -1 : 1));
+  target.cards = [...target.cards, carried].sort((a, b) => (a.path < b.path ? -1 : 1));
   return { ...board, columns };
+}
+
+/** The column a card is currently in, so a drop that changes nothing does
+ *  nothing rather than writing what is already there. */
+function columnOf(board: Board, card: Card): string | undefined {
+  return board.columns.find((c) => c.cards.some((x) => x.path === card.path))?.value;
 }
 
 /**
@@ -521,22 +644,36 @@ function column(board: Board, value: string): Column {
 }
 
 /**
- * Cards grouped by their lane, in first-seen order, or one unnamed group when
- * the board has no lanes.
+ * The lanes a board has, in the order they are first met, with the unnamed one
+ * last.
+ *
+ * A property of the board rather than of each column: a lane is a *row*, so
+ * every column shows every one of them. Derived per column instead, a lane would
+ * exist only where a card already sits in it — and there would be nowhere to
+ * drop a card into a lane that column had not used yet, which is most of the
+ * reason to drag one.
+ *
+ * Unnamed last for the same reason the no-status column is: it is a fact about
+ * the cards in it rather than a lane anybody chose.
+ */
+function laneAxis(board: Board): string[] {
+  const seen = new Set<string>();
+  for (const column of board.columns) {
+    for (const card of column.cards) seen.add(card.lane ?? "");
+  }
+  const named = [...seen].filter((l) => l !== "");
+  return seen.has("") ? [...named, ""] : named;
+}
+
+/**
+ * Cards grouped by their lane, or one unnamed group when the board has no lanes.
  *
  * A card missing the field gets its own group rather than joining another's,
  * for the same reason a status nobody declared still gets a column: a card that
  * quietly joins a group it does not belong to is worse than one that stands
  * apart.
  */
-function groupByLane(cards: Card[], lane?: string): [string, Card[]][] {
+function groupByLane(cards: Card[], lane: string | undefined, axis: string[]): [string, Card[]][] {
   if (!lane) return [["", cards]];
-  const groups = new Map<string, Card[]>();
-  for (const card of cards) {
-    const key = card.lane ?? "";
-    const existing = groups.get(key);
-    if (existing) existing.push(card);
-    else groups.set(key, [card]);
-  }
-  return [...groups];
+  return axis.map((name) => [name, cards.filter((c) => (c.lane ?? "") === name)]);
 }

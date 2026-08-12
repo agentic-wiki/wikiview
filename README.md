@@ -77,7 +77,7 @@ Images display inline. A link to a contract or a spreadsheet sitting beside the 
 
 Light, dark and system themes, applied before the first paint.
 
-Boards, dataset tables and git actions are not built yet, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
+Boards are built: columns, lanes, drag by both at once, and a card sheet. Dataset tables and git actions are not, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
 
 ## Configuration
 
@@ -97,13 +97,14 @@ The id is what the URL carries and what tells two boards apart; every other key 
 
 ```toml
 [[tool.wikiview.board]]
-id      = "backlog"
-path    = "/backlog"
-name    = "Backlog"       # default: the folder, made readable
-where   = ["type=task"]   # default
-status  = "status"        # default: the frontmatter field the columns come from
-columns = []              # default: column keys inferred from the entries
-lane    = ""              # default: no lanes, which is to say one
+id       = "backlog"
+path     = "/backlog"
+name     = "Backlog"       # default: the folder, made readable
+where    = ["type=task"]   # default
+status   = "status"        # default: the frontmatter field the columns come from
+columns  = []              # default: column keys inferred from the entries
+lane     = ""              # default: no lanes, which is to say one
+blockers = "blockers"      # default: the field naming what an entry waits on
 ```
 
 An array of tables rather than a list of paths, because every board has its own settings — and because **two boards can be over one folder**, which is the reason ids exist. Everything and just bugs, or the same tasks grouped by `priority` beside the same tasks grouped by `area`:
@@ -135,16 +136,16 @@ GET  /api/board/{id}          one board as columns of cards, in the config's ord
 GET  /api/events              server-sent events carrying the current version
 GET  /raw/{path...}           a file as it is on disk, frontmatter and all
 PUT  /api/checkbox/{path...}  toggle a checkbox, guarded by the version you read
-PUT  /api/card/{id}/{path...} move a card to another column of that board, same guard
+PUT  /api/card/{id}/{path...} move a card to another column and lane, same guard
 POST /api/board               declare a board, appending it to the bundle's wiki.toml
 PUT  /api/board/{id}          change a board's settings in place
 ```
 
-A write carries the `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the column's value — `{"value": "done", "version": 7}` — and the board decides which frontmatter key that column stands for.
+A write carries the `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the values a drop landed on, `{"value": "done", "lane": "high", "version": 7}`, and the board decides which frontmatter keys those stand for. Both are written in one pass, and an empty `lane` leaves that field alone rather than clearing it.
 
 `POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs"}` and appends a `[[tool.wikiview.board]]` table, leaving the rest of the file alone. It refuses an id that is not a word, one already declared, and a folder with no cards under it.
 
-`PUT /api/board/{id}` takes `name`, `where`, `status`, `columns` and `lane` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it. Both writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
+`PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it. Both writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
 
 `/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. A `.env` sitting beside your notes has no key there, so it cannot be requested.
 
