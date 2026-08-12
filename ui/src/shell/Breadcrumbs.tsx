@@ -35,7 +35,7 @@ export function Breadcrumbs({
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
       <Link
         to={rootDestination(root)}
-        className="text-fg hover:text-accent shrink-0 font-medium transition-colors"
+        className="text-fg hover:text-accent caps shrink-0 font-medium transition-colors"
         title="Go to the bundle's front door"
       >
         {bundleName}

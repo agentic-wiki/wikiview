@@ -301,7 +301,7 @@ function BoardColumn({
       >
         {/* An unnamed column is the one holding cards with no such field, which
             is a fact about them rather than a status anybody wrote. */}
-        <h2 className="text-fg truncate text-sm font-medium tracking-wide uppercase">
+        <h2 className="text-fg caps truncate text-xs font-semibold">
           {column.value ? heading(column.value) : <span className="text-muted italic">no {field}</span>}
         </h2>
         {/* A pinned column stays when its status stops being used; an inferred
@@ -339,7 +339,7 @@ function BoardColumn({
             ].join(" ")}
           >
             {lane && (
-              <h3 className="text-muted px-1 pt-1 text-xs font-medium tracking-wide uppercase">
+              <h3 className="text-muted caps px-1 pt-1 text-xs font-medium">
                 {name ? heading(name) : "none"}
               </h3>
             )}

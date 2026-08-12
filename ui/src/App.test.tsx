@@ -2095,3 +2095,20 @@ test("the frontmatter divider is not shortened by the print button", async () =>
     "float-right",
   );
 });
+
+// The bundle name, a column header and a lane header are the same typographic
+// decision made in three places, so they share one rule rather than three
+// sprinklings of `uppercase tracking-wide`.
+test("capitals are set by one shared rule", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const caps = (el: Element | null | undefined) => el?.className.split(/\s+/).includes("caps");
+  expect(caps(document.querySelector("nav[aria-label='Breadcrumb'] a"))).toBe(true);
+  expect(caps(columnEl("todo").querySelector("h2"))).toBe(true);
+  expect(caps(columnEl("todo").querySelector("h3"))).toBe(true);
+
+  // Uppercasing is presentation: the text itself is still the value, which is
+  // what the section is labelled with and what gets written to wiki.toml.
+  expect(columnEl("in-progress").querySelector("h2")?.textContent).toBe("in progress");
+});

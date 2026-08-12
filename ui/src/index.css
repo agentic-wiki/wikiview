@@ -211,3 +211,25 @@ body { background: var(--color-bg); color: var(--color-fg); }
   }
   [data-print="sheet"] > [role="dialog"] > div { overflow: visible !important; }
 }
+
+/* Capitals, set properly.
+ *
+ * Uppercase letterforms are all one height, so set at the tracking that suits
+ * lowercase they read as a wall. Widening the spacing is the whole of what makes
+ * capitals look chosen rather than shouted, and `cpsp`/`case` ask the font for
+ * its own capital spacing and case-sensitive forms where it has them — ignored
+ * harmlessly where it does not.
+ *
+ * One rule rather than three sprinklings of `uppercase tracking-wide`, because
+ * the bundle name, a column header and a lane header are the same typographic
+ * decision made in three places.
+ *
+ * No typeface is shipped for this. The binary carries the whole UI and the page
+ * loads nothing from a network, so a webfont is tens of kilobytes embedded and a
+ * dependency where there is currently none — worth it for a display face if
+ * somebody wants one, and not something to add by accident. */
+.caps {
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+  font-feature-settings: "cpsp" 1, "case" 1;
+}
