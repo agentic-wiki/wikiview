@@ -8,6 +8,8 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -90,7 +92,7 @@ func (s *Store) Rebuild() (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	digest := combine(entries)
+	digest := combine(entries, configDigest(b.Dir))
 
 	files := bundleFiles(idx)
 
@@ -177,12 +179,32 @@ func entryDigests(idx *index.Index) (map[string]string, error) {
 	return out, nil
 }
 
-// combine reduces per-entry digests to one describing the whole bundle.
+// configDigest hashes wiki.toml, or "" when it cannot be read.
+//
+// The config is part of what the server answers with — which boards exist comes
+// from it — so a change to it is a change clients have to hear about. Without
+// this, declaring a board rebuilt the index and told nobody, and the board only
+// appeared for whoever reloaded next.
+//
+// Unreadable is a digest of its own rather than an error: the watcher fires
+// mid-write often enough, and a rebuild that fails over a config file the reader
+// does not need would take the bundle down for a moment.
+func configDigest(dir string) string {
+	raw, err := os.ReadFile(filepath.Join(dir, "wiki.toml"))
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// combine reduces per-entry digests and the config's to one describing the whole
+// bundle.
 //
 // Sorted, so the result does not depend on map or directory-walk order. Each
 // path is hashed alongside its digest, so renaming an entry to a name whose
 // content already exists still reads as a change.
-func combine(entries map[string]string) string {
+func combine(entries map[string]string, config string) string {
 	paths := make([]string, 0, len(entries))
 	for path := range entries {
 		paths = append(paths, path)
@@ -196,5 +218,6 @@ func combine(entries map[string]string) string {
 		h.Write([]byte(entries[path]))
 		h.Write([]byte{0})
 	}
+	h.Write([]byte(config))
 	return hex.EncodeToString(h.Sum(nil))
 }

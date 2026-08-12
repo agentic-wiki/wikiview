@@ -90,7 +90,23 @@ const RootID = "root"
 //
 // A declared board may take this id, and then it is simply that board.
 func Root() Board {
-	b := Board{Path: "/", ID: RootID, Status: defaultStatus, Where: defaultWhere}
+	return Defaults(Board{Path: "/", ID: RootID})
+}
+
+// Defaults fills in the keys a board may leave out.
+//
+// Exported because a caller sometimes needs to know what a board *would* hold
+// before there is one to ask — declaring a board over a folder with no cards in
+// it is a board that renders as an empty page, which is the hardest thing for
+// whoever declared their first one to debug.
+func Defaults(b Board) Board {
+	if b.Status == "" {
+		b.Status = defaultStatus
+	}
+	if b.Where == nil {
+		b.Where = defaultWhere
+	}
+	b.Filters = nil
 	for _, w := range b.Where {
 		if f, err := index.ParseFilter(w); err == nil {
 			b.Filters = append(b.Filters, f)
@@ -168,11 +184,37 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 			}
 			board.Filters = append(board.Filters, f)
 		}
-		if idx != nil && !hasEntries(idx, board.Path) {
+		if idx == nil {
+			continue
+		}
+		if !hasEntries(idx, board.Path) {
 			problems = append(problems, fmt.Sprintf("board %s: no entries there", board.Path))
+		}
+		// A grouping is by one value, and a list has many. Reported rather than
+		// rendered, because what it renders is every card in one nameless group —
+		// which looks like the board is broken and says nothing about why.
+		scope := idx.Filter(strings.TrimSuffix(board.Path, "/"), nil)
+		for key, field := range map[string]string{"status": board.Status, "lane": board.Lane} {
+			if field != "" && IsList(scope, field) {
+				problems = append(problems, fmt.Sprintf(
+					"board %s: %s %q holds a list, which is not something to group by", board.Path, key, field))
+			}
 		}
 	}
 	return cfg, problems
+}
+
+// IsList reports whether a frontmatter key holds a list anywhere in scope.
+//
+// Anywhere rather than everywhere: one entry with `tags: [ui, api]` is enough to
+// make grouping by `tags` undefined, whatever the others do.
+func IsList(entries []*index.Entry, key string) bool {
+	for _, e := range entries {
+		if _, ok := e.Frontmatter()[key].([]string); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // known keys, so a misspelling is reported rather than ignored.

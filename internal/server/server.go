@@ -42,6 +42,9 @@ func New(s *store.Store, ui fs.FS) *Server {
 	// The wildcard has to be the final segment, so the verb leads the path
 	// rather than trailing it.
 	srv.mux.HandleFunc("PUT /api/checkbox/{path...}", srv.handleCheckbox)
+	srv.mux.HandleFunc("PUT /api/card/{id}/{path...}", srv.handleCard)
+	srv.mux.HandleFunc("POST /api/board", srv.handleDeclareBoard)
+	srv.mux.HandleFunc("PUT /api/board/{id}", srv.handleBoardSettings)
 	// Files the bundle links to but does not index. Outside /api because it is
 	// not JSON: an <img src> and a new tab both want the file itself.
 	srv.mux.HandleFunc("GET /raw/{path...}", srv.handleRaw)
@@ -71,8 +74,8 @@ type BundleInfo struct {
 	Tools   []string `json:"tools"`   // [tool.*] tables present in wiki.toml
 	Version uint64   `json:"version"` // matches the SSE stream; compare to know you are stale
 	// Boards are the boards declared in `[tool.wikiview]`, with their defaults
-	// filled in. Declaring one decides what the UI surfaces, not what is
-	// permitted: any folder is boardable by URL whether it is listed or not.
+	// filled in. Only the ones with an id, since an id is what a board is
+	// addressed by and listing one without an address offers a dead link.
 	Boards []config.Board `json:"boards,omitempty"`
 }
 

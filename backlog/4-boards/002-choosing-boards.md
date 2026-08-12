@@ -1,7 +1,7 @@
 ---
 type: task
 title: "choosing which folders are boards"
-status: todo
+status: done
 priority: medium
 tags: [feature, boards, config]
 blockers: [/4-boards/001-board-view.md]
@@ -9,7 +9,7 @@ blockers: [/4-boards/001-board-view.md]
 
 The Boards list in the rail, and how a folder gets onto it.
 
-**Declaration is discovery, not permission.** Any folder is boardable by URL whether listed or not. `[[tool.wikiview.board]]` only decides what the UI *surfaces*: what appears in the rail and which board is offered by default. A bundle with no config still boards any folder you point at.
+**A board is declared, and declaring it is what gives it an address.** `[[tool.wikiview.board]]` decides which boards exist beyond the built-in `root`, because an address needs an id and an id is not something a folder has. So this task owns the moment a folder becomes a board — which is now a config write rather than a navigation.
 
 ## `id`, and what it unlocks
 
@@ -24,22 +24,22 @@ path  = "/backlog"
 where = ["type=task", "kind=bug"]
 ```
 
-**Optional when there is one board over a folder, required when there are several.** A bundle with a single backlog writes `path` and nothing else, and the id is `default`. The moment a second board names the same path, both need an id, and the validation already reporting duplicate paths says so instead. Requiring it from everyone would tax the common case to serve the rare one.
+**Required, and never derived.** A board without an id is reported and unreachable. Deriving one from the path is the tempting shortcut and the thing that breaks the whole scheme: the first segment of a board address would then be an id sometimes and a folder name other times, which is the ambiguity the id exists to remove.
 
-**An id is a word, not a path.** No slashes, so it cannot be confused with a folder, and it is what the URL carries:
+**An id is a word, not a path.** No slashes, so it is exactly one segment — which is what lets everything after it be an entry path, slashes and all:
 
 ```
-/kanban/bugs                       the board
-/kanban/bugs?card=/backlog/x.md    a card on it
+/kanban/bugs                          the board
+/kanban/bugs/backlog/x.md             a card on it
 ```
 
-**Ad-hoc boarding keeps the path form.** A folder nobody declared has no id, so `/kanban/<folder path>` still boards it, resolved after ids and before giving up.
+No query, no separator to invent, nothing to guess: the address splits at the first slash and both halves are unambiguous.
 
-**Which is why the card stays a query.** Putting it back in the path — `/kanban/<id>/<bundle path>` — is unambiguous only if every board has an id, and an undeclared folder does not. `/kanban/a/b` would mean either the board `a` showing card `/b` or the folder `/a/b`, and nothing in the URL says which. Deriving ids for undeclared folders does not save it: two folders named `notes` under different parents would collide, and "any folder boards by URL" is the rule that would have to give way.
+**One board needs no declaring.** `root` covers the whole bundle and always exists, so an unconfigured bundle still has a kanban to open. A declared board may claim that id, and then it is simply that board.
 
-So an id says *which board*, and the query says *which card*, and neither has to guess what the other meant.
+**Everything else is declared.** This replaces "any folder boards by URL whether listed or not", which is what made the address ambiguous: an undeclared folder has no id, so `/kanban/a/b` would have meant either the board `a` showing `/b` or the folder `/a/b`. Boarding a folder now means giving it an id, which is what the creation flow below is for.
 
-**The default id comes from the path.** A board over `/backlog` is `backlog`; the root is `root`. A constant like `default` cannot be the default, because two boards over different folders would both claim it. Two boards whose paths end in the same segment collide too, and that is reported the same way a duplicate id is: name them.
+**A name suggests an id.** "Team bugs" proposes `team-bugs`, checked for collisions against the ids already declared, and editable before it is written. A suggestion at the moment of creation, where a person can see it — never a rule that runs later against a path.
 
 **Nothing else changes.** `path` still says which folder; `id` only says which of the boards over it. A bundle that never declares two boards over one folder never sees the difference.
 
@@ -47,8 +47,10 @@ So an id says *which board*, and the query says *which card*, and neither has to
 
 Two ways in, because they suit different moments:
 
-- **From the folder you are looking at** — a "view as board" action, which is just navigation to `/kanban/<that folder>`. Nothing is configured; you are simply trying it.
+- **From the folder you are looking at** — a "make this a board" action, which proposes an id from the folder's name and writes it.
 - **From a picker** over the same tree the panel already shows, for choosing a folder you are not currently in.
+
+Both write config, because both create something with an address. That is a heavier action than the earlier design intended — "just trying it" was a navigation — and the cost of unambiguous addresses. Trying a folder out is still possible without committing: `root` boards everything, and `where` narrows it.
 
 **With no boards declared, the panel is where this starts.** Rather than a note explaining that folders board by URL, it offers to make the first one: pick a folder, and that is the whole interaction. The empty state of a feature is the one moment somebody is definitely willing to be told how it works.
 
@@ -68,10 +70,26 @@ A stored board that no longer resolves is a small problem. The reader is the def
 - **Do not fall through to another board.** Picking "the next one" lands someone on a board they did not ask for, which is worse than landing nowhere.
 - **Do not follow a rename.** `wiki move` could have relocated the folder, and matching it up would be a heuristic that is wrong exactly when it matters.
 
-Nothing is lost by forgetting: an undeclared folder is still boardable by URL, so the address bar and the tree both still reach it.
+Nothing is lost by forgetting: the board is still in the rail, and `root` still boards everything.
 
 ## Validation belongs here
 
 `wiki` never parses inside `[tool.*]` — that is the point of reserving it — so it cannot warn about a board path that does not exist or a `where` expression that does not parse. wikiview validates its own section and reports on startup.
 
-**Acceptance:** declared boards appear in the rail; any folder boards by URL; "view as board" needs no config; adding to the list appends to `wiki.toml` without disturbing the rest of the file; a bad path or filter in the config is reported rather than silently ignored.
+**Acceptance:** declared boards appear in the rail under their names; making a folder a board proposes an id, checks it against the ones already taken, and appends a table to `wiki.toml` without disturbing the rest of the file; a bad path, id or filter is reported rather than silently ignored.
+
+## Done
+
+`POST /api/board` appends a `[[tool.wikiview.board]]` table, and `config.Declare` is the writer. Appended rather than rewritten: the file is the user's, `wiki` reads it too, and it holds comments, formatting and keys this package has never heard of, none of which survives a parse-and-reserialize. Written through a temp file and a rename, keeping the permissions, so nothing ever reads a half-written config.
+
+Only `id`, `path` and `name`. Everything else has a default, and writing the defaults out is a config file full of settings nobody chose.
+
+A name is a TOML basic string with two escapes, and anything needing more is refused rather than escaped: a control character in a board name is a paste accident, and carrying an escape table for it would be carrying a second TOML implementation.
+
+**The empty state is the form.** The Boards panel with nothing declared shows the folder picker rather than a paragraph about what to hand-write, which is the step it can take for you. The same form appears on a board with no cards, under the reason it has none — `root` exists without any config, and in a bundle of notes it matches nothing, which is where a first-time reader lands.
+
+**A board that would be empty is refused**, asked with the board's own defaults so the answer is the one the board would give. An empty page is the hardest thing for whoever declared their first board to debug, and `no cards under /notes` says the thing the page could not.
+
+**A config change moves the version.** It did not before: the digest covered entries only, so declaring a board — or hand-editing `wiki.toml` — rebuilt the index and told nobody, and the change reached whoever reloaded next. wiki.toml is hashed into the digest now, so the stream carries it like any other change and nothing here needs its own refresh path.
+
+**Not here:** a "make this a board" action in the reader, and suggesting candidate folders. Both are ways to reach this form rather than things it cannot do, and the panel already reaches it from the state where it is needed.

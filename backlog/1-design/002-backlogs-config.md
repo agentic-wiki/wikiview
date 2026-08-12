@@ -20,6 +20,7 @@ The alternative is a `wikiview.toml` beside the bundle: two files describing one
 
 ```toml
 [[tool.wikiview.board]]
+id      = "backlog"
 path    = "/backlog"
 where   = ["type=task"]                              # default
 status  = "status"                                   # default
@@ -27,7 +28,9 @@ columns = ["backlog", "todo", "in-progress", "done"] # default: inferred
 lane    = "priority"                                 # default: no lanes
 ```
 
-An **array of tables**, because every setting here is per board: two backlogs in one bundle can legitimately use different status vocabularies, and a flat `backlogs = [...]` cannot carry that. `path` is the only required key; it is the board's identity.
+An **array of tables**, because every setting here is per board: two backlogs in one bundle can legitimately use different status vocabularies, and a flat `backlogs = [...]` cannot carry that.
+
+`id` and `path` are the required keys. `path` says which folder; `id` is the board's identity and its address, so two boards can sit over one folder and be told apart. It is written, never derived from the path, which is what keeps [the first segment of `/kanban/<id>/<entry path>`](../4-boards/002-choosing-boards.md) an id and only an id.
 
 **`where` reuses the `--where` spelling**, parsed by `index.ParseFilter`. This is the reason that parser was extracted from the CLI: the query syntax belongs to the query contract, so a board filter, a CLI flag, and a URL query are one language with one implementation. A bare `type` key would have been a second, weaker filter syntax that grows into the first one anyway.
 
@@ -40,9 +43,9 @@ An **array of tables**, because every setting here is per board: two backlogs in
 
 This is what keeps `columns` an ordering aid rather than a filter. Filtering is `where`'s job, where it is explicit.
 
-## Declaration is discovery, not permission
+## One board needs no declaring
 
-Any folder is boardable by URL whether listed or not. `board` entries decide what the UI *surfaces*: what appears in navigation and what is offered by default. A bundle with no config still boards any folder you point at, and the UI can still identify candidate folders itself (a folder whose entries are mostly `type: task` carrying a status key).
+`root` covers the whole bundle with every default, so a bundle with no config still has a kanban to open. `board` entries add the rest, and adding one is what gives it an address. The UI can still point at candidate folders (a folder whose entries are mostly `type: task` carrying a status key), but as a suggestion to declare, not as a board that already exists.
 
 ## Validation belongs here, not upstream
 
@@ -56,11 +59,12 @@ So **wikiview validates its own section** and reports on startup: an unknown key
 
 ## Done
 
-`internal/config` decodes `[tool.wikiview]` through `bundle.DecodeTool`, fills every default but `path`, and parses `where` with `index.ParseFilter` so the query spelling keeps one implementation. `/api/bundle` reports the boards. Startup reports the problems:
+`internal/config` decodes `[tool.wikiview]` through `bundle.DecodeTool`, fills every default but `id` and `path`, and parses `where` with `index.ParseFilter` so the query spelling keeps one implementation. `/api/bundle` reports the boards that have an address. Startup reports the problems:
 
 ```
 wiki.toml: unknown key [tool.wikiview] backlogs
 wiki.toml: unknown key in board 1: collumns
+wiki.toml: board 2 (/notes): id is required
 wiki.toml: board /gone: no entries there
 wiki.toml: board /: "nonsense" is not a filter: expected key=value or key!=value
 ```

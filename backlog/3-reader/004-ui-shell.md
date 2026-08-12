@@ -96,3 +96,19 @@ Four things that only surfaced in the building:
 - **An entry was called three different things** depending on where it was named: raw filename in the tree, de-slugified in a backlink, path segment in the breadcrumb. The display name is now computed once, on the server.
 
 Deferred as planned: markdown editing, a column browser, and creating entries from an empty folder.
+
+## What the rail does, after three goes at it
+
+Settled, because this got it wrong twice before it was right. **The icon you are not on takes you there; the icon you are on toggles its panel.** Two decisions, made separately. Tangling them is what produced both bugs: once picking a board collapsed the panel and left the hamburger as the only way back, once clicking Entries from a board did nothing because the icon was already active and the click took a shortcut past the navigation it owed you.
+
+**The panel's width is remembered per section, and navigating never changes it.** The tree earns its width beside whatever you are reading; a list of one board is not a choice, so arriving at that board does not also spend width on a chooser. One shared flag meant switching sections argued with what you last did to the panel you left.
+
+**A section switch does not animate.** Only a toggle does, because a toggle is something you did and should look like one. Animating a panel shut to reveal another played an empty pane collapsing, which reads as the app closing something you never opened.
+
+**A click that can neither navigate nor toggle opens the panel instead.** With no boards declared there is nowhere to go, and an icon that does nothing is this rail's oldest bug — it is also where the first board gets declared, so it is exactly where somebody with none needs to end up.
+
+**The section is derived from the route, never stored.** Stored, it moved a frame early: the router defers navigation into a `startTransition` while a `setState` here is urgent, so clicking Boards collapsed the panel, reflowed the entry you were still reading into the wider space, and only then swapped in the board. Two sources of truth for one fact, updated at two priorities.
+
+So navigating is the *whole* of what a rail click does when there is somewhere to go. What is kept is only what a route cannot say — which section you picked when there was nowhere to navigate, and whether a width change was a toggle — and both are scoped to the location they happened at, so moving anywhere forgets them without an effect having to run.
+
+This is the kind of bug a test can only see between two frames, so the two that cover it click with React's act environment switched off and wait exactly one microtask: long enough for urgent work, not long enough for the transition.

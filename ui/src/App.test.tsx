@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createRoot, type Root } from "react-dom/client";
 import { StrictMode, act } from "react";
-import { MemoryRouter, useNavigate } from "react-router";
+import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { App } from "@/App";
 import type { BundleInfo, Entry, TreeNode } from "@/api";
 
@@ -47,6 +47,9 @@ const tree: TreeNode = {
       ],
       children: [],
     },
+    // A folder holding nothing, so "only folders with entries are offered as
+    // boards" is a case with a fixture rather than a claim.
+    { path: "/empty", name: "empty", label: "Empty", entries: [], children: [] },
   ],
 };
 
@@ -219,8 +222,13 @@ let navigateTo: (to: string) => void = () => {
  *  click does rather than by remounting — which would hide the in-between. */
 function NavCapture() {
   navigateTo = useNavigate();
+  here = useLocation().pathname;
   return null;
 }
+
+/** Where the router currently is. The window's own location does not move under
+ *  a MemoryRouter, so asking it would be asking the wrong thing. */
+let here = "";
 
 async function mountAt(path: string): Promise<string> {
   // Tear down any previous mount first. Without this a test that mounts twice
@@ -759,21 +767,41 @@ test("a version the client already has does not trigger a refetch", async () => 
 const boardFixture = {
   path: "/notes",
   id: "notes",
+  name: "Notes",
   field: "status",
   lane: "priority",
+  where: ["type=task", "priority!=low"],
   declared: true,
+  // What the folder holds, taken before the board's own filter — which is why
+  // `type=note` is offerable even though no card is one. `title` has too many
+  // values to be a choice, so it carries none.
+  fields: [
+    { key: "priority", values: ["high", "low"] },
+    { key: "status", values: ["blocked", "todo"] },
+    // A list: it filters on membership and groups not at all.
+    { key: "tags", values: ["api", "ui"], list: true },
+    { key: "title" },
+    { key: "type", values: ["note", "task"] },
+  ],
   columns: [
     {
       value: "todo",
+      pinned: true,
       cards: [
         { path: "/notes/a.md", label: "A", title: "A Note", type: "task", lane: "high" },
         { path: "/notes/checks.md", label: "Checks", type: "task" },
       ],
     },
     // Declared and empty: the thing inference cannot do.
-    { value: "in-progress", cards: [] },
+    { value: "in-progress", pinned: true, cards: [] },
     // Nobody declared this one; it exists because an entry has it.
-    { value: "blocked", cards: [{ path: "/notes/b.md", label: "B", type: "task", lane: "low" }] },
+    {
+      value: "blocked",
+      pinned: false,
+      cards: [{ path: "/notes/b.md", label: "B", type: "task", lane: "low" }],
+    },
+    // Entries carrying no status at all, which the server appends last.
+    { value: "", pinned: false, cards: [{ path: "/notes/d.md", label: "D", type: "task" }] },
   ],
 };
 
@@ -795,7 +823,7 @@ function stubBoard() {
   };
 }
 
-// A folder boards by URL whether config mentions it or not.
+// A board id in the URL is enough to render the whole board.
 test("a kanban URL renders columns of cards", async () => {
   await mountAt("/wiki/index.md");
   const restore = stubBoard();
@@ -803,7 +831,7 @@ test("a kanban URL renders columns of cards", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const columns = [...document.querySelectorAll("main section[aria-label] h2")].map((h) => h.textContent);
-  expect(columns).toEqual(["todo", "in-progress", "blocked"]);
+  expect(columns).toEqual(["todo", "in-progress", "blocked", "no status"]);
 
   // A declared column with nothing in it still appears, and says so rather than
   // looking broken.
@@ -827,7 +855,7 @@ test("a card opens over the board, and the board stays", async () => {
   expect(document.querySelector("[role=\"dialog\"]")?.textContent).toContain("The body of the entry.");
   // …and so are the columns behind it, which is the point of a sheet.
   const columns = [...document.querySelectorAll("main section[aria-label] h2")].map((h) => h.textContent);
-  expect(columns).toEqual(["todo", "in-progress", "blocked"]);
+  expect(columns).toEqual(["todo", "in-progress", "blocked", "no status"]);
 
   restore();
 });
@@ -868,6 +896,154 @@ test("lanes group a column only when the board declares one", async () => {
   restore();
 });
 
+function columnEl(value: string): HTMLElement {
+  return [...document.querySelectorAll("main section[aria-label]")].find(
+    (s) => s.getAttribute("aria-label") === value,
+  )! as HTMLElement;
+}
+
+/** A card by the name on its face, so an assertion names what a person sees. */
+function cardIn(column: string, label: string): HTMLElement | undefined {
+  return [...columnEl(column).querySelectorAll("a")].find(
+    (a) => a.querySelector("span")?.textContent === label,
+  );
+}
+
+/**
+ * Drags one element onto another.
+ *
+ * happy-dom renders nothing, so hit testing is the one thing supplied here;
+ * every other part of the gesture is the real one, dispatched as the browser
+ * would in three separate turns.
+ */
+async function dragTo(card: Element, onto: Element | null) {
+  const real = document.elementFromPoint;
+  document.elementFromPoint = () => onto;
+  const at = (type: string, x: number, y: number) =>
+    card.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }));
+  try {
+    await act(async () => void at("pointerdown", 10, 10));
+    await act(async () => void at("pointermove", 300, 40));
+    await act(async () => void at("pointerup", 300, 40));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+  } finally {
+    document.elementFromPoint = real;
+  }
+}
+
+/** Records the writes the app makes, answering each with `status`. */
+function captureWrites(status = 200) {
+  const real = globalThis.fetch;
+  const seen: { url: string; body: Record<string, unknown> }[] = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "PUT" || init?.method === "POST") {
+      seen.push({ url: String(input), body: JSON.parse(String(init.body)) });
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: refusal, version: 9 }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  return seen;
+}
+
+/** What a refused write says, so a test can tell the server's message from one
+ *  the client made up. */
+const refusal = "the server said no, in its own words";
+
+test("dropping a card in another column moves it and writes the change", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  await dragTo(cardIn("todo", "A")!, columnEl("blocked"));
+
+  // Moved on screen before the server has said anything, which is the point of
+  // doing it optimistically.
+  expect(cardIn("blocked", "A")).toBeTruthy();
+  expect(cardIn("todo", "A")).toBeUndefined();
+
+  // The column's value, and the version the board was read at.
+  expect(writes).toEqual([
+    { url: "/api/card/notes/notes/a.md", body: { value: "blocked", version: 1 } },
+  ]);
+});
+
+// A card that snaps back is telling you the truth arrived: the write was refused
+// because somebody else had changed the entry underneath.
+test("a refused move puts the card back", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  captureWrites(409);
+
+  await dragTo(cardIn("todo", "A")!, columnEl("blocked"));
+
+  expect(cardIn("todo", "A")).toBeTruthy();
+  expect(cardIn("blocked", "A")).toBeUndefined();
+});
+
+// The browser synthesizes a click from the press and the release however far the
+// pointer travelled between them, so without suppressing it, finishing a drag on
+// a card also opens the card.
+test("finishing a drag does not also open the card", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  // Released over nothing, so the board is unchanged and the card is still the
+  // element the click would land on.
+  const card = cardIn("todo", "A")!;
+  await dragTo(card, null);
+  await act(async () => card.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(writes).toEqual([]);
+  expect(Boolean(document.querySelector('[role="dialog"]'))).toBe(false);
+});
+
+// …and the click a card exists for still works, which is what the movement
+// threshold is for.
+test("a press that does not move still opens the card", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  const card = cardIn("todo", "A")!;
+  const at = (type: string, x: number, y: number) =>
+    card.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }));
+  await act(async () => void at("pointerdown", 10, 10));
+  // A hand is not perfectly still, and a card that needs one to open is broken.
+  await act(async () => void at("pointermove", 12, 11));
+  await act(async () => void at("pointerup", 12, 11));
+  await act(async () => card.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(Boolean(document.querySelector('[role="dialog"]'))).toBe(true);
+  expect(writes).toEqual([]);
+});
+
+// Dropping onto the column of entries with no status would mean *removing* the
+// field, which is a different operation wearing the same gesture. So that column
+// is not a target at all.
+test("the column of entries with no status takes no drops", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  // No `data-drop`, so a pointer over it finds no target and the drop is a
+  // gesture that ends where it started.
+  const unset = columnEl("no status");
+  expect(unset.hasAttribute("data-drop")).toBe(false);
+
+  await dragTo(cardIn("todo", "A")!, unset);
+
+  expect(writes).toEqual([]);
+  expect(cardIn("todo", "A")).toBeTruthy();
+});
+
 // Opening the section to a list of one thing you then have to click is a step
 // that buys nothing.
 test("opening the boards section picks the first board", async () => {
@@ -885,17 +1061,18 @@ test("opening the boards section picks the first board", async () => {
 test("loading a board URL shows the boards section, not the tree", async () => {
   await mountAt("/kanban/3-reader");
 
+  // The rail, not the panel: with one board the boards panel starts closed, and
+  // which section is lit is the thing being asserted.
+  expect(activeSection()).toBe("Boards");
   const listed = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
-  expect(listed.join()).toContain("Notes"); // the boards list
   expect(listed.join()).not.toContain("Index"); // not the file tree
 });
 
-// …and reopening the section must not move you off the board you are on.
-test("reopening the section leaves the board you are on alone", async () => {
+// …and opening the section must not move you off the board you are on.
+test("opening the section leaves the board you are on alone", async () => {
   await mountAt("/kanban/3-reader");
-  // Collapse, then reopen: the section is already Boards, so the first click
-  // takes the width back and the second returns the list.
-  await act(async () => openBoardsSection());
+  // Already on Boards, so the icon is the panel's toggle rather than a way back
+  // to a board you are already looking at.
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
@@ -903,8 +1080,14 @@ test("reopening the section leaves the board you are on alone", async () => {
   const listed = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
   expect(listed.join()).toContain("Notes");
   // …and you were not moved onto it.
-  expect(window.location.pathname === "/kanban/notes").toBe(false);
+  expect(here).toBe("/kanban/3-reader");
 });
+
+/** Which rail icon is lit. */
+function activeSection(): string | null {
+  const button = document.querySelector("nav[aria-label='Sections'] button[aria-current='page']");
+  return button?.getAttribute("aria-label") ?? null;
+}
 
 /** Clicks the rail's Boards icon, the way opening that section happens. */
 function openBoardsSection() {
@@ -971,3 +1154,486 @@ function openSection(label: string) {
   if (!button) throw new Error(`no ${label} section in the rail`);
   button.click();
 }
+
+/**
+ * Mounts with the bundle declaring no boards, which is where a fresh bundle
+ * starts and where the empty states have to hold up.
+ */
+async function mountWithNoBoards(path: string, board?: unknown) {
+  await mountAt("/wiki/index.md");
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/api/bundle")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ ...bundle, boards: undefined }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (board && url.includes("/api/board/")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(board), { headers: { "content-type": "application/json" } }),
+      );
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  // A version the app has not seen refetches the bundle, which is how the new
+  // stub takes effect without remounting. The first message is the stream's
+  // greeting, which the app deliberately does not act on.
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => navigateTo(path));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+}
+
+// The empty state of a feature is the one moment somebody will read how it
+// works, so it shows the form rather than a note about what to hand-write into
+// wiki.toml.
+test("with no boards declared the panel offers to make one", async () => {
+  await mountWithNoBoards("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const panel = document.querySelector("aside")!;
+  expect(Boolean(panel.querySelector("form"))).toBe(true);
+  // The folders that hold entries, and only those.
+  const options = [...panel.querySelectorAll("option")].map((o) => o.getAttribute("value"));
+  expect(options).toEqual(["/", "/notes"]);
+  // The id is suggested from the name rather than left for you to invent.
+  expect(panel.querySelector<HTMLInputElement>("input[aria-label='Board id']")?.value).toBe("my-kb");
+});
+
+// The board `root` matches nothing in a bundle of notes, and it used to render a
+// blank page: the server sent `columns: null` and the view read a list it had
+// been promised.
+test("a board with nothing on it says why, and offers a way out", async () => {
+  const empty = { path: "/", id: "root", name: "My kb", field: "status", declared: false, columns: [] };
+  await mountWithNoBoards("/kanban/root", empty);
+
+  const main = document.querySelector("main")!;
+  expect(main.textContent).toContain("Nothing on this board");
+  // The reason, which is not guessable from anything on screen.
+  expect(main.textContent).toContain("type: task");
+  expect(Boolean(main.querySelector("form"))).toBe(true);
+});
+
+// Declaring a board is a config write, and the only thing worth asserting is
+// that it goes out as one and lands you on the board it made.
+test("declaring a board writes it and opens it", async () => {
+  await mountWithNoBoards("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const writes = captureWrites();
+  const panel = document.querySelector("aside")!;
+  await act(async () => submit(panel));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // The id the form suggested is the id that gets written, and the folder and
+  // name go with it.
+  expect(writes).toEqual([{ url: "/api/board", body: { id: "my-kb", path: "/", name: "My kb" } }]);
+  expect(here).toBe("/kanban/my-kb");
+});
+
+// The server owns which ids are valid and which are taken, so a refusal is shown
+// rather than second-guessed here — and nothing navigates.
+test("a refused board keeps you on the form and says why", async () => {
+  await mountWithNoBoards("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  captureWrites(422);
+  const panel = document.querySelector("aside")!;
+  await act(async () => submit(panel));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(panel.textContent).toContain(refusal);
+  expect(here).toBe("/wiki/index.md");
+});
+
+/**
+ * Submits the form inside an element.
+ *
+ * Only the submit, never the typing: React 19 does not act on an `input` event
+ * dispatched under happy-dom, so a field's value here is whatever the form put
+ * there. Which is the part with a rule in it — the id is suggested rather than
+ * demanded — and the assertions below are about that.
+ */
+function submit(within: Element) {
+  within.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+}
+
+// A list with no way to add to it means editing wiki.toml by hand for the second
+// board, which is the dead end the empty state already avoids.
+test("the boards list can add another", async () => {
+  // From a board, where the icon is the panel's toggle: with one board declared
+  // the boards panel starts closed, so one click is what opens the list.
+  await mountAt("/kanban/notes");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const panel = document.querySelector("aside")!;
+  expect(Boolean(panel.querySelector("form"))).toBe(false); // the list, not a form
+
+  const add = [...panel.querySelectorAll("button")].find((b) => b.textContent?.includes("New board"))!;
+  await act(async () => add.click());
+  expect(Boolean(panel.querySelector("form"))).toBe(true);
+});
+
+// Renaming a status in the entries makes an inferred column vanish and leaves a
+// pinned one empty, so showing them the same way makes the config feel haunted.
+test("pinned columns are told apart from the ones the entries happen to have", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const marked = (value: string) => Boolean(columnEl(value).querySelector("header [title*='Pinned']"));
+  expect(marked("todo")).toBe(true);
+  expect(marked("in-progress")).toBe(true);
+  expect(marked("blocked")).toBe(false);
+});
+
+// Order is a thing only config has: inference gives the columns that exist and
+// nothing more. So reordering writes the whole list, and pins it.
+test("dragging a column header writes the new order", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  await dragTo(columnEl("blocked").querySelector("header")!, columnEl("todo"));
+
+  expect(writes).toEqual([
+    {
+      url: "/api/board/notes",
+      body: {
+        name: "Notes",
+        status: "status",
+        lane: "priority",
+        where: ["type=task", "priority!=low"],
+        // The unnamed column is left out: it is not a status anybody declared.
+        columns: ["blocked", "todo", "in-progress"],
+      },
+    },
+  ]);
+  // And on screen at once, rather than after a round trip.
+  const order = [...document.querySelectorAll("main section[aria-label]")].map((s) =>
+    s.getAttribute("aria-label"),
+  );
+  expect(order).toEqual(["blocked", "todo", "in-progress", "no status"]);
+});
+
+// The unnamed column is not a status anybody wrote, so there is no place for it
+// in a list of declared ones — and nothing to drag.
+test("the column of entries with no status is not draggable", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const writes = captureWrites();
+
+  await dragTo(columnEl("no status").querySelector("header")!, columnEl("todo"));
+
+  expect(writes).toEqual([]);
+});
+
+test("the settings form opens seeded from the board", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Status field']")?.value).toBe("status");
+  expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Lane field']")?.value).toBe("priority");
+
+  // Every column on the board is offered, pinned or not, with the pinned ones
+  // ticked — so pinning is a toggle rather than retyping what is on screen.
+  const boxes = [...dialog.querySelectorAll<HTMLInputElement>("li input[type=checkbox]")];
+  expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
+});
+
+// Recalling whether this bundle spells it `status` or `state` is the mistake
+// worth designing out: a typo there is a board with one column.
+test("the field pickers offer the keys the folder actually has", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  // The first of them: the filter has a row per condition, and they all offer
+  // the same keys.
+  const options = (label: string) =>
+    [...(dialog.querySelector(`[aria-label='${label}']`)?.querySelectorAll("option") ?? [])].map(
+      (o) => o.textContent,
+    );
+
+  // `tags` is missing from both: a column or a lane is one value, and a list has
+  // many. It is still there to filter on, where membership is what it means.
+  expect(options("Status field")).toEqual(["priority", "status", "title", "type"]);
+  expect(options("Filter key")).toEqual(["priority", "status", "tags", "title", "type"]);
+  // A lane is allowed to be none, and the status field is not.
+  expect(options("Lane field")).toEqual(["— no lanes —", "priority", "status", "title", "type"]);
+});
+
+// `key=value` is a small language, but one nobody should have to be told: both
+// halves are known, and a mistyped one empties the board rather than complaining.
+test("the filter reads as rows, and a row can be removed", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  const cells = (label: string) =>
+    [...dialog.querySelectorAll<HTMLSelectElement | HTMLInputElement>(`[aria-label='${label}']`)].map(
+      (s) => s.value,
+    );
+
+  // `!=` is read before `=`, which is the engine's own order: the other way
+  // round, `priority!=low` would be the key `priority!` equal to `low`.
+  expect(cells("Filter key")).toEqual(["type", "priority"]);
+  expect(cells("Filter operator")).toEqual(["=", "!="]);
+  expect(cells("Filter value")).toEqual(["task", "low"]);
+
+  // A value is typed, not picked: a filter is often written before the entries
+  // catch up, and a board you cannot describe until something matches it is a
+  // board you cannot set up. What the key already holds is a suggestion.
+  const boxes = [...dialog.querySelectorAll<HTMLInputElement>("[aria-label='Filter value']")];
+  expect(boxes.map((b) => b.tagName)).toEqual(["INPUT", "INPUT"]);
+  const suggestions = boxes.map((b) =>
+    [...(document.getElementById(b.getAttribute("list")!)?.querySelectorAll("option") ?? [])].map(
+      (o) => o.getAttribute("value"),
+    ),
+  );
+  expect(suggestions[0]).toEqual(["note", "task"]);
+  expect(suggestions[1]).toEqual(["high", "low"]);
+  // Empty is a value — `status=` matches an entry with no status — which is the
+  // one thing an empty box does not say for itself.
+  expect(boxes[0]?.getAttribute("placeholder")).toBe("(nothing)");
+
+  const writes = captureWrites();
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 1']")!.click());
+  expect(cells("Filter key")).toEqual(["priority"]);
+
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // The rows round-trip back to the spelling they came from.
+  expect(writes[0]?.body.where).toEqual(["priority!=low"]);
+});
+
+test("saving the settings form writes them", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const writes = captureWrites();
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(writes).toEqual([
+    {
+      url: "/api/board/notes",
+      body: {
+        name: "Notes",
+        status: "status",
+        lane: "priority",
+        where: ["type=task", "priority!=low"],
+        columns: ["todo", "in-progress"],
+      },
+    },
+  ]);
+  // Saved, so it closes.
+  expect(Boolean(document.querySelector("[aria-label='Board settings']"))).toBe(false);
+});
+
+// The server owns whether a filter parses and whether the table can be edited at
+// all, so a refusal is shown rather than second-guessed — and the form stays up
+// with what you typed still in it.
+test("a refused save keeps the form open and says why", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  captureWrites(422);
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(dialog.textContent).toContain(refusal);
+  expect(Boolean(document.querySelector("[aria-label='Board settings']"))).toBe(true);
+});
+
+/** Clicks the board's Settings button. */
+function openSettings() {
+  const button = [...document.querySelectorAll("main header button")].find(
+    (b) => b.textContent === "Settings",
+  ) as HTMLElement | undefined;
+  if (!button) throw new Error("no Settings button on the board");
+  button.click();
+}
+
+// A hand-written wiki.toml can hold a `where` that is not a filter. Reshaping it
+// into something that parses would change what the board means without saying
+// so, and the server is the one that reports it.
+test("a condition that is not a filter is shown as written", async () => {
+  await mountAt("/wiki/index.md");
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/api/board/") && init?.method === undefined) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ ...boardFixture, where: ["type=task", "nonsense"] }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  await act(async () => navigateTo("/kanban/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  // One editable row, and the other shown as it was written rather than as a key
+  // with an empty value.
+  expect([...dialog.querySelectorAll("[aria-label='Filter key']")].length).toBe(1);
+  expect(dialog.querySelector("[title='Not a filter']")?.textContent).toBe("nonsense");
+
+  // And it goes back exactly as it came, so the server refuses it by name.
+  const writes = captureWrites(422);
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(writes[0]?.body.where).toEqual(["type=task", "nonsense"]);
+});
+
+// A text box beside a button: Enter is that button, not the dialog's Save. A
+// nested form would be the other way to say so, and HTML does not allow one.
+test("enter in the new-column box adds the column rather than saving", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const writes = captureWrites();
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  const box = dialog.querySelector<HTMLInputElement>("[aria-label='New column']")!;
+  const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  await act(async () => void box.dispatchEvent(enter));
+
+  expect(enter.defaultPrevented).toBe(true);
+  expect(writes).toEqual([]);
+  expect(Boolean(document.querySelector("[aria-label='Board settings']"))).toBe(true);
+});
+
+// The complaint this rule exists for: switching section used to animate the
+// panel shut, so clicking Boards from the reader played an empty pane collapsing
+// — the app closing something you never opened.
+test("switching section swaps the panel rather than animating one shut", async () => {
+  await mountAt("/wiki/index.md");
+  const panel = document.querySelector("aside")!;
+  expect(panel.className).toContain("w-64"); // the tree, open
+
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // Closed, because one board is not a list worth width — and got there without
+  // a transition to watch.
+  expect(panel.className).toContain("w-0");
+  expect(panel.className).not.toContain("transition");
+
+  // A toggle is something you did, so that one animates.
+  await act(async () => openBoardsSection());
+  expect(panel.className).toContain("w-64");
+  expect(panel.className).toContain("transition");
+});
+
+// Each section remembers its own width. One shared flag meant switching section
+// argued with what you last did to the panel you left.
+test("the panel remembers what each section was doing", async () => {
+  await mountAt("/kanban/notes");
+  const panel = document.querySelector("aside")!;
+
+  // Open the boards list, then go to the reader and back.
+  await act(async () => openBoardsSection());
+  expect(panel.className).toContain("w-64");
+  await act(async () => openSection("Entries"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(panel.className).toContain("w-64"); // the tree, which is open by default
+  await act(async () => openSection("Entries")); // …and now closed
+  expect(panel.className).toContain("w-0");
+
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // Boards is still open, rather than inheriting what Entries was just told.
+  expect(panel.className).toContain("w-64");
+});
+
+// A bundle with no boards has nowhere to navigate, so the click has to be worth
+// making: the panel is where the first board gets declared.
+test("with no boards the icon still opens the panel", async () => {
+  await mountWithNoBoards("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const panel = document.querySelector("aside")!;
+  expect(panel.className).toContain("w-64");
+  expect(Boolean(panel.querySelector("form"))).toBe(true);
+});
+
+// The router defers navigation into a transition; a setState here is urgent. So
+// a stored section moved the panel a frame early: the entry you were still
+// looking at reflowed into the new width, and only then became a board.
+//
+// Clicked with the act environment off, deliberately: inside one, React queues
+// urgent work alongside the transition and flushes both together, which is
+// exactly the difference this is trying to see.
+test("the panel does not move until the view does", async () => {
+  await mountAt("/wiki/index.md");
+  const panel = document.querySelector("aside")!;
+  const main = document.querySelector("main")!;
+  expect(panel.className).toContain("w-64");
+
+  const flags = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  flags.IS_REACT_ACT_ENVIRONMENT = false;
+  try {
+    openBoardsSection();
+    // React flushes urgent work in a microtask and schedules transitions on a
+    // later task, so this is the moment between the two — the frame the bug was
+    // visible in.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The reader is still on screen, so the panel it sits beside must be too.
+    expect(panel.className).toContain("w-64");
+    expect(main.textContent).toContain("The body of the entry.");
+  } finally {
+    flags.IS_REACT_ACT_ENVIRONMENT = true;
+  }
+
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // And now both, together.
+  expect(panel.className).toContain("w-0");
+  expect(main.textContent).not.toContain("The body of the entry.");
+});
+
+// And the same the other way: the panel used to open beside the board before
+// the reader arrived, so the kanban redrew inside the narrower width first.
+test("the panel does not open until the reader arrives", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const panel = document.querySelector("aside")!;
+  const main = document.querySelector("main")!;
+  expect(panel.className).toContain("w-0"); // one board, so no list
+
+  const flags = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  flags.IS_REACT_ACT_ENVIRONMENT = false;
+  try {
+    openSection("Entries");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(panel.className).toContain("w-0");
+    expect(document.querySelectorAll("main section[aria-label]").length).toBeGreaterThan(0);
+  } finally {
+    flags.IS_REACT_ACT_ENVIRONMENT = true;
+  }
+
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(panel.className).toContain("w-64");
+  expect(main.textContent).toContain("The Front Door");
+});

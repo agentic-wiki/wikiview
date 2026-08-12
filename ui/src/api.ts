@@ -147,15 +147,12 @@ export interface TreeNode {
 }
 
 /**
- * A board a bundle declares in `[tool.wikiview]`.
- *
- * Declaring one decides what the UI offers, not what is allowed: any folder
- * boards by URL whether it is listed here or not.
+ * A board a bundle declares in `[tool.wikiview]`, beyond the built-in `root`.
  */
 export interface BoardConfig {
   path: string;
-  /** What the URL carries. Defaults to the folder's last segment, and is what
-   *  tells two boards over the same folder apart. */
+  /** What the URL carries, and what tells two boards over one folder apart.
+   *  Declared in the config, never derived from the path. */
   id: string;
   /** What to call it on screen: the config's name, or the folder made readable. */
   name: string;
@@ -177,7 +174,32 @@ export interface Card {
 export interface Column {
   /** The status this column holds; empty for cards carrying none. */
   value: string;
+  /** True for a column the config declares, false for one that exists only
+   *  because an entry has that status. Renaming the status makes the second
+   *  vanish and leaves the first empty, so they cannot look the same. */
+  pinned: boolean;
   cards: Card[];
+}
+
+/** A frontmatter key the board's folder uses, and what it holds. */
+export interface Field {
+  key: string;
+  /** The distinct values, absent for a key with too many to be a choice — a
+   *  title has as many as there are entries. */
+  values?: string[];
+  /** True for a key holding a list. It filters — `tags=bug` matches on
+   *  membership — and does not group, since a column or a lane is one value. */
+  list?: boolean;
+}
+
+/** What a board's settings form owns. Not `id` or `path`: those are what the
+ *  board is, and changing an id breaks every link to it. */
+export interface BoardSettings {
+  name: string;
+  status: string;
+  lane: string;
+  where: string[];
+  columns: string[];
 }
 
 /**
@@ -195,8 +217,14 @@ export interface Board {
   field: string;
   /** The field rows group by, absent when the board has no lanes. */
   lane?: string;
+  /** The filter deciding which entries are cards, in the `--where` spelling. */
+  where: string[];
   columns: Column[];
-  /** False for a folder boarded by URL without config. */
+  /** The frontmatter keys the board's folder uses, so choosing a field or a
+   *  filter is picking from what is there. Taken before the board's own filter,
+   *  which is the filter you would be replacing. */
+  fields: Field[];
+  /** False for the built-in `root`, which no config mentions. */
   declared: boolean;
 }
 
@@ -220,9 +248,12 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function put<T>(path: string, body: unknown): Promise<T> {
+const put = <T,>(path: string, body: unknown) => write<T>("PUT", path, body);
+const post = <T,>(path: string, body: unknown) => write<T>("POST", path, body);
+
+async function write<T>(method: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
-    method: "PUT",
+    method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -255,6 +286,39 @@ export const api = {
    */
   setCheckbox: (path: string, line: number, done: boolean, version: number) =>
     put<{ version: number }>("/api/checkbox/" + encode(path), { line, done, version }),
+
+  /**
+   * Moves a card to another column.
+   *
+   * The column's value, not the field it is stored in: the board says which
+   * frontmatter key its columns are made of, and it says so on the server where
+   * the config is parsed. Same version guard as a checkbox, refused the same way.
+   */
+  moveCard: (board: string, path: string, value: string, version: number) =>
+    put<{ version: number }>("/api/card/" + encodeURIComponent(board) + "/" + encode(path), {
+      value,
+      version,
+    }),
+
+  /**
+   * Declares a board, by appending it to the bundle's `wiki.toml`.
+   *
+   * No version guard, unlike the writes above: those are addressed by something
+   * that only means anything against the content it was read from, and this
+   * appends a board that did not exist.
+   */
+  declareBoard: (board: { id: string; path: string; name: string }) =>
+    post<{ version: number }>("/api/board", board),
+
+  /**
+   * Changes what a board is: its filter, its fields, its columns.
+   *
+   * All of them at once rather than one key at a time, because clearing a
+   * setting is how you say a board has no lanes — and a partial update would
+   * have to guess whether an absent key means "unchanged" or "cleared".
+   */
+  boardSettings: (id: string, settings: BoardSettings) =>
+    put<{ version: number }>("/api/board/" + encodeURIComponent(id), settings),
 };
 
 /**

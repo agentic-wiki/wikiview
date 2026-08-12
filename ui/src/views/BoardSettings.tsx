@@ -1,0 +1,443 @@
+import { useEffect, useState } from "react";
+import { api, type Board, type BoardSettings as Settings, type Field as FieldInfo } from "@/api";
+
+/**
+ * Editing what a board is, rather than what is on it.
+ *
+ * Everything a board reads has always been configurable; what was missing was a
+ * way to change it without leaving for `wiki.toml`. Saving rewrites only these
+ * keys in the board's own table and leaves every other byte of the file alone.
+ */
+export function BoardSettings({
+  board,
+  onClose,
+}: {
+  board: Board;
+  onClose: () => void;
+}) {
+  const [settings, setSettings] = useState<Settings>(() => current(board));
+  const [adding, setAdding] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const set = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
+
+  // Every column on the board, pinned or not, so pinning is a toggle rather than
+  // retyping a status that is already on screen.
+  const known = [...new Set([...board.columns.map((c) => c.value), ...settings.columns])].filter(
+    (v) => v !== "",
+  );
+
+  // A column or a lane is one value, and a list has many, so a list-valued key
+  // is not offered as either. It stays in the filter, where membership is
+  // exactly what `tags=bug` means.
+  const groupable = board.fields.filter((f) => !f.list);
+
+  const canAdd = adding !== "" && !settings.columns.includes(adding);
+  const addColumn = () => {
+    if (!canAdd) return;
+    set({ columns: [...settings.columns, adding] });
+    setAdding("");
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.boardSettings(board.id, settings);
+      onClose();
+    } catch (err) {
+      // The server owns whether a filter parses and whether the table can be
+      // edited at all, so its words are the ones worth showing.
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-[8vh]"
+      onClick={onClose}
+      role="presentation"
+    >
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-label="Board settings"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={save}
+        className="border-border bg-bg flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border shadow-2xl"
+      >
+        <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
+          <span className="text-fg text-sm font-medium">Board settings</span>
+          <span className="text-muted ml-auto truncate font-mono text-xs">{board.path}</span>
+        </header>
+
+        <div className="min-h-0 grow space-y-5 overflow-y-auto p-4 text-sm">
+          <Field label="Name">
+            <input
+              value={settings.name}
+              onChange={(e) => set({ name: e.target.value })}
+              placeholder={board.name}
+              className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1"
+            />
+          </Field>
+
+          <Filters
+            rules={settings.where.map(parseRule)}
+            fields={board.fields}
+            onChange={(rules) => set({ where: rules.map(ruleText) })}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Columns from">
+              <KeyPicker
+                value={settings.status}
+                fields={groupable}
+                label="Status field"
+                onChange={(status) => set({ status })}
+              />
+            </Field>
+            <Field label="Lanes from">
+              <KeyPicker
+                value={settings.lane}
+                fields={groupable}
+                label="Lane field"
+                none="— no lanes —"
+                onChange={(lane) => set({ lane })}
+              />
+            </Field>
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-fg block text-xs font-medium">Columns</span>
+            <p className="text-muted text-xs">
+              Pinned columns keep their order and stay when empty.
+            </p>
+            {/* Capped, because a status field with thirty values would otherwise
+                push everything else off the dialog. */}
+            <ul className="max-h-40 space-y-1 overflow-y-auto">
+              {known.map((value) => (
+                <li key={value}>
+                  <label className="hover:bg-fg/5 flex items-center gap-2 rounded-md px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={settings.columns.includes(value)}
+                      onChange={(e) =>
+                        set({
+                          columns: e.target.checked
+                            ? [...settings.columns, value]
+                            : settings.columns.filter((c) => c !== value),
+                        })
+                      }
+                    />
+                    <span className="text-fg font-mono text-xs">{value}</span>
+                    {!board.columns.some((c) => c.value === value) && (
+                      <span className="text-muted ml-auto text-xs">nothing has it yet</span>
+                    )}
+                  </label>
+                </li>
+              ))}
+            </ul>
+
+            {/* A column nothing is in yet is the whole reason to declare one, and
+                inference can never produce it. */}
+            <div className="flex gap-2">
+              <input
+                value={adding}
+                onChange={(e) => setAdding(e.target.value)}
+                // Enter adds the column rather than saving the dialog, which is
+                // what a text box beside a button is for. A nested form would be
+                // the other way to say this, and HTML does not allow one.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addColumn();
+                  }
+                }}
+                placeholder="in-progress"
+                aria-label="New column"
+                className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-2 py-1 font-mono text-xs"
+              />
+              <button
+                type="button"
+                disabled={!canAdd}
+                onClick={addColumn}
+                className="border-border text-muted hover:text-fg shrink-0 rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+              >
+                Add column
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+
+        <footer className="border-border flex shrink-0 items-center gap-2 border-t px-4 py-3">
+          <span className="text-muted text-xs">Writes to the bundle's wiki.toml.</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted hover:text-fg ml-auto rounded-md px-3 py-1.5 text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="bg-accent rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+/**
+ * Picking a frontmatter key.
+ *
+ * A list of what the folder actually has, because the alternative is recalling
+ * whether this bundle spells it `status` or `state`, and a typo there is a board
+ * with one column. The current value is always an option even when nothing has
+ * it: a field can be configured before the entries catch up, and dropping it
+ * from the list would silently change the board on the next save.
+ */
+function KeyPicker({
+  value,
+  fields,
+  label,
+  none,
+  onChange,
+}: {
+  value: string;
+  fields: FieldInfo[];
+  label: string;
+  /** What to call the empty option, for a field that is allowed to have none. */
+  none?: string;
+  onChange: (value: string) => void;
+}) {
+  const keys = fields.map((f) => f.key);
+  return (
+    <select
+      value={value}
+      aria-label={label}
+      onChange={(e) => onChange(e.target.value)}
+      className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
+    >
+      {none !== undefined && <option value="">{none}</option>}
+      {value !== "" && !keys.includes(value) && <option value={value}>{value} (nothing has it)</option>}
+      {keys.map((key) => (
+        <option key={key} value={key}>
+          {key}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * The board's filter, as rows rather than a line of syntax to get right.
+ *
+ * `key=value` is a small language, but it is one nobody should have to be told:
+ * the keys and the values are both known, and a mistyped one silently empties
+ * the board rather than complaining. Rows also make removing a condition a
+ * click, which is the thing most often wanted and the hardest to do by editing
+ * text.
+ */
+function Filters({
+  rules,
+  fields,
+  onChange,
+}: {
+  rules: Rule[];
+  fields: FieldInfo[];
+  onChange: (rules: Rule[]) => void;
+}) {
+  const at = (i: number, patch: Partial<Rule>) =>
+    onChange(rules.map((r, j) => (i === j ? { ...r, ...patch, raw: undefined } : r)));
+
+  return (
+    <div className="space-y-2">
+      <span className="text-fg block text-xs font-medium">A card is an entry matching</span>
+      <ul className="space-y-1">
+        {rules.map((rule, i) => (
+          <li key={i} className="flex items-center gap-1">
+            {/* A condition nobody here can read is shown as it was written rather
+                than reshaped into something that means something else. */}
+            {rule.raw !== undefined ? (
+              <span className="text-fg grow truncate font-mono text-xs" title="Not a filter">
+                {rule.raw}
+              </span>
+            ) : (
+              <>
+                <select
+                  value={rule.key}
+                  aria-label="Filter key"
+                  onChange={(e) => at(i, { key: e.target.value, value: "" })}
+                  className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-1 py-1 font-mono text-xs"
+                >
+                  {!fields.some((f) => f.key === rule.key) && (
+                    <option value={rule.key}>{rule.key}</option>
+                  )}
+                  {fields.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.key}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={rule.negated ? "!=" : "="}
+                  aria-label="Filter operator"
+                  onChange={(e) => at(i, { negated: e.target.value === "!=" })}
+                  className="border-border bg-bg text-fg shrink-0 rounded-md border px-1 py-1 text-xs"
+                >
+                  <option value="=">is</option>
+                  <option value="!=">is not</option>
+                </select>
+                <ValuePicker
+                  value={rule.value}
+                  values={fields.find((f) => f.key === rule.key)?.values}
+                  id={"filter-values-" + i}
+                  onChange={(value) => at(i, { value })}
+                />
+              </>
+            )}
+            <button
+              type="button"
+              aria-label={"Remove filter " + (i + 1)}
+              onClick={() => onChange(rules.filter((_, j) => j !== i))}
+              className="text-muted hover:text-fg shrink-0 px-1 text-xs"
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        disabled={fields.length === 0}
+        onClick={() => onChange([...rules, { key: fields[0]?.key ?? "", negated: false, value: "" }])}
+        className="border-border text-muted hover:text-fg rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+      >
+        Add filter
+      </button>
+      {rules.length === 0 && (
+        // The one state the heading does not describe on its own: with nothing
+        // listed, "matching" reads as a question rather than an answer.
+        <p className="text-muted text-xs">Nothing, so every entry in the folder is a card.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A filter's value: typed, with what the key already holds as suggestions.
+ *
+ * Not a list to pick from, unlike the key. A filter is often written *before*
+ * the entries catch up — `status=in-review` on the day you invent that status —
+ * and a board you cannot describe until something already matches it is a board
+ * you cannot set up.
+ *
+ * The placeholder carries the one thing an empty box does not say for itself:
+ * empty is a value, and `status=` matches an entry that has no status.
+ */
+function ValuePicker({
+  value,
+  values,
+  id,
+  onChange,
+}: {
+  value: string;
+  values?: string[];
+  /** Ties the input to its own suggestion list, since several sit on one form. */
+  id: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <input
+        value={value}
+        aria-label="Filter value"
+        list={values ? id : undefined}
+        placeholder="(nothing)"
+        onChange={(e) => onChange(e.target.value)}
+        className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-1 py-1 font-mono text-xs"
+      />
+      {values && (
+        <datalist id={id}>
+          {values.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      )}
+    </>
+  );
+}
+
+/** A labelled input. The label says what it is; a sentence under every one of
+ *  them is a wall of text explaining boxes that were already labelled. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-fg block text-xs font-medium">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** A board's settings as they stand, which is what the form starts from. */
+function current(board: Board): Settings {
+  return {
+    name: board.name,
+    status: board.field,
+    lane: board.lane ?? "",
+    where: board.where ?? [],
+    columns: board.columns.filter((c) => c.pinned).map((c) => c.value),
+  };
+}
+
+/** One condition of a board's filter. `raw` is set only when the stored text is
+ *  not one, which a hand-written wiki.toml can hold. */
+interface Rule {
+  key: string;
+  negated: boolean;
+  value: string;
+  raw?: string;
+}
+
+/**
+ * A stored `where` entry as a row.
+ *
+ * `!=` before `=`, which is the engine's own order — the other way round, `a!=b`
+ * would read as the key `a!` equal to `b`.
+ */
+function parseRule(text: string): Rule {
+  for (const [op, negated] of [
+    ["!=", true],
+    ["=", false],
+  ] as const) {
+    const at = text.indexOf(op);
+    if (at > 0) {
+      return { key: text.slice(0, at), negated, value: text.slice(at + op.length) };
+    }
+  }
+  // Not a filter. Kept as written and sent back as written, so the server says
+  // so rather than this quietly turning it into something that parses.
+  return { key: "", negated: false, value: "", raw: text };
+}
+
+function ruleText(rule: Rule): string {
+  return rule.raw ?? rule.key + (rule.negated ? "!=" : "=") + rule.value;
+}

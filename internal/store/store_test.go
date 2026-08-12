@@ -308,3 +308,56 @@ func TestViewIsNotMutatedByALaterRebuild(t *testing.T) {
 		t.Error("the held view followed the store forward instead of staying still")
 	}
 }
+
+// wiki.toml is part of what the server answers with — which boards exist comes
+// from it — so a change to it has to reach the clients watching. Without this,
+// declaring a board rebuilt the index and told nobody: the board appeared only
+// for whoever happened to reload next.
+func TestVersionMovesWhenTheConfigChanges(t *testing.T) {
+	dir := writeBundle(t)
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := s.View().Version
+
+	write(t, dir, "wiki.toml", "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"notes\"\npath = \"/notes\"\n")
+	changed, err := s.Rebuild()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || s.View().Version == before {
+		t.Fatalf("version stayed at %d after the config changed", before)
+	}
+
+	// And it still holds still when nothing did, which is the rule the digest
+	// exists for in the first place.
+	at := s.View().Version
+	if changed, err := s.Rebuild(); err != nil || changed {
+		t.Fatalf("rebuild with no change: changed=%v err=%v", changed, err)
+	}
+	if s.View().Version != at {
+		t.Errorf("version moved to %d with nothing changed", s.View().Version)
+	}
+}
+
+// The config is not something the reader needs, so a wiki.toml that cannot be
+// read must not take the bundle down with it.
+func TestAnUnreadableConfigStillRebuilds(t *testing.T) {
+	dir := writeBundle(t)
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "wiki.toml")); err != nil {
+		t.Fatal(err)
+	}
+	// Discovery needs the file, so this rebuild fails — and the previous index
+	// keeps serving, which is the guarantee that matters here.
+	if _, err := s.Rebuild(); err == nil {
+		t.Error("a bundle with no wiki.toml rebuilt anyway")
+	}
+	if got := len(s.View().Index.Entries); got != 2 {
+		t.Errorf("entries=%d, want the previous index still serving", got)
+	}
+}

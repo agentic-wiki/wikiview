@@ -111,9 +111,19 @@ function Reader({
         {/* The front door is the bundle's own index.md. */}
         <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
         <Route path="/wiki/*" element={<Router tree={tree} version={bundle.version} refresh={refresh} />} />
-        {/* Any folder boards, declared in config or not: the URL is the way in,
-            and config only decides what the UI offers. */}
-        <Route path="/kanban/*" element={<BoardRoute version={bundle.version} refresh={refresh} />} />
+        {/* A board is addressed by its id, and `root` is the one every bundle
+            has without declaring anything. */}
+        <Route
+          path="/kanban/*"
+          element={
+            <BoardRoute
+              tree={tree}
+              rootLabel={bundle.label}
+              version={bundle.version}
+              refresh={refresh}
+            />
+          }
+        />
         {/* Anything else. Without this a mistyped URL rendered an empty page,
             which reads as a broken app rather than a wrong address. */}
         <Route path="*" element={<UnknownRoute />} />
@@ -185,13 +195,32 @@ function entryPath(pathname: string): string {
  * The first segment is always a board id, never a folder, which is what makes
  * the split exact: everything after it is a bundle path, slashes and all.
  */
-function BoardRoute({ version, refresh }: { version: number; refresh: number }) {
+function BoardRoute({
+  tree,
+  rootLabel,
+  version,
+  refresh,
+}: {
+  tree: TreeNode;
+  rootLabel: string;
+  version: number;
+  refresh: number;
+}) {
   const { pathname } = useLocation();
   const rest = decodeURIComponent(pathname).replace(/^\/kanban\/?/, "");
   const cut = rest.indexOf("/");
   const id = cut < 0 ? rest : rest.slice(0, cut);
   const card = cut < 0 ? "" : rest.slice(cut); // keeps the leading slash
-  return <BoardView id={id} card={card} version={version} refresh={refresh} />;
+  return (
+    <BoardView
+      id={id}
+      card={card}
+      tree={tree}
+      rootLabel={rootLabel}
+      version={version}
+      refresh={refresh}
+    />
+  );
 }
 
 function UnknownRoute() {

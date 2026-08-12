@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, type Board, type Card, type Column } from "@/api";
+import { api, type Board, type Card, type Column, type TreeNode } from "@/api";
+import { BoardSettings } from "@/views/BoardSettings";
+import { useDrag } from "@/views/drag";
 import { EntryView } from "@/views/EntryView";
 import { Loading } from "@/views/Loading";
+import { NewBoard } from "@/views/NewBoard";
 import { NotFound } from "@/views/NotFound";
 
 /**
@@ -15,6 +18,8 @@ import { NotFound } from "@/views/NotFound";
 export function BoardView({
   id,
   card,
+  tree,
+  rootLabel,
   version,
   refresh,
 }: {
@@ -22,11 +27,15 @@ export function BoardView({
   id: string;
   /** The entry open over it, or "" for none. Everything after the id. */
   card: string;
+  /** The folder tree, for offering a board over one when this board is empty. */
+  tree: TreeNode;
+  rootLabel: string;
   version: number;
   refresh: number;
 }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,32 +54,80 @@ export function BoardView({
     return () => ac.abort();
   }, [id, refresh]);
 
+  // The board as committed, read by the drop handler, which runs from a pointer
+  // event rather than from a render.
+  const current = useRef<Board | null>(null);
+  useEffect(() => {
+    current.current = board;
+  }, [board]);
+
+  const { drag, handlers } = useDrag<Card>((card, to) => {
+    const before = current.current;
+    if (!before) return;
+    // Optimistic, because a card that sits still for a round trip after you
+    // dropped it reads as a drag that failed. The write bumps the version, the
+    // refetch that follows is what the screen finally agrees with, and a card
+    // that snaps back is telling you the truth arrived.
+    setBoard(moved(before, card, to));
+    api.moveCard(before.id, card.path, to, version).catch(() => setBoard(before));
+  });
+
+  /**
+   * Dragging a column header to reorder the columns.
+   *
+   * Which pins every column, because order is a thing only config has: inference
+   * gives you the columns that exist and nothing more. So this writes the whole
+   * list in its new order, and the header says as much.
+   */
+  const reorder = useDrag<string>((value, onto) => {
+    const before = current.current;
+    if (!before || value === onto) return;
+    const order = reordered(
+      before.columns.map((c) => c.value),
+      value,
+      onto,
+    );
+    setBoard({ ...before, columns: order.map((v) => column(before, v)) });
+    api
+      .boardSettings(before.id, {
+        name: before.name,
+        status: before.field,
+        lane: before.lane ?? "",
+        where: before.where ?? [],
+        columns: order.filter((v) => v !== ""),
+      })
+      .catch(() => setBoard(before));
+  });
+
   if (error) return <NotFound path={"/kanban/" + id} hint="There is no board with that id" />;
   if (!board) return <Loading />;
 
   const cards = board.columns.reduce((n, c) => n + c.cards.length, 0);
-  if (cards === 0) {
-    return (
-      <div className="grid h-full place-items-center p-8 text-center">
-        <div>
-          <p className="text-fg font-medium">Nothing to board here</p>
-          <p className="text-muted mt-1 text-sm">
-            No entry under {board.path} matches this board.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (cards === 0) return <EmptyBoard board={board} tree={tree} rootLabel={rootLabel} />;
 
   // Every path this board holds, which is what decides whether a link inside a
   // card stays here or leaves for the reader.
   const onBoard = new Set(board.columns.flatMap((c) => c.cards.map((c) => c.path)));
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* The board's own name, which nothing else on screen says: the breadcrumbs
+          follow the reader's path and a board's address is an id. */}
+      <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-2">
+        <h1 className="text-fg truncate text-sm font-medium">{board.name}</h1>
+        <span className="text-muted shrink-0 font-mono text-xs">{board.path}</span>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-muted hover:text-fg hover:bg-fg/5 ml-auto shrink-0 rounded-md px-2 py-1 text-xs"
+        >
+          Settings
+        </button>
+      </header>
+
       {/* Columns scroll sideways as a set while each scrolls its own cards, so a
           long column does not push the board's own height around. */}
-      <div className="flex min-w-0 grow gap-3 overflow-x-auto p-4">
+      <div className="flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4">
         {board.columns.map((column) => (
           <BoardColumn
             key={column.value || " unset"}
@@ -78,9 +135,16 @@ export function BoardView({
             column={column}
             field={board.field}
             lane={board.lane}
+            handlers={handlers}
+            headerHandlers={reorder.handlers}
+            dragging={drag?.item.path}
+            over={(drag ?? reorder.drag)?.over === column.value}
           />
         ))}
       </div>
+
+      {drag && <Ghost card={drag.item} x={drag.x} y={drag.y} />}
+      {editing && <BoardSettings board={board} onClose={() => setEditing(false)} />}
 
       {card && (
         <CardSheet
@@ -98,17 +162,67 @@ export function BoardView({
   );
 }
 
+/**
+ * A board with nothing on it.
+ *
+ * Which is where a fresh bundle lands: `root` exists without configuring
+ * anything, and in a bundle of notes it matches nothing. So this says why rather
+ * than leaving a blank page, and then offers the thing that fixes it — a board
+ * over a folder that does have tasks in it.
+ *
+ * The reason is worth spelling out because it is not guessable: a card is an
+ * entry with `type: task`, and nothing on screen says so.
+ */
+function EmptyBoard({
+  board,
+  tree,
+  rootLabel,
+}: {
+  board: Board;
+  tree: TreeNode;
+  rootLabel: string;
+}) {
+  return (
+    <div className="grid h-full place-items-center p-8">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="text-center">
+          <p className="text-fg font-medium">Nothing on this board</p>
+          <p className="text-muted mt-1 text-sm">
+            No entry under <code>{board.path}</code> is a <code>type: task</code> with a{" "}
+            <code>{board.field}</code>.
+          </p>
+        </div>
+        <div className="border-border rounded-lg border p-4">
+          <p className="text-muted mb-3 text-sm">Point a board at a folder that has some:</p>
+          <NewBoard tree={tree} rootLabel={rootLabel} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BoardColumn({
   board,
   column,
   field,
   lane,
+  handlers,
+  headerHandlers,
+  dragging,
+  over,
 }: {
   /** The board id, which every card address starts with. */
   board: string;
   column: Column;
   field: string;
   lane?: string;
+  handlers: (card: Card) => Record<string, unknown>;
+  /** Dragging the header, which reorders the columns rather than moving a card. */
+  headerHandlers: (value: string) => Record<string, unknown>;
+  /** The path of the card being dragged, so its place is left showing. */
+  dragging?: string;
+  /** Whether a drop here is what would happen if the pointer let go now. */
+  over: boolean;
 }) {
   // Grouped here rather than by the server, because a lane is a way of reading
   // one column rather than a property of the board's contents: the cards and
@@ -118,14 +232,44 @@ function BoardColumn({
   return (
     <section
       aria-label={column.value || `no ${field}`}
-      className="bg-surface/40 border-border flex w-72 shrink-0 flex-col rounded-lg border"
+      // The column of entries with no status carries no target, so it takes no
+      // drops: dropping there would mean *removing* the field, which is a
+      // different operation wearing the same gesture.
+      data-drop={column.value || undefined}
+      className={[
+        "flex w-72 shrink-0 flex-col rounded-lg border",
+        over ? "border-accent bg-accent/5" : "bg-surface/40 border-border",
+      ].join(" ")}
     >
-      <header className="border-border flex items-baseline gap-2 border-b px-3 py-2">
+      {/* Drag to reorder, except the unnamed column: it is not a status anybody
+          declared, so there is no place for it in a list of declared ones. */}
+      <header
+        {...(column.value ? headerHandlers(column.value) : {})}
+        title={
+          column.value
+            ? column.pinned
+              ? "Pinned in wiki.toml. Drag to reorder."
+              : "This column exists because entries have it. Drag to pin the order."
+            : undefined
+        }
+        className={[
+          "border-border flex items-baseline gap-2 border-b px-3 py-2",
+          column.value ? "cursor-grab touch-none select-none" : "",
+        ].join(" ")}
+      >
         {/* An unnamed column is the one holding cards with no such field, which
             is a fact about them rather than a status anybody wrote. */}
         <h2 className="text-fg truncate text-sm font-medium">
           {column.value || <span className="text-muted italic">no {field}</span>}
         </h2>
+        {/* A pinned column stays when its status stops being used; an inferred
+            one vanishes with the last entry that had it. Showing them the same
+            is what makes config feel haunted. */}
+        {column.pinned && (
+          <span className="text-accent shrink-0 text-xs" title="Pinned in wiki.toml">
+            ●
+          </span>
+        )}
         <span className="text-muted ml-auto shrink-0 text-xs">{column.cards.length}</span>
       </header>
 
@@ -143,7 +287,13 @@ function BoardColumn({
               </h3>
             )}
             {cards.map((card) => (
-              <BoardCard key={card.path} board={board} card={card} />
+              <BoardCard
+                key={card.path}
+                board={board}
+                card={card}
+                handlers={handlers}
+                dragging={card.path === dragging}
+              />
             ))}
           </div>
         ))}
@@ -152,22 +302,90 @@ function BoardColumn({
   );
 }
 
-function BoardCard({ board, card }: { board: string; card: Card }) {
+function BoardCard({
+  board,
+  card,
+  handlers,
+  dragging,
+}: {
+  board: string;
+  card: Card;
+  handlers: (card: Card) => Record<string, unknown>;
+  dragging: boolean;
+}) {
   return (
     // Opens beside the board rather than navigating away from it. A card is
     // something you look at while keeping the columns in view.
+    //
+    // `touch-none` because a touch drag has to be a drag: left to the browser it
+    // scrolls the column instead, and there is then no way to move a card by
+    // touch at all.
     <Link
+      {...handlers(card)}
       to={cardHref(board, card.path)}
-      className="border-border/70 bg-bg hover:border-muted/60 block rounded-md border p-2 transition-colors"
+      className={[
+        "border-border/70 bg-bg hover:border-muted/60 block touch-none rounded-md border p-2 transition-colors",
+        // Left in place rather than removed, so the column does not reflow under
+        // the pointer while you are deciding where to drop.
+        dragging ? "opacity-40" : "",
+      ].join(" ")}
     >
+      <CardFace card={card} />
+    </Link>
+  );
+}
+
+function CardFace({ card }: { card: Card }) {
+  return (
+    <>
       <span className="text-fg block truncate text-sm">{card.label}</span>
       {/* What the entry calls itself, under the filename, when it says something
           the filename does not. */}
       {card.title && card.title !== card.label && (
         <span className="text-muted mt-0.5 block truncate text-xs">{card.title}</span>
       )}
-    </Link>
+    </>
   );
+}
+
+/**
+ * The card under the pointer while it is being dragged.
+ *
+ * Drawn separately rather than by moving the card itself, so the column keeps
+ * its layout and the card keeps the pointer capture the gesture depends on.
+ * It takes no pointer events, or it would be the only thing ever found beneath
+ * the cursor and every drop would land on itself.
+ */
+function Ghost({ card, x, y }: { card: Card; x: number; y: number }) {
+  return (
+    <div
+      style={{ left: x, top: y }}
+      className="border-accent bg-bg pointer-events-none fixed z-50 w-64 -translate-x-4 -translate-y-4 rotate-1 rounded-md border p-2 shadow-lg"
+    >
+      <CardFace card={card} />
+    </div>
+  );
+}
+
+/**
+ * The board with one card in another column, before the server has said so.
+ *
+ * Only a rearrangement of what is already on screen: the card object is
+ * unchanged, because a card carries no status of its own — the column it sits in
+ * is what says one.
+ */
+function moved(board: Board, card: Card, to: string): Board {
+  const columns = board.columns.map((c) => ({
+    ...c,
+    cards: c.cards.filter((x) => x.path !== card.path),
+  }));
+  const target = columns.find((c) => c.value === to);
+  if (!target) return board;
+  // Path order, which is the order the server puts cards in and the order the
+  // filenames encode. Compared as plain strings for the same reason: a locale
+  // comparison would land the card somewhere the next fetch disagrees with.
+  target.cards = [...target.cards, card].sort((a, b) => (a.path < b.path ? -1 : 1));
+  return { ...board, columns };
 }
 
 /**
@@ -279,6 +497,20 @@ function CardSheet({
 function cardHref(board: string, path: string): string {
   const segments = path.replace(/^\//, "").split("/").map(encodeURIComponent);
   return "/kanban/" + encodeURIComponent(board) + "/" + segments.join("/");
+}
+
+/** A list with one item moved to where another sits. */
+function reordered(values: string[], move: string, onto: string): string[] {
+  const rest = values.filter((v) => v !== move);
+  const at = rest.indexOf(onto);
+  if (at < 0) return values;
+  return [...rest.slice(0, at), move, ...rest.slice(at)];
+}
+
+/** A board's column by its value, for rebuilding the board in a new order
+ *  without refetching what is in each one. */
+function column(board: Board, value: string): Column {
+  return board.columns.find((c) => c.value === value)!;
 }
 
 /**

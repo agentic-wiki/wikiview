@@ -1,7 +1,7 @@
 ---
 type: task
 title: "customizing a board: columns, lanes, filters"
-status: todo
+status: done
 priority: medium
 tags: [feature, boards, config]
 blockers: [/4-boards/002-choosing-boards.md]
@@ -13,7 +13,7 @@ Everything a board reads is already configurable — `where`, `status`, `columns
 
 ## What is editable
 
-- **Column order**, by dragging column headers. Inference gives the columns that exist; only config gives them an order.
+- **Column order**, by dragging column headers on the board. Inference gives the columns that exist; only config gives them an order, so dragging one pins them all.
 - **Empty columns**, added explicitly. A board with nothing `in-progress` still wants that column, and no amount of inference can produce it.
 - **The status field**, when a bundle spells it something other than `status`.
 - **The lane field**, or none.
@@ -33,8 +33,40 @@ Shares the narrow TOML appender from [choosing boards](./002-choosing-boards.md)
 
 That constraint is worth taking seriously here. `wiki.toml` may hold comments, other tools' tables, and formatting the user chose. A parse-and-reserialize would quietly discard all of it.
 
-## Open
+## Where a setting lives
 
-Whether per-user preferences (a collapsed column, a temporary filter) belong in the same place as bundle config. They probably do not: config travels with the repo and is shared, while "I collapsed this column" is mine and belongs with the [per-bundle UI state](../3-reader/002-per-bundle-ui-state.md). Deciding that before the first setting is written matters, because moving it later means migrating someone's stored state.
+Settled, since the first one is now written: **`wiki.toml` holds what a board is, and [per-bundle UI state](../3-reader/002-per-bundle-ui-state.md) holds what one person did to it.** The test is whether the setting would make sense to somebody else opening the same folder. A lane field would; a collapsed column would not. Nothing here writes the second kind, so nothing has to be migrated later.
 
 **Acceptance:** a board's columns can be reordered and pinned, its lane and filter set, from the board; changes land in `wiki.toml` without disturbing comments, other tables, or formatting; inferred and pinned columns are visibly different; an invalid filter is reported rather than silently dropped.
+
+## Done
+
+`PUT /api/board/{id}` takes the whole settings object — name, `where`, `status`, `columns`, `lane` — rather than one key at a time. Clearing a setting is how you say a board has no lanes, so a partial update would have to decide whether an absent key means "unchanged" or "cleared", and getting that wrong either way loses something. Not `id` or `path`: those are what the board *is*, and changing an id breaks every link to it.
+
+`config.Update` edits the board's own table in place, line by line. Parsing is the thing that loses the file, so it never parses: it finds the `[[tool.wikiview.board]]` whose `id` matches, replaces the lines for the keys it owns, appends the ones that were missing, and leaves every other byte alone — comments, other tools' tables, and the alignment the table already had, which appended keys are padded to match. A key cleared is a key removed, because `lane = ""` is a lane called "" and `columns = []` says what saying nothing says.
+
+**It refuses rather than guessing.** A value that does not finish on its line — a `columns` array written across four of them — cannot be edited by a line-based writer without moving a bracket into the wrong table, so it says so and names the file to edit by hand. A filter is checked with `index.ParseFilter` before anything is written, so a typo is reported once here rather than on every startup afterwards.
+
+**`root` is configurable, which means declaring it.** It exists without any config, and refusing to configure the board somebody is looking at would be a dead end, so settings for `root` write the table it never had.
+
+**Pinned is on the wire.** `Column.pinned` says which columns the config declares, and the board marks them. Renaming a status in the entries makes an inferred column vanish and leaves a pinned one empty, and showing them identically is what makes config feel haunted.
+
+**Dragging a column header pins every column**, because order is a thing only config has — inference gives you the columns that exist and nothing more. So a reorder writes the whole list, and the header says as much on hover. The unnamed column is not draggable: it is not a status anybody declared, so there is no place for it in a list of declared ones. It reuses the same `useDrag` the cards do, resolving to the same `data-drop` targets.
+
+## Choosing from what is there
+
+`GET /api/board/{id}` reports `fields`: the frontmatter keys the board's folder uses, each with its values when there are few enough to be a choice. A key with more than a couple of dozen is free text — a title has as many values as there are entries, and a list of them is not something to pick from.
+
+**Taken before the board's own filter**, which is the filter you would be replacing: a list narrowed by it can only ever offer what you already have, so `type=note` has to still be offerable on a board of tasks.
+
+**A list-valued key contributes its items**, because that is what `tags=bug` matches. An inventory that said otherwise would offer values nothing can be filtered by.
+
+**A list filters and does not group.** A column or a lane is one value; a list has many, and the engine's scalar read of one returns nothing — so `lane = "tags"` renders as every card in a single nameless lane, which reads as a broken board and says nothing about why. So `Field.list` is on the wire, the two field pickers leave those keys out, `PUT` refuses to write one, and a hand-written config that names one is reported at startup like any other config mistake. It stays in the filter, where membership is exactly what it means.
+
+So the status and lane fields are lists of what the folder has rather than boxes to type a key into: the mistake worth designing out is spelling it `state` when this bundle says `status`, which is a board with one column and nothing saying why. The current value stays in the list even when nothing has it, since a field can be configured before the entries catch up.
+
+**The filter is rows, not syntax.** `key=value` is a small language but not one anybody should have to be told, and a mistyped condition empties the board rather than complaining. A row is a key, `is`/`is not`, and a value, with a button to remove it.
+
+The key is a list to pick from and **the value is typed**, with what the key already holds as suggestions. They are not symmetrical: a key that nothing has is a typo, and a *value* that nothing has yet is ordinary — `status=in-review` on the day you invent that status. A board you cannot describe until something already matches it is a board you cannot set up. Empty is a real value there, since `status=` matches an entry that has no status, which is the one thing an empty box does not say for itself and so is the placeholder.
+
+A `where` a hand-written `wiki.toml` holds that is *not* a filter is shown as it was written and sent back as it was written, so the server names it. Reshaping it into something that parses would change what the board means without saying so.

@@ -39,8 +39,10 @@ Tables render; sorting and totalling them is parked. The datasets a bundle holds
 
 The shell is settled: an icon rail, a collapsible panel, ellipsizing breadcrumbs, and a ⌘K overlay. One layout rather than a preference — the three are affordances that compose, and two selectable layouts would mean every future view built twice.
 
-**4 — Boards**
-Columns, lanes, drag on pointer events, the card sheet. A view over one folder of the same index, reached from the reader and returning to it. Any folder boards by URL; `[[tool.wikiview.board]]` only decides what the UI surfaces.
+**4 — Boards** *(done)*
+Columns, lanes, drag on pointer events, the card sheet. A view over one folder of the same index, reached from the reader and returning to it. A board is addressed by an id — `/kanban/<id>/<entry path>` — so the whole address is unambiguous and a card can live in it. `root` is the one board every bundle has; the rest are declared in `[[tool.wikiview.board]]`, from the UI or by hand.
+
+Boards are the only thing that writes `wiki.toml`, which it does line by line and never by reserializing: the file is the user's, `wiki` reads it too, and a parse-and-write loses the comments and formatting that make it theirs.
 
 **5 — Actions**
 Refresh, pull, sync. The first things that reach outside the machine, so each previews before acting, and a failed pull restores the previous state and offers the work as a named branch rather than stranding anyone in a conflicted tree.

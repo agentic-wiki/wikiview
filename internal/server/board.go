@@ -1,6 +1,7 @@
 package server
 
 import (
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -29,18 +30,55 @@ type BoardView struct {
 	Field string `json:"field"`
 	// Lane is the field rows are grouped by, empty when the board has no lanes.
 	// One lane is no lanes: a board is columns of cards until asked otherwise.
-	Lane    string   `json:"lane,omitempty"`
+	Lane string `json:"lane,omitempty"`
+	// Where is the filter deciding which entries are cards, in the `--where`
+	// spelling. Reported so an editor can show what a board is currently doing
+	// rather than making somebody read wiki.toml to find out.
+	Where   []string `json:"where"`
 	Columns []Column `json:"columns"`
-	// Declared is false for a folder boarded by URL without config. Boarding is
-	// discovery, not permission, and this only says which of the two happened.
+	// Fields are the frontmatter keys the board's folder uses, with their values.
+	//
+	// So choosing a status field, a lane or a filter is picking from what is
+	// there rather than recalling how this bundle spells things. Assembled here
+	// because the client has cards, not frontmatter, and asking for every entry
+	// to find out would be a request per card.
+	Fields []Field `json:"fields"`
+	// Declared is false for the built-in root board, which no config mentions.
 	Declared bool `json:"declared"`
 }
+
+// Field is one frontmatter key in use, and what it holds.
+type Field struct {
+	Key string `json:"key"`
+	// Values are the distinct values, when there are few enough to be a choice.
+	//
+	// Absent for a key that is free text: a title has as many values as there
+	// are entries, and a list of them is not something to pick from. A key with
+	// no values offered is still a key you can filter on by typing one.
+	Values []string `json:"values,omitempty"`
+	// List is true for a key holding a list anywhere in scope.
+	//
+	// It filters perfectly well — `tags=bug` matches on membership — and groups
+	// not at all, since a column or a lane is one value and a list has many. So
+	// the two are told apart here rather than each caller guessing.
+	List bool `json:"list,omitempty"`
+}
+
+// enough is where a key stops being a set of choices and starts being prose.
+const enough = 24
 
 type Column struct {
 	// Value is the status this column holds, empty for the column of entries
 	// that carry no status at all.
 	Value string `json:"value"`
-	Cards []Card `json:"cards"`
+	// Pinned is true for a column the config declares.
+	//
+	// A board is inference plus config, and which is which changes what happens
+	// next: renaming a status in the entries makes an inferred column vanish and
+	// leaves a pinned one empty. Showing them identically is what makes config
+	// feel haunted.
+	Pinned bool   `json:"pinned"`
+	Cards  []Card `json:"cards"`
 }
 
 type Card struct {
@@ -110,11 +148,16 @@ func boardFor(cfg config.Config, id string) (config.Board, bool) {
 
 func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 	out := BoardView{
-		Path:     board.Path,
-		ID:       board.ID,
-		Name:     board.Name,
+		Path: board.Path,
+		ID:   board.ID,
+		Name: board.Name,
+		// A board over nothing still has columns, they are just none of them. A
+		// nil slice marshals as `null`, and a client reading a list it was
+		// promised has no reason to check.
+		Columns:  []Column{},
 		Field:    board.Status,
 		Lane:     board.Lane,
+		Where:    board.Where,
 		Declared: declared,
 	}
 
@@ -123,6 +166,11 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 		prefix = "" // the whole bundle, which is what Filter reads an empty prefix as
 	}
 	entries := v.Index.Filter(prefix, board.Filters)
+
+	// The inventory is taken before the board's own filter, not after: you use it
+	// to choose that filter, and a list narrowed by the filter you are replacing
+	// can only ever offer what you already have.
+	out.Fields = fieldsIn(v.Index.Filter(prefix, nil))
 
 	// Grouped first, then ordered, because the two rules are different: which
 	// columns exist comes from the entries, and what order they sit in comes
@@ -144,7 +192,7 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 	// the thing inference can never do.
 	seen := map[string]bool{}
 	for _, value := range board.Columns {
-		out.Columns = append(out.Columns, Column{Value: value, Cards: sorted(cards[value])})
+		out.Columns = append(out.Columns, Column{Value: value, Pinned: true, Cards: sorted(cards[value])})
 		seen[value] = true
 	}
 
@@ -167,6 +215,36 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 	if unset := cards[""]; len(unset) > 0 && !seen[""] {
 		out.Columns = append(out.Columns, Column{Value: "", Cards: sorted(unset)})
 	}
+	return out
+}
+
+// fieldsIn collects the frontmatter keys a set of entries uses.
+//
+// A list-valued key contributes its items rather than itself, because that is
+// what `tags=bug` matches — the inventory has to describe the same thing the
+// filter does or it offers values nothing can be filtered by.
+func fieldsIn(entries []*index.Entry) []Field {
+	values := map[string]map[string]bool{}
+	for _, e := range entries {
+		for key := range e.Frontmatter() {
+			if values[key] == nil {
+				values[key] = map[string]bool{}
+			}
+			for _, v := range e.FieldList(key) {
+				values[key][v] = true
+			}
+		}
+	}
+
+	out := make([]Field, 0, len(values))
+	for key, set := range values {
+		field := Field{Key: key, List: config.IsList(entries, key)}
+		if len(set) <= enough {
+			field.Values = slices.Sorted(maps.Keys(set))
+		}
+		out = append(out, field)
+	}
+	slices.SortFunc(out, func(a, b Field) int { return strings.Compare(a.Key, b.Key) })
 	return out
 }
 

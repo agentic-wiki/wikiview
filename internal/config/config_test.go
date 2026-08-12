@@ -25,7 +25,8 @@ func load(t *testing.T, toml string) (Config, []string) {
 	}
 	write("wiki.toml", toml)
 	write("index.md", "---\nokf_version: \"0.1\"\n---\nhome [t](./backlog/t.md)\n")
-	write("backlog/t.md", "---\ntype: task\nstatus: todo\n---\nA task\n")
+	// `tags` is a list, which filters on membership and groups not at all.
+	write("backlog/t.md", "---\ntype: task\nstatus: todo\ntags: [ui, api]\n---\nA task\n")
 
 	b, err := bundle.Discover(dir)
 	if err != nil {
@@ -241,5 +242,44 @@ func TestAnIDWithASlashIsReported(t *testing.T) {
 	_, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"a/b\"\npath = \"/backlog\"\n")
 	if len(problems) != 1 || !strings.Contains(problems[0], "slash") {
 		t.Errorf("problems=%v, want one about the slash", problems)
+	}
+}
+
+// A grouping is by one value and a list has many. Rendered, it puts every card
+// in one nameless group, which reads as a broken board and says nothing about
+// why — so a hand-written config that names one is reported at startup.
+func TestListValuedGroupingIsReported(t *testing.T) {
+	_, problems := load(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id     = "backlog"
+path   = "/backlog"
+status = "tags"
+lane   = "tags"
+`)
+	var said int
+	for _, p := range problems {
+		if strings.Contains(p, "holds a list") {
+			said++
+		}
+	}
+	if said != 2 {
+		t.Errorf("problems = %v, want one for status and one for lane", problems)
+	}
+}
+
+// And a scalar is not reported, or the warning is noise on every board there is.
+func TestAScalarGroupingIsNotReported(t *testing.T) {
+	_, problems := load(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id     = "backlog"
+path   = "/backlog"
+status = "status"
+`)
+	for _, p := range problems {
+		if strings.Contains(p, "holds a list") {
+			t.Errorf("problems = %v", problems)
+		}
 	}
 }

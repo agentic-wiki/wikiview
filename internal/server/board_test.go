@@ -1,10 +1,12 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/agentic-wiki/wikiview/internal/store"
@@ -33,6 +35,9 @@ func newBoardServer(t *testing.T, toml string) *Server {
 	write("backlog/d.md", "---\ntype: task\n---\nD\n")
 	// Not a task: the default `where` should leave it out.
 	write("backlog/note.md", "---\ntype: note\nstatus: todo\n---\nA note\n")
+	// A folder holding no tasks at all, so "a board over this would be empty" is
+	// a case with a fixture rather than a claim.
+	write("notes/n.md", "---\ntype: note\n---\nJust a note\n")
 
 	s, err := store.Open(dir)
 	if err != nil {
@@ -245,5 +250,130 @@ path = "/backlog"
 	}
 	if len(info.Boards) != 1 || info.Boards[0].ID != "fine" {
 		t.Errorf("boards=%+v, want only the one that can be opened", info.Boards)
+	}
+}
+
+// A board matching nothing still has columns: none of them. A nil slice marshals
+// as `null`, and the client read a list it had been promised — which crashed the
+// view rather than showing an empty board.
+func TestABoardOverNothingHasNoColumnsRatherThanNull(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id    = "none"
+path  = "/backlog"
+where = ["type=task", "kind=nothing-matches-this"]
+`)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/board/none", nil))
+	if !strings.Contains(rec.Body.String(), `"columns":[]`) {
+		t.Errorf("body = %s", rec.Body)
+	}
+}
+
+// Choosing a status field, a lane, or a filter is picking from what the folder
+// has, rather than recalling how this bundle spells things.
+func TestBoardReportsTheFieldsInUse(t *testing.T) {
+	b := board(t, newBoardServer(t, declaredBoard), "/api/board/backlog")
+
+	fields := map[string][]string{}
+	for _, f := range b.Fields {
+		fields[f.Key] = f.Values
+	}
+
+	// Taken before the board's own filter: `note.md` is filtered off the board by
+	// `type=task`, and `type=note` still has to be offerable as a filter.
+	if got := fields["type"]; strings.Join(got, ",") != "note,task" {
+		t.Errorf("type = %v", got)
+	}
+	// Every value a status takes, including the ones no column declares.
+	if got := fields["status"]; strings.Join(got, ",") != "blocked,done,todo" {
+		t.Errorf("status = %v", got)
+	}
+	if got := fields["priority"]; strings.Join(got, ",") != "high,low" {
+		t.Errorf("priority = %v", got)
+	}
+	if _, ok := fields["nonesuch"]; ok {
+		t.Error("a key nothing has is offered")
+	}
+}
+
+// A key with more values than there are choices to make is free text, and a list
+// of them is not something to pick from.
+func TestBoardOffersNoValuesForFreeText(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("wiki.toml", `spec = "0.1"`)
+	write("index.md", "---\nokf_version: \"0.1\"\n---\nhome\n")
+	for i := range enough + 1 {
+		write(fmt.Sprintf("t%02d.md", i), fmt.Sprintf("---\ntype: task\ntitle: Task %d\nstatus: todo\n---\nx\n", i))
+	}
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range board(t, New(s, nil), "/api/board/root").Fields {
+		switch f.Key {
+		case "title":
+			if f.Values != nil {
+				t.Errorf("title offers %d values, which is not a choice", len(f.Values))
+			}
+		case "status":
+			// Still a choice, however many entries have it.
+			if strings.Join(f.Values, ",") != "todo" {
+				t.Errorf("status = %v", f.Values)
+			}
+		}
+	}
+}
+
+// A list-valued key contributes its items, because that is what `tags=bug`
+// matches — an inventory that said otherwise would offer values nothing can be
+// filtered by.
+func TestBoardListsTheItemsOfAListField(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	dir := srv.store.View().Index.Bundle.Dir
+	if err := os.WriteFile(filepath.Join(dir, "backlog", "a.md"),
+		[]byte("---\ntype: task\nstatus: todo\npriority: high\ntags: [ui, api]\n---\nA\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range board(t, srv, "/api/board/backlog").Fields {
+		if f.Key == "tags" && strings.Join(f.Values, ",") != "api,ui" {
+			t.Errorf("tags = %v", f.Values)
+		}
+	}
+}
+
+// A list filters — `tags=bug` matches on membership — and groups not at all, so
+// the two are told apart on the wire rather than each caller guessing.
+func TestBoardMarksListValuedFields(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	dir := srv.store.View().Index.Bundle.Dir
+	if err := os.WriteFile(filepath.Join(dir, "backlog", "a.md"),
+		[]byte("---\ntype: task\nstatus: todo\ntags: [ui, api]\n---\nA\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range board(t, srv, "/api/board/backlog").Fields {
+		want := f.Key == "tags"
+		if f.List != want {
+			t.Errorf("%s: list=%v, want %v", f.Key, f.List, want)
+		}
 	}
 }

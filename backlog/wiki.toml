@@ -28,3 +28,4 @@ id   = "root"
 path = "/"
 columns = ["todo", "in-progress", "done"]
 lane = "priority"
+

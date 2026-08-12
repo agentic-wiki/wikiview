@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import type { BoardConfig, BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
@@ -8,6 +8,7 @@ import { Omnibar } from "@/shell/Omnibar";
 import { ScrollRestoration } from "@/shell/ScrollRestoration";
 import { ThemeToggle } from "@/shell/Theme";
 import { useBundleState } from "@/state";
+import { NewBoard } from "@/views/NewBoard";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -31,10 +32,32 @@ export function Shell({
   children: ReactNode;
 }) {
   const location = useLocation();
-  const [section, setSection] = useState<RailSection>(() => sectionFor(location.pathname));
-  // Open on desktop, closed on narrow screens. Boards and grids need width;
-  // this is a working tool on a wide screen before it is a phone app.
-  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
+  /**
+   * The last thing the rail was told, and where it was told.
+   *
+   * The section is the route's, derived rather than stored, so it changes in the
+   * *same commit* the view does. Stored, it changed a frame earlier: the router
+   * defers navigation into a transition while a `setState` here is urgent, so
+   * clicking Boards collapsed the panel, reflowed the entry you were still
+   * looking at, and only then swapped in the board.
+   *
+   * What is kept is only what the route cannot say: which section you picked
+   * when there was nowhere to navigate, and whether the width change was a
+   * toggle. Both are scoped to the location they happened at, so moving anywhere
+   * forgets them without an effect having to run.
+   */
+  const [told, setTold] = useState<{ at: string; section?: RailSection; toggled?: boolean } | null>(
+    null,
+  );
+  const here = told?.at === location.pathname ? told : null;
+  const section = here?.section ?? sectionFor(location.pathname);
+  const animate = here?.toggled ?? false;
+
+  // What the panel is doing, per section, and only where it has been said. Each
+  // section's list is a different thing to want beside your work — the tree
+  // earns its width, a list of one board does not — so one shared flag meant
+  // switching section argued with what you last did to the panel you left.
+  const [openFor, setOpenFor] = useState<Partial<Record<RailSection, boolean>>>({});
   const navigate = useNavigate();
   // Only a reader route has a bundle path in it. On a board the pathname is an
   // id, and treating it as a path built links like `/wiki/kanban` — a trail
@@ -48,66 +71,75 @@ export function Shell({
   const [lastBoard, setLastBoard] = useBundleState(bundle.id, "board", "");
 
   /**
+   * Whether a section's panel is open, when nobody has said.
+   *
+   * The tree is worth its width beside whatever you are reading. A list of one
+   * board is not a choice, so arriving at that board does not also spend width
+   * on a chooser — but a list of several is exactly the thing you clicked for.
+   */
+  const openByDefault = (s: RailSection) =>
+    s === "boards" ? (bundle.boards?.length ?? 0) > 1 : wideEnough;
+  const panelOpen = openFor[section] ?? openByDefault(section);
+
+  /** Opening or closing a panel, which is a thing you did and so animates. */
+  const toggle = (s: RailSection, open: boolean) => {
+    setTold({ at: location.pathname, section, toggled: true });
+    setOpenFor((was) => ({ ...was, [s]: open }));
+  };
+
+  /**
    * Clicking a rail icon.
    *
-   * It opens the panel, switches section, and goes somewhere — because an icon
-   * that only changes what a hidden panel would show does nothing you can see,
-   * which is exactly how this behaved when picking a board collapsed the panel
-   * and left the hamburger as the only way back.
+   * Two things, decided separately: an icon you are not on takes you there, and
+   * the icon you are on toggles its panel. Tangling them is how this rail has
+   * already been wrong twice — once by collapsing the panel and leaving the
+   * hamburger as the only way back, once by taking a shortcut past a navigation
+   * it owed you because the icon was already the active one.
    *
-   * Nothing moves you if you are already in that section: clicking Entries
-   * while reading an entry shows the tree beside what you are reading rather
-   * than throwing you back to the front door.
+   * Navigating is the *whole* of what a click does when there is somewhere to
+   * go. Nothing here touches the section or the panel in that case, because the
+   * route already says both and saying them twice is what put them a frame
+   * apart.
    */
   const pick = (next: RailSection) => {
     // Whether the route is already showing this section's kind of thing. The
-    // section and the route can disagree — arriving at a board by URL leaves
-    // the section on Entries — so the toggle below has to ask the route rather
-    // than trusting which icon looks active.
-    const here =
+    // section and the route can disagree — picking Search leaves the route on
+    // an entry — so this asks the route rather than trusting which icon looks
+    // active.
+    const showing =
       next === "entries"
         ? location.pathname.startsWith("/wiki")
         : next === "boards"
           ? location.pathname.startsWith("/kanban")
           : true;
 
-    // The active icon collapses the panel, so the rail is also how you get the
-    // width back rather than the hamburger being the only way.
-    if (next === section && panelOpen && here) {
-      setPanelOpen(false);
+    if (next === section && showing) {
+      toggle(next, !panelOpen);
       return;
     }
-    setSection(next);
 
-    // Going somewhere and showing the panel are separate decisions. Tangling
-    // them is how clicking Entries from a board ended up doing nothing: the
-    // icon was already the active one, so it took a shortcut past the
-    // navigation it owed you.
-    const boards = bundle.boards ?? [];
-    if (!here) {
-      if (next === "entries") navigate(frontDoor(tree));
-      if (next === "boards") {
-        const target = boards.find((b) => b.id === lastBoard) ?? boards[0];
-        if (target) navigate(boardHref(target));
+    if (!showing) {
+      const boards = bundle.boards ?? [];
+      const target = boards.find((b) => b.id === lastBoard) ?? boards[0];
+      if (next === "entries") {
+        navigate(frontDoor(tree));
+        return;
+      }
+      if (next === "boards" && target) {
+        navigate(boardHref(target));
+        return;
       }
     }
 
-    // A list of one board is not a choice, so arriving at that board does not
-    // also spend width on a chooser. Everything else opens the panel, including
-    // clicking Boards while already on one — there, showing the list is the
-    // only thing the click can do, and an icon that does nothing is the bug
-    // this whole rail already had once.
-    setPanelOpen(!(next === "boards" && boards.length === 1 && !here));
+    // Nowhere to go, so the section is something this view shows rather than a
+    // place: Search, which has no route, and Boards in a bundle that declares
+    // none. There the panel is the whole of what the click can do — and an icon
+    // that does nothing is the bug this rail has already had. It is also where
+    // the first board gets declared, so it is where somebody with none needs to
+    // end up.
+    setTold({ at: location.pathname, section: next });
+    setOpenFor((was) => ({ ...was, [next]: true }));
   };
-  // The rail follows the route. Loading /kanban directly used to show the
-  // Entries icon lit and the file tree open beside a board, because the section
-  // started at a guess and only a rail click ever corrected it.
-  //
-  // On route changes rather than on every render, so a section with no route of
-  // its own — Search — is not flipped back the instant you select it.
-  useEffect(() => {
-    setSection(sectionFor(location.pathname));
-  }, [location.pathname]);
 
   // The view area scrolls, not the document, so scroll restoration works from
   // this element rather than from the window.
@@ -120,7 +152,7 @@ export function Shell({
           type="button"
           aria-label={panelOpen ? "Hide navigation" : "Show navigation"}
           aria-expanded={panelOpen}
-          onClick={() => setPanelOpen((v) => !v)}
+          onClick={() => toggle(section, !panelOpen)}
           className="text-muted hover:text-fg hover:bg-fg/5 grid size-8 shrink-0 place-items-center rounded-md"
         >
           <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -149,7 +181,7 @@ export function Shell({
         <aside
           className={[
             "border-border bg-bg ml-14 shrink-0 overflow-y-auto border-r",
-            "transition-[width] duration-200 ease-out",
+            animate ? "transition-[width] duration-200 ease-out" : "",
             panelOpen ? "w-64" : "w-0 border-r-0",
           ].join(" ")}
         >
@@ -161,9 +193,14 @@ export function Shell({
           {panelOpen && section === "boards" && (
             <Boards
               boards={bundle.boards}
+              tree={tree}
+              rootLabel={bundle.label}
+              // Choosing from the list is done with the list, so it gives the
+              // width back — and animates, because that close is something you
+              // did rather than something that happened around you.
               onPick={(picked) => {
                 setLastBoard(picked);
-                setPanelOpen(false);
+                toggle("boards", false);
               }}
             />
           )}
@@ -181,22 +218,38 @@ export function Shell({
   );
 }
 
+/**
+ * Whether there is room for a panel beside the work.
+ *
+ * Read once, at load: boards and grids need width, and this is a working tool on
+ * a wide screen before it is a phone app.
+ */
+const wideEnough = window.innerWidth >= 768;
+
 /** Which section a route belongs to. Search has no route, so it is never one. */
 function sectionFor(pathname: string): RailSection {
   return pathname.startsWith("/kanban") ? "boards" : "entries";
 }
 
 /**
- * The boards a bundle declares.
- *
- * Only the declared ones, because this is a list of what the bundle offers.
- * Every folder is still boardable by URL, which is what the note says rather
- * than leaving an empty panel reading as "boards do not work here".
+ * The boards a bundle declares, which is every board there is beyond `root`.
  */
-function Boards({ boards, onPick }: { boards?: BoardConfig[]; onPick: (path: string) => void }) {
-  if (!boards?.length) return <NoBoards />;
+function Boards({
+  boards,
+  tree,
+  rootLabel,
+  onPick,
+}: {
+  boards?: BoardConfig[];
+  tree: TreeNode;
+  rootLabel: string;
+  onPick: (path: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  if (!boards?.length) return <NoBoards tree={tree} rootLabel={rootLabel} />;
 
   return (
+    <>
     <ul className="p-2">
       {boards.map((b) => (
         <li key={b.path}>
@@ -230,34 +283,54 @@ function Boards({ boards, onPick }: { boards?: BoardConfig[]; onPick: (path: str
         </li>
       ))}
     </ul>
+
+    {/* Behind a disclosure, because the list is what you came for and a form
+        under every one of them is a form you scroll past. Without it, adding a
+        second board means editing wiki.toml by hand, which is the dead end the
+        empty state already avoids. */}
+    <div className="border-border border-t p-2">
+      {adding ? (
+        <div className="space-y-2 p-1">
+          <NewBoard tree={tree} rootLabel={rootLabel} />
+          <button
+            type="button"
+            onClick={() => setAdding(false)}
+            className="text-muted hover:text-fg w-full text-xs"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="text-muted hover:text-fg hover:bg-fg/5 w-full rounded-md px-2 py-1.5 text-left text-sm"
+        >
+          + New board
+        </button>
+      )}
+    </div>
+    </>
   );
 }
 
 /**
  * What the Boards panel shows before there are any.
  *
- * The empty state of a feature is the one moment somebody is definitely willing
- * to read how it works, so it says the two things worth knowing: that a folder
- * boards without any configuration, and what to write to keep one.
- *
- * The snippet is the whole of it — one required key — which is a better
- * argument for the config being cheap than a sentence claiming so. Declaring it
- * from here rather than by hand is [choosing which folders are
- * boards](backlog/4-boards/002-choosing-boards.md), and needs something that
- * can write TOML.
+ * The form rather than a paragraph about the form. The empty state of a feature
+ * is the one moment somebody is definitely willing to be shown how it works, and
+ * showing them is cheaper than explaining: a note about what to hand-write into
+ * `wiki.toml` leaves them to go and do it, which is exactly the step this can
+ * take for them.
  */
-function NoBoards() {
+function NoBoards({ tree, rootLabel }: { tree: TreeNode; rootLabel: string }) {
   return (
-    <div className="space-y-3 p-3 text-sm">
-      <p className="text-fg font-medium">No boards yet</p>
-      <p className="text-muted">
-        Any folder opens as one at <code>/kanban/</code> followed by its path, without
-        configuring anything.
+    <div className="space-y-3 p-3">
+      <p className="text-fg text-sm font-medium">Your first board</p>
+      <p className="text-muted text-sm">
+        A board is a folder's tasks, in columns by <code>status</code>.
       </p>
-      <p className="text-muted">To keep one here, add it to the bundle's <code>wiki.toml</code>:</p>
-      <pre className="border-border bg-surface text-muted overflow-x-auto rounded-md border p-2 text-xs">
-        {`[[tool.wikiview.board]]\npath = "/backlog"`}
-      </pre>
+      <NewBoard tree={tree} rootLabel={rootLabel} />
     </div>
   );
 }
@@ -266,9 +339,7 @@ function NoBoards() {
  * A board's address.
  *
  * The id rather than the path, because two boards can be over one folder and
- * only the id tells them apart. A folder nobody declared is still reachable by
- * its path — the server resolves ids first and falls back — but a declared
- * board is always linked to by the name it declared.
+ * only the id tells them apart.
  */
 function boardHref(b: BoardConfig): string {
   return "/kanban/" + b.id;

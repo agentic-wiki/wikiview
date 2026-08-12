@@ -1,13 +1,13 @@
 ---
 type: task
 title: "the board: columns, lanes, cards"
-status: todo
+status: done
 priority: medium
 tags: [feature, boards]
 blockers: [/1-design/002-backlogs-config.md]
 ---
 
-A kanban over one folder: `/kanban/<folder>`. A view onto the same index as everything else, not a second application.
+A kanban over one folder: `/kanban/<id>`. A view onto the same index as everything else, not a second application.
 
 Read-only. Seeing a backlog as columns is worth having on its own, and [moving a card](./004-moving-a-card.md) is a write with its own staleness rules that should not be entangled with getting the layout right.
 
@@ -27,7 +27,7 @@ The same visibility rule applies. A card whose lane field is missing belongs to 
 
 ## Where the board comes from
 
-`GET /api/board/{path...}`, returning the columns with their cards.
+`GET /api/board/{id}`, returning the columns with their cards.
 
 Not assembled in the client from the tree, which carries a title and a type but no arbitrary frontmatter — the client would have to fetch every entry to learn its status. And not the entry API in a loop: the board is one question ("how does this folder stack up") and deserves one answer.
 
@@ -40,4 +40,14 @@ It also puts the rules where the config is already parsed. `where` is applied wi
 
 That is what makes the "off-board link" problem disappear rather than needing decoration: a link out of the board's slice is reachable, so it is either a normal link or genuinely unwritten.
 
-**Acceptance:** a folder boards by URL whether it is declared in config or not; columns come from that folder's own entries, in the config's order when there is one, with undeclared statuses appended and no card hidden; a declared lane groups rows and no lane means one board of columns; a link off the board navigates the reader.
+**Acceptance:** `/kanban/<id>` opens a declared board, and `root` opens the whole bundle without any config; columns come from that board's own entries, in the config's order when there is one, with undeclared statuses appended and no card hidden; a declared lane groups rows and no lane means one board of columns; a link off the board navigates the reader.
+
+## Done
+
+`GET /api/board/{id}` assembles the columns; `BoardView` renders them. The server owns which columns exist and in what order, because that is where the config is parsed and where `where` is already a set of `index.PropFilter`s. The client owns lanes, since grouping cards it already has is an arrangement rather than a rule.
+
+A card is a route, `/kanban/<id>/<entry path>`, rendered as a dialog over the board. So the back button closes it, a card can be linked to, and the board underneath keeps its scroll. The dialog has a fixed height rather than one from its content: sized to fit, it collapsed to a bare header for as long as the entry was in flight, which read as a broken card rather than a loading one.
+
+The rail follows the route rather than the last click. Arriving at `/kanban/root` by URL used to light the Entries icon and open the file tree beside a board, because the section was a piece of state that only a click ever corrected.
+
+**Not here:** [moving a card](./004-moving-a-card.md), which is the write.

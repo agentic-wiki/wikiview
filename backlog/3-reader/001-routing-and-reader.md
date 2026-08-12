@@ -31,9 +31,9 @@ The bundle path is carried verbatim, `.md` and all, consistent with the rule tha
 
 So a link out of a board's slice is never unreachable, and there is no "off-board" state to mark. A link either resolves or is genuinely unwritten, and unwritten is the `unresolved` case, which reads differently and belongs elsewhere.
 
-## Toggling a folder as a board
+## Going to a board
 
-Any folder is boardable by URL. The reader offers "view as board" when you are looking at a folder, which simply navigates to `/kanban/<that folder>`. Folders listed in `backlogs` additionally appear in navigation. Nothing has to be configured before it can be tried.
+A board is addressed by its id, `/kanban/<id>`, and every declared board is in the rail. `root` is the one every bundle has, so there is a kanban to open before anything is configured. Making a folder into a board of its own is a config write, and belongs to [choosing which folders are boards](../4-boards/002-choosing-boards.md).
 
 ## Datasets
 
