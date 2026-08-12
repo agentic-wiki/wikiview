@@ -30,9 +30,21 @@ const lineOf = (props: unknown): number | undefined =>
 export function Markdown({
   entry,
   onToggleCheckbox,
+  destination = (path) => "/wiki" + path,
 }: {
   entry: Entry;
   onToggleCheckbox?: (line: number, done: boolean) => void;
+  /**
+   * Where a link to a bundle path should go. The reader sends you to the entry;
+   * a board sends you to the card when the target is one of its own, so
+   * following a link inside a card does not throw away the board you are
+   * reading it on.
+   *
+   * A function rather than a flag, because the caller is the only one that
+   * knows what is on screen behind this. Resolution still happens by lookup in
+   * `entry.links` — this only decides what to do with the answer.
+   */
+  destination?: (bundlePath: string) => string;
 }) {
   // Keyed by the href exactly as written, which is what the renderer hands back.
   const links = useMemo(() => new Map(entry.links.map((l) => [l.raw, l])), [entry.links]);
@@ -117,7 +129,7 @@ export function Markdown({
       }
       return (
         <RouterLink
-          to={"/wiki" + link.to + (link.anchor ? "#" + link.anchor : "")}
+          to={destination(link.to) + (link.anchor ? "#" + link.anchor : "")}
           // Not an error: per the format a link may point at knowledge not yet
           // written, so it stays a link and is shown differently.
           title={link.exists ? undefined : "This entry does not exist yet"}

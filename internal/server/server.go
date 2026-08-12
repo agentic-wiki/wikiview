@@ -98,7 +98,11 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 	// index does: editing wiki.toml rebuilds, and the next request should see
 	// the board you just declared. Problems are reported at startup rather than
 	// on every fetch; a malformed board is not a reason to fail this response.
-	boards, _ := config.Decode(v.Index.Bundle, v.Index)
+	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
+	boards := make([]config.Board, 0, len(cfg.Board))
+	for _, b := range cfg.Board {
+		boards = append(boards, named(b, v.Index.Bundle.Dir))
+	}
 	writeJSON(w, http.StatusOK, BundleInfo{
 		ID:      s.id,
 		Label:   dirLabel(v.Index.Bundle.Dir),
@@ -107,7 +111,7 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		Entries: len(v.Index.Entries),
 		Tools:   v.Index.Bundle.Tools(),
 		Version: v.Version,
-		Boards:  boards.Board,
+		Boards:  boards,
 	})
 }
 

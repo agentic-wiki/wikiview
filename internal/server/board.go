@@ -19,6 +19,8 @@ import (
 // would be re-implementing rules that have one home.
 type BoardView struct {
 	Path string `json:"path"`
+	// Name is what to call this board, from the config or from the folder.
+	Name string `json:"name"`
 	// Field is the frontmatter key the columns are made of, so a client can say
 	// what it is showing without inferring it.
 	Field string `json:"field"`
@@ -59,10 +61,29 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
 	board, declared := boardFor(cfg, path)
+	board = named(board, v.Index.Bundle.Dir)
 
 	// Any folder boards, declared or not, so an undeclared one gets the same
 	// defaults a bare `[[tool.wikiview.board]]` would have taken.
 	writeJSON(w, http.StatusOK, buildBoard(v, board, declared))
+}
+
+// named fills in a board's display name when the config does not give one.
+//
+// A board is a folder, and a folder already has a readable name, so no bundle
+// should have to write `name = "Backlog"` to avoid a rail listing `/backlog`.
+// The root is the exception: "/" reads as nothing, so it borrows the bundle's
+// own name, which is what a board over everything is.
+func named(b config.Board, dir string) config.Board {
+	if b.Name != "" {
+		return b
+	}
+	if strings.TrimSuffix(b.Path, "/") == "" {
+		b.Name = dirLabel(dir)
+	} else {
+		b.Name = titleFromFilename(b.Path)
+	}
+	return b
 }
 
 // boardFor finds the declared board for path, or invents the default one.
@@ -76,7 +97,13 @@ func boardFor(cfg config.Config, path string) (config.Board, bool) {
 }
 
 func buildBoard(v store.View, board config.Board, declared bool) BoardView {
-	out := BoardView{Path: board.Path, Field: board.Status, Lane: board.Lane, Declared: declared}
+	out := BoardView{
+		Path:     board.Path,
+		Name:     board.Name,
+		Field:    board.Status,
+		Lane:     board.Lane,
+		Declared: declared,
+	}
 
 	prefix := board.Path
 	if prefix == "/" {

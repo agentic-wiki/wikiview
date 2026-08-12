@@ -12,6 +12,9 @@ export interface BundleInfo {
   entries: number;
   tools: string[];
   version: number;
+  /** Boards declared in `[tool.wikiview]`, with their defaults filled in.
+   *  Absent when the bundle declares none, which is the common case. */
+  boards?: BoardConfig[];
 }
 
 /**
@@ -143,6 +146,56 @@ export interface TreeNode {
   children: TreeNode[];
 }
 
+/**
+ * A board a bundle declares in `[tool.wikiview]`.
+ *
+ * Declaring one decides what the UI offers, not what is allowed: any folder
+ * boards by URL whether it is listed here or not.
+ */
+export interface BoardConfig {
+  path: string;
+  /** What to call it on screen: the config's name, or the folder made readable. */
+  name: string;
+  where?: string[];
+  status: string;
+  columns?: string[];
+  lane?: string;
+}
+
+export interface Card {
+  path: string;
+  label: string;
+  title?: string;
+  type?: string;
+  /** This card's value for the board's lane field, absent when it has none. */
+  lane?: string;
+}
+
+export interface Column {
+  /** The status this column holds; empty for cards carrying none. */
+  value: string;
+  cards: Card[];
+}
+
+/**
+ * One folder stacked into columns.
+ *
+ * Assembled by the server, which already has the config decoded and the `where`
+ * filters parsed. Rebuilding it here would mean a request per card just to read
+ * each entry's status, and a second implementation of the column rules.
+ */
+export interface Board {
+  path: string;
+  name: string;
+  /** The frontmatter field the columns are made of. */
+  field: string;
+  /** The field rows group by, absent when the board has no lanes. */
+  lane?: string;
+  columns: Column[];
+  /** False for a folder boarded by URL without config. */
+  declared: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -182,6 +235,7 @@ const encode = (path: string) =>
 export const api = {
   bundle: (signal?: AbortSignal) => get<BundleInfo>("/api/bundle", signal),
   tree: (signal?: AbortSignal) => get<TreeNode>("/api/tree", signal),
+  board: (path: string, signal?: AbortSignal) => get<Board>("/api/board/" + encode(path), signal),
   entry: (path: string, signal?: AbortSignal) =>
     // The path is carried verbatim, `.md` and all, because it *is* the bundle
     // path. Each segment is encoded so a name with a space or a '#' survives.

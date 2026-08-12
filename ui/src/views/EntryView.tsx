@@ -9,10 +9,14 @@ export function EntryView({
   path,
   version,
   refresh,
+  destination,
 }: {
   path: string;
   version: number;
   refresh: number;
+  /** Where links in the body should go. The board overrides it so a link to a
+   *  card stays on the board; the reader leaves it alone. */
+  destination?: (bundlePath: string) => string;
 }) {
   // What is on screen, and which path it is. The two travel together because
   // the fetch below is what makes them agree, and until it lands they do not:
@@ -98,7 +102,7 @@ export function EntryView({
       {!alreadyNamed(entry) && (
         <h1 className="text-fg mb-4 text-2xl font-semibold tracking-tight">{entry.title}</h1>
       )}
-      <Markdown entry={entry} onToggleCheckbox={toggle} />
+      <Markdown entry={entry} onToggleCheckbox={toggle} destination={destination} />
       <Backlinks entry={entry} />
     </article>
   );

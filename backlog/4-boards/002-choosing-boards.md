@@ -11,12 +11,42 @@ The Boards list in the rail, and how a folder gets onto it.
 
 **Declaration is discovery, not permission.** Any folder is boardable by URL whether listed or not. `[[tool.wikiview.board]]` only decides what the UI *surfaces*: what appears in the rail and which board is offered by default. A bundle with no config still boards any folder you point at.
 
+## `id`, and what it unlocks
+
+Today `path` is the board's identity, which means one board per folder. That forbids the thing people will reach for first: **two views of the same backlog**, one showing everything and one filtered to bugs, or a board grouped by `priority` beside the same folder grouped by `area`. The config can express the settings; it cannot express two of them over one path.
+
+So a board gets an `id`:
+
+```toml
+[[tool.wikiview.board]]
+id    = "bugs"
+path  = "/backlog"
+where = ["type=task", "kind=bug"]
+```
+
+**Optional when there is one board over a folder, required when there are several.** A bundle with a single backlog writes `path` and nothing else, and the id is `default`. The moment a second board names the same path, both need an id, and the validation already reporting duplicate paths says so instead. Requiring it from everyone would tax the common case to serve the rare one.
+
+**An id is a word, not a path.** No slashes, so it cannot be confused with a folder, and it is what the URL carries:
+
+```
+/kanban/bugs                       the board
+/kanban/bugs/3-reader/006-x.md     a card on it
+```
+
+That is the second thing it buys. A card can move back into the path, because an id is one segment and the boundary is unambiguous — `/kanban/<id>/<bundle path>` splits at the first slash and never guesses. The `?card=` query stops being necessary, though it costs nothing and could stay.
+
+**Ad-hoc boarding keeps the path form.** A folder nobody declared has no id, so `/kanban/<folder path>` still boards it, resolved after ids and before giving up. Two shapes, each unambiguous on its own, and the id space is small and hand-written.
+
+**Nothing else changes.** `path` still says which folder; `id` only says which of the boards over it. A bundle that never declares two boards over one folder never sees the difference.
+
 ## Adding one
 
 Two ways in, because they suit different moments:
 
 - **From the folder you are looking at** — a "view as board" action, which is just navigation to `/kanban/<that folder>`. Nothing is configured; you are simply trying it.
 - **From a picker** over the same tree the panel already shows, for choosing a folder you are not currently in.
+
+**With no boards declared, the panel is where this starts.** Rather than a note explaining that folders board by URL, it offers to make the first one: pick a folder, and that is the whole interaction. The empty state of a feature is the one moment somebody is definitely willing to be told how it works.
 
 Adding a board to the *list* is a config write: appending a `[[tool.wikiview.board]]` table to the bundle's `wiki.toml`. That is a real edit to a file the user owns and `wiki` also reads, so it is explicit, never implicit in having visited a folder.
 

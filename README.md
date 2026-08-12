@@ -114,6 +114,7 @@ GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*
 GET  /api/tree                the folder tree, each folder's entries and its index.md if it has one
 GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and resolved-link
                               and heading-id tables
+GET  /api/board/{path...}     one folder as columns of cards, in the config's order
 GET  /api/events              server-sent events carrying the current version
 GET  /raw/{path...}           a file as it is on disk, frontmatter and all
 PUT  /api/checkbox/{path...}  toggle a checkbox, guarded by the version you read

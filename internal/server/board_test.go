@@ -178,3 +178,29 @@ func TestLanesOnlyWhenDeclared(t *testing.T) {
 		}
 	}
 }
+
+// A rail listing "/" tells you nothing. Every board is a folder and a folder
+// already has a readable name, so no bundle should have to write one out.
+func TestBoardsAreNamedWithoutBeingTold(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	if got := board(t, srv, "/api/board/backlog").Name; got != "Backlog" {
+		t.Errorf("name=%q, want the folder made readable", got)
+	}
+
+	// The root has no folder name to borrow, so it takes the bundle's own.
+	root := newBoardServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\npath = \"/\"\n")
+	if got := board(t, root, "/api/board/").Name; got == "" || got == "/" {
+		t.Errorf("root board name=%q, want the bundle's name", got)
+	}
+
+	// And the config wins when the derived one is wrong.
+	named := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+path = "/backlog"
+name = "This Quarter"
+`)
+	if got := board(t, named, "/api/board/backlog").Name; got != "This Quarter" {
+		t.Errorf("name=%q, want the declared one", got)
+	}
+}

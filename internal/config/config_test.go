@@ -196,3 +196,26 @@ func TestREADMEDocumentsTheRealDefaults(t *testing.T) {
 		t.Errorf("defaultStatus=%q, and the README says status", defaultStatus)
 	}
 }
+
+// `path` is the board's identity, so two boards claiming one cannot both be
+// reached. Taking the first silently would hide a declaration written on
+// purpose — and a second board over the same folder with a different `where` is
+// exactly the thing somebody would try.
+func TestADuplicatePathIsReported(t *testing.T) {
+	cfg, problems := load(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+path = "/backlog"
+
+[[tool.wikiview.board]]
+path  = "/backlog/"
+where = ["type=bug"]
+`)
+	if len(problems) != 1 || !strings.Contains(problems[0], "already board 1") {
+		t.Errorf("problems=%v, want one naming the earlier board", problems)
+	}
+	// Reported, not discarded: the config still says what it says.
+	if len(cfg.Board) != 2 {
+		t.Errorf("boards=%d, want both kept", len(cfg.Board))
+	}
+}

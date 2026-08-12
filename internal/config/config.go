@@ -31,6 +31,13 @@ type Board struct {
 	// Path is the folder the board is over, and the board's identity. The only
 	// required key.
 	Path string `toml:"path" json:"path"`
+	// Name is what to call this board on screen. Optional: a folder already has
+	// a readable name, so this is for when that one is wrong rather than
+	// something every board has to carry.
+	//
+	// Filled in by whoever displays it, not here — naming a path readably is a
+	// presentation rule with one home, and it is not this package's.
+	Name string `toml:"name" json:"name,omitempty"`
 	// Where filters which entries are cards, in the `--where` spelling.
 	Where []string `toml:"where" json:"where,omitempty"`
 	// Status is the frontmatter field the columns come from.
@@ -104,11 +111,23 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 		return Config{}, append(problems, err.Error())
 	}
 
+	// `path` is the board's identity, so two boards claiming one is a config
+	// that cannot mean what it says: the second is unreachable, and silently
+	// taking the first would hide a declaration somebody wrote on purpose.
+	seen := map[string]int{}
+
 	for i := range cfg.Board {
 		board := &cfg.Board[i]
 		if board.Path == "" {
 			problems = append(problems, fmt.Sprintf("board %d: path is required", i+1))
 			continue
+		}
+		key := strings.TrimSuffix(board.Path, "/")
+		if first, ok := seen[key]; ok {
+			problems = append(problems, fmt.Sprintf(
+				"board %d: %s is already board %d, and only the first is reachable", i+1, board.Path, first))
+		} else {
+			seen[key] = i + 1
 		}
 		if board.Status == "" {
 			board.Status = defaultStatus
@@ -134,7 +153,9 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 // known keys, so a misspelling is reported rather than ignored.
 var (
 	topKeys   = map[string]bool{"board": true}
-	boardKeys = map[string]bool{"path": true, "where": true, "status": true, "columns": true, "lane": true}
+	boardKeys = map[string]bool{
+		"path": true, "name": true, "where": true, "status": true, "columns": true, "lane": true,
+	}
 )
 
 func unknownKeys(loose map[string]any) []string {

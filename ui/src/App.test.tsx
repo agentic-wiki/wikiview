@@ -24,6 +24,7 @@ const bundle: BundleInfo = {
   entries: 3,
   tools: ["wikiview"],
   version: 1,
+  boards: [{ path: "/notes", name: "Notes", status: "status" }],
 };
 
 const tree: TreeNode = {
@@ -163,6 +164,7 @@ function stubFetch() {
     const url = String(input);
     if (url.endsWith("/api/bundle")) return body(bundle);
     if (url.endsWith("/api/tree")) return body(tree);
+    if (url.includes("/api/board/")) return body(boardFixture);
     if (url.includes("/api/entry/notes/checks.md")) return body(checksEntry);
     if (url.includes("/api/entry/notes/named.md")) return body(namedInProse);
     if (url.includes("/api/entry/notes/differs.md")) return body(headingDiffers);
@@ -753,3 +755,193 @@ test("a version the client already has does not trigger a refetch", async () => 
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   expect(fetchCount()).toBeGreaterThan(before);
 });
+
+const boardFixture = {
+  path: "/notes",
+  field: "status",
+  lane: "priority",
+  declared: true,
+  columns: [
+    {
+      value: "todo",
+      cards: [
+        { path: "/notes/a.md", label: "A", title: "A Note", type: "task", lane: "high" },
+        { path: "/notes/checks.md", label: "Checks", type: "task" },
+      ],
+    },
+    // Declared and empty: the thing inference cannot do.
+    { value: "in-progress", cards: [] },
+    // Nobody declared this one; it exists because an entry has it.
+    { value: "blocked", cards: [{ path: "/notes/b.md", label: "B", type: "task", lane: "low" }] },
+  ],
+};
+
+/** Serves the board fixture alongside everything else. */
+function stubBoard() {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/api/board/")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(boardFixture), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = realFetch;
+  };
+}
+
+// A folder boards by URL whether config mentions it or not.
+test("a kanban URL renders columns of cards", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const columns = [...document.querySelectorAll("main section[aria-label] h2")].map((h) => h.textContent);
+  expect(columns).toEqual(["todo", "in-progress", "blocked"]);
+
+  // A declared column with nothing in it still appears, and says so rather than
+  // looking broken.
+  const empty = [...document.querySelectorAll("main section[aria-label]")].find(
+    (s) => s.getAttribute("aria-label") === "in-progress",
+  )!;
+  expect(empty.textContent).toContain("Empty");
+
+  restore();
+});
+
+// A card opens beside the board rather than instead of it, and the open card is
+// in the URL so back closes it and a link to it reopens the same thing.
+test("a card opens over the board, and the board stays", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes?card=/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // The entry is on screen…
+  expect(document.querySelector("[role=\"dialog\"]")?.textContent).toContain("The body of the entry.");
+  // …and so are the columns behind it, which is the point of a sheet.
+  const columns = [...document.querySelectorAll("main section[aria-label] h2")].map((h) => h.textContent);
+  expect(columns).toEqual(["todo", "in-progress", "blocked"]);
+
+  restore();
+});
+
+// The rule that makes an off-board link ordinary rather than something needing
+// special treatment: on this board it opens a card, otherwise it leaves.
+test("a link inside a card stays on the board only when its target is on it", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes?card=/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const links = [...document.querySelectorAll("[role=\"dialog\"] .markdown a")];
+  // /notes/b.md is a card on this board, so following it swaps the sheet.
+  const onBoard = links.find((a) => a.textContent === "b");
+  expect(onBoard?.getAttribute("href")).toBe("/kanban/notes?card=/notes/b.md");
+
+  // /notes/gone.md is not, so it leaves for the reader.
+  const offBoard = links.find((a) => a.textContent === "gone");
+  expect(offBoard?.getAttribute("href")).toBe("/wiki/notes/gone.md");
+
+  restore();
+});
+
+// One lane is no lanes. With a lane declared every card carries one, and a card
+// missing the field gets its own group rather than joining another's.
+test("lanes group a column only when the board declares one", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const todo = [...document.querySelectorAll("main section[aria-label]")].find(
+    (s) => s.getAttribute("aria-label") === "todo",
+  )!;
+  const lanes = [...todo.querySelectorAll("h3")].map((h) => h.textContent);
+  expect(lanes).toEqual(["high", "none"]);
+  restore();
+});
+
+// Opening the section to a list of one thing you then have to click is a step
+// that buys nothing.
+test("opening the boards section picks the first board", async () => {
+  await mountAt("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // A board is on screen without anything having been clicked in the list.
+  expect(document.querySelectorAll("main section[aria-label]").length).toBeGreaterThan(0);
+});
+
+// …but reopening it while reading a board must not move you off that board.
+test("reopening the section leaves the board you are on alone", async () => {
+  await mountAt("/kanban/3-reader");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // The declared board is listed…
+  const listed = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(listed.join()).toContain("Notes");
+  // …and you were not moved onto it.
+  expect(window.location.pathname === "/kanban/notes").toBe(false);
+});
+
+/** Clicks the rail's Boards icon, the way opening that section happens. */
+function openBoardsSection() {
+  openSection("Boards");
+}
+
+// Picking a board collapsed the panel and nothing reopened it: every rail icon
+// then changed a hidden panel, so clicking any of them did nothing you could
+// see, and the hamburger was the only way back.
+test("the rail reopens the panel after picking a board", async () => {
+  await mountAt("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // Pick the board, which collapses the panel.
+  const board = [...document.querySelectorAll("aside a")].find((a) =>
+    a.textContent?.includes("Notes"),
+  ) as HTMLElement;
+  await act(async () => board.click());
+  expect(document.querySelectorAll("aside a").length).toBe(0); // collapsed
+
+  // The rail brings it back, and switches what it shows.
+  await act(async () => openSection("Entries"));
+  const panel = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(panel.join()).toContain("Index");
+});
+
+// Clicking a section you are already in collapses the panel, so the rail both
+// gives the width and takes it back.
+test("the active rail icon collapses the panel", async () => {
+  await mountAt("/wiki/index.md");
+  expect(document.querySelectorAll("aside a").length).toBeGreaterThan(0);
+
+  await act(async () => openSection("Entries"));
+  expect(document.querySelectorAll("aside a").length).toBe(0);
+});
+
+// Coming back to Entries from a board should land where opening the app lands,
+// rather than on whatever the router last had.
+test("returning to entries from a board opens the front door", async () => {
+  await mountAt("/kanban/3-reader");
+  await act(async () => openSection("Entries"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(document.querySelector("article")?.textContent).toContain("The body of the entry.");
+});
+
+/** Clicks a rail icon by its label. */
+function openSection(label: string) {
+  const button = [...document.querySelectorAll("nav[aria-label='Sections'] button")].find(
+    (b) => b.getAttribute("aria-label") === label,
+  ) as HTMLElement | undefined;
+  if (!button) throw new Error(`no ${label} section in the rail`);
+  button.click();
+}

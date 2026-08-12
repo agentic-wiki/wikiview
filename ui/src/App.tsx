@@ -6,6 +6,7 @@ import { Shell } from "@/shell/Shell";
 import { ClearSelection } from "@/shell/ClearSelection";
 import { EntryView } from "@/views/EntryView";
 import { FolderView } from "@/views/FolderView";
+import { BoardView } from "@/views/BoardView";
 import { NotFound } from "@/views/NotFound";
 
 export function App() {
@@ -110,6 +111,9 @@ function Reader({
         {/* The front door is the bundle's own index.md. */}
         <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
         <Route path="/wiki/*" element={<Router tree={tree} version={bundle.version} refresh={refresh} />} />
+        {/* Any folder boards, declared in config or not: the URL is the way in,
+            and config only decides what the UI offers. */}
+        <Route path="/kanban/*" element={<BoardRoute version={bundle.version} refresh={refresh} />} />
         {/* Anything else. Without this a mistyped URL rendered an empty page,
             which reads as a broken app rather than a wrong address. */}
         <Route path="*" element={<UnknownRoute />} />
@@ -173,6 +177,13 @@ function MarkSeen({ onSeen }: { onSeen: (path: string) => void }) {
 /** The bundle path a route names, which is the route with /wiki off the front. */
 function entryPath(pathname: string): string {
   return "/" + decodeURIComponent(pathname).replace(/^\/wiki\/?/, "");
+}
+
+/** Reads the folder out of /kanban/<folder> and boards it. */
+function BoardRoute({ version, refresh }: { version: number; refresh: number }) {
+  const { pathname } = useLocation();
+  const path = "/" + decodeURIComponent(pathname).replace(/^\/kanban\/?/, "").replace(/\/$/, "");
+  return <BoardView path={path} version={version} refresh={refresh} />;
 }
 
 function UnknownRoute() {
