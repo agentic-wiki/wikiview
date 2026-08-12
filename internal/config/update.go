@@ -20,11 +20,12 @@ type Settings struct {
 	Blockers string   `json:"blockers"`
 	Where    []string `json:"where"`
 	Columns  []string `json:"columns"`
+	Lanes    []string `json:"lanes"`
 }
 
 // settingKeys is the order new keys are appended in, so a table this has edited
 // reads the same way as one written by hand.
-var settingKeys = []string{"name", "where", "status", "columns", "lane", "blockers"}
+var settingKeys = []string{"name", "where", "status", "columns", "lane", "lanes", "blockers"}
 
 // Update rewrites a board's settings in the bundle's wiki.toml, in place.
 //
@@ -143,6 +144,7 @@ func applySettings(lines []string, body span, s Settings) ([]string, error) {
 		"blockers": optional(s.Blockers),
 		"where":    list(s.Where),
 		"columns":  list(s.Columns),
+		"lanes":    list(s.Lanes),
 	}
 
 	kept := make([]string, 0, body.to-body.from)
@@ -251,6 +253,8 @@ func declareRoot(path, raw string, s Settings) error {
 			writeIf(&out, key, list(s.Where))
 		case "columns":
 			writeIf(&out, key, list(s.Columns))
+		case "lanes":
+			writeIf(&out, key, list(s.Lanes))
 		}
 	}
 	return replace(path, out.String())
@@ -289,7 +293,7 @@ func list(values []string) string {
 // validSettings refuses what cannot be written as a TOML basic string. Whether a
 // `where` expression parses is the caller's to check, with the engine's parser.
 func validSettings(s Settings) error {
-	for _, v := range append([]string{s.Name, s.Status, s.Lane, s.Blockers}, append(s.Where, s.Columns...)...) {
+	for _, v := range append([]string{s.Name, s.Status, s.Lane, s.Blockers}, append(s.Where, append(s.Columns, s.Lanes...)...)...) {
 		if !writable(v) {
 			return errors.New("a setting holds a character that cannot be written to wiki.toml")
 		}

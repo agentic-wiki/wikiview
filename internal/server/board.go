@@ -39,6 +39,9 @@ type BoardView struct {
 	// which one this board reads.
 	Blockers string   `json:"blockers"`
 	Columns  []Column `json:"columns"`
+	// Lanes is the order the bands go in, empty when the board has none. Ordered
+	// here for the same reason the columns are: an order is a rule.
+	Lanes []string `json:"lanes,omitempty"`
 	// Fields are the frontmatter keys the board's folder uses, with their values.
 	//
 	// So choosing a status field, a lane or a filter is picking from what is
@@ -204,33 +207,37 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 		})
 	}
 
-	// Declared columns first, in the order they were written, including the ones
-	// with nothing in them: declaring "in-progress" before anything is in it is
-	// the thing inference can never do.
-	seen := map[string]bool{}
+	pinned := map[string]bool{}
 	for _, value := range board.Columns {
-		out.Columns = append(out.Columns, Column{Value: value, Pinned: true, Cards: sorted(cards[value])})
-		seen[value] = true
+		pinned[value] = true
 	}
-
-	// Then everything the entries turned out to have. No card may be invisible:
-	// a status nobody declared still gets a column rather than vanishing from a
-	// board while sitting in the folder.
-	var rest []string
-	for value := range cards {
-		if !seen[value] && value != "" {
-			rest = append(rest, value)
-		}
-	}
-	slices.Sort(rest)
-	for _, value := range rest {
-		out.Columns = append(out.Columns, Column{Value: value, Cards: sorted(cards[value])})
+	for _, value := range ordered(board.Status, board.Columns, present(cards)) {
+		out.Columns = append(out.Columns, Column{
+			Value:  value,
+			Pinned: pinned[value],
+			Cards:  sorted(cards[value]),
+		})
 	}
 
 	// Entries with no status at all, last, and only when there are some. An
 	// always-present empty column would be a column about nothing.
-	if unset := cards[""]; len(unset) > 0 && !seen[""] {
+	if unset := cards[""]; len(unset) > 0 && !pinned[""] {
 		out.Columns = append(out.Columns, Column{Value: "", Cards: sorted(unset)})
+	}
+
+	// The lanes, in the same order by the same rule. Ordered here rather than in
+	// the browser because an order is a rule and rules have one home — the same
+	// reason the columns arrive built.
+	if board.Lane != "" {
+		out.Lanes = ordered(board.Lane, board.Lanes, laneValues(entries, board.Lane))
+		// A card with no lane groups on its own, last, for the same reason a
+		// status nobody declared still gets a column.
+		for _, e := range entries {
+			if e.Field(board.Lane) == "" {
+				out.Lanes = append(out.Lanes, "")
+				break
+			}
+		}
 	}
 	return out
 }
@@ -262,6 +269,87 @@ func fieldsIn(entries []*index.Entry) []Field {
 		out = append(out, field)
 	}
 	slices.SortFunc(out, func(a, b Field) int { return strings.Compare(a.Key, b.Key) })
+	return out
+}
+
+// knownOrder is how the vocabularies wikiview recognises actually read.
+//
+// Keyed by field name, because the opinion only holds where the name does: a
+// board grouped by `area` has no natural order and gets none invented for it.
+// Alphabetical is the obvious fallback and the wrong one for exactly these:
+// `high, low, medium` is not a priority ordering, and nobody has to configure
+// their way out of it.
+//
+// Only a default. `columns` and `lanes` override it completely, and a value the
+// table has never heard of still appears rather than being dropped.
+var knownOrder = map[string][]string{
+	"status":   {"backlog", "todo", "next", "in-progress", "doing", "in-review", "review", "blocked", "done", "cancelled", "archived"},
+	"priority": {"urgent", "high", "medium", "low"},
+	"severity": {"critical", "major", "minor", "trivial"},
+	"size":     {"xs", "s", "m", "l", "xl"},
+}
+
+// ordered arranges an axis: what the config declared, then what this field is
+// known to read like, then whatever is left, alphabetically.
+//
+// Declared values appear even when nothing is in them — declaring "in-progress"
+// before anything is in it is the thing inference can never do. Present values
+// always appear, declared or not: no card may be invisible.
+func ordered(field string, declared, present []string) []string {
+	out := make([]string, 0, len(declared)+len(present))
+	seen := map[string]bool{}
+	take := func(value string) {
+		if value != "" && !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+
+	for _, value := range declared {
+		take(value)
+	}
+	has := map[string]bool{}
+	for _, value := range present {
+		has[value] = true
+	}
+	for _, value := range knownOrder[field] {
+		if has[value] {
+			take(value)
+		}
+	}
+
+	rest := make([]string, 0, len(present))
+	for _, value := range present {
+		if value != "" && !seen[value] {
+			rest = append(rest, value)
+		}
+	}
+	slices.Sort(rest)
+	for _, value := range rest {
+		take(value)
+	}
+	return out
+}
+
+// present lists the values cards were grouped under.
+func present(cards map[string][]Card) []string {
+	out := make([]string, 0, len(cards))
+	for value := range cards {
+		out = append(out, value)
+	}
+	return out
+}
+
+// laneValues lists the lane values the entries carry.
+func laneValues(entries []*index.Entry, field string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, e := range entries {
+		if value := e.Field(field); value != "" && !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
 	return out
 }
 

@@ -61,6 +61,9 @@ type Board struct {
 	Columns []string `toml:"columns" json:"columns,omitempty"`
 	// Lane groups rows within the board. Empty means no lanes.
 	Lane string `toml:"lane" json:"lane,omitempty"`
+	// Lanes pins their order, the way Columns does for columns. Same rule: it
+	// orders and adds, never filters.
+	Lanes []string `toml:"lanes" json:"lanes,omitempty"`
 	// Blockers is the frontmatter field naming what an entry is waiting on.
 	//
 	// Configurable rather than fixed because the format does not define it: it is
@@ -257,7 +260,7 @@ var (
 	topKeys   = map[string]bool{"board": true}
 	boardKeys = map[string]bool{
 		"path": true, "id": true, "name": true, "where": true, "status": true, "columns": true,
-		"lane": true, "blockers": true,
+		"lane": true, "lanes": true, "blockers": true,
 	}
 )
 

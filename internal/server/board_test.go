@@ -444,3 +444,72 @@ blockers = "waits_on"
 		}
 	}
 }
+
+// Alphabetical is the obvious fallback and the wrong one: `high, low, medium` is
+// not a priority ordering, and nobody should have to configure their way out of
+// it. So the vocabularies wikiview recognises read the way they mean.
+func TestKnownVocabulariesOrderThemselves(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id   = "backlog"
+path = "/backlog"
+lane = "priority"
+`)
+	dir := srv.store.View().Index.Bundle.Dir
+	// Statuses and priorities both out of order on disk, so neither axis can come
+	// out right by accident.
+	for name, fm := range map[string]string{
+		"a": "status: todo\npriority: low",
+		"b": "status: done\npriority: high",
+		"c": "status: blocked\npriority: medium",
+	} {
+		content := "---\ntype: task\n" + fm + "\n---\nx\n"
+		if err := os.WriteFile(filepath.Join(dir, "backlog", name+".md"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	b := board(t, srv, "/api/board/backlog")
+	// The unnamed band last, being a fact about the cards rather than a lane
+	// anybody chose: `d.md` carries no priority.
+	if got := strings.Join(b.Lanes, ","); got != "high,medium,low," {
+		t.Errorf("lanes = %v, want the priority order", b.Lanes)
+	}
+	// The same rule on the other axis, so a status vocabulary reads in order too
+	// rather than blocked, done, todo.
+	if got := strings.Join(columnValues(b), ","); got != "todo,blocked,done," {
+		t.Errorf("columns = %v, want the status order", columnValues(b))
+	}
+}
+
+// The known order is a default, never a cage: a value it has never heard of
+// still appears, and config replaces it outright.
+func TestDeclaredOrderWinsAndUnknownValuesSurvive(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id    = "backlog"
+path  = "/backlog"
+lane  = "priority"
+lanes = ["low", "high"]
+`)
+	dir := srv.store.View().Index.Bundle.Dir
+	if err := os.WriteFile(filepath.Join(dir, "backlog", "a.md"),
+		[]byte("---\ntype: task\nstatus: todo\npriority: whenever\n---\nx\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	b := board(t, srv, "/api/board/backlog")
+	// Declared first in the order written, including `high` which nothing has;
+	// then the value nobody planned for, rather than it vanishing.
+	if got := strings.Join(b.Lanes, ","); got != "low,high,whenever," {
+		t.Errorf("lanes = %v", b.Lanes)
+	}
+}

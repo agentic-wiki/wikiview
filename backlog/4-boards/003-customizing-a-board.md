@@ -70,3 +70,27 @@ So the status and lane fields are lists of what the folder has rather than boxes
 The key is a list to pick from and **the value is typed**, with what the key already holds as suggestions. They are not symmetrical: a key that nothing has is a typo, and a *value* that nothing has yet is ordinary — `status=in-review` on the day you invent that status. A board you cannot describe until something already matches it is a board you cannot set up. Empty is a real value there, since `status=` matches an entry that has no status, which is the one thing an empty box does not say for itself and so is the placeholder.
 
 A `where` a hand-written `wiki.toml` holds that is *not* a filter is shown as it was written and sent back as it was written, so the server names it. Reshaping it into something that parses would change what the board means without saying so.
+
+## The order values read in
+
+Added after lanes started showing as `mid, low, high` — first-seen order, which is no order at all.
+
+**One rule for both axes**, because it is one question asked twice: what the config declares, then what the field is known to read like, then whatever is left, alphabetically. `columns` had the first and third parts already; `lanes` is its counterpart, and the middle part is new to both.
+
+**A table of vocabularies wikiview recognises**, keyed by field name: `status`, `priority`, `severity`, `size`. Alphabetical is the obvious fallback and the wrong one for exactly these — `high, low, medium` is not a priority ordering — and nobody should have to configure their way out of the default. Keyed by *name* because the opinion only holds where the name does: a board grouped by `area` has no natural order and gets none invented for it.
+
+It is only a default. A value the table has never heard of still appears rather than being dropped, and declaring `columns` or `lanes` replaces it outright.
+
+**On the server, though the complaint was visual.** The order has two sources the browser does not have: `wiki.toml`, which only the server reads, and the vocabulary table. Ordering lanes in the client would mean shipping the declared list over anyway and then writing the merge a second time in TypeScript, with the columns' copy already in Go. What is rendering stays rendering: the client still groups the cards and still decides which bands to show.
+
+## Ordering an axis from the UI
+
+`lanes` existed as a config key before anything could set it, and column order was only reachable by dragging headers on the board. Both axes are edited in the settings dialog now, in a tabbed section.
+
+**Tabs rather than two stacked sections.** They are the same shape of thing — an ordered list of values for a field — so one component serves both, and they are alternatives to look at rather than two things to fill in. Side by side would halve the width each has for a value like `in-progress`.
+
+**The list *is* the config value.** Checkboxes said which values were pinned and could not say in what order; a list says both, because being in it is what pinning means and where in it is the order. Values the entries have but nothing pinned sit below it as one click each, and a value nothing has yet can be typed — which is the whole reason to pin one.
+
+**Buttons, not dragging.** The board already drags and this could too, but this is where a board gets configured, and configuration reachable only with a pointer is configuration some people cannot do. A five-item list is not the place to spend that.
+
+**The lanes tab explains itself when there is no lane field** rather than disappearing. A tab that is not there reads as a feature that does not exist, and the fix is one control up in the same dialog.

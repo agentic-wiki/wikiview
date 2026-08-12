@@ -104,6 +104,7 @@ where    = ["type=task"]   # default
 status   = "status"        # default: the frontmatter field the columns come from
 columns  = []              # default: column keys inferred from the entries
 lane     = ""              # default: no lanes, which is to say one
+lanes    = []              # default: the order described below
 blockers = "blockers"      # default: the field naming what an entry waits on
 ```
 
@@ -119,6 +120,8 @@ where = ["type=task", "kind=bug"]
 `where` follows the same spelling as `wiki list --where status!=done`.
 
 An id is a word, never a path: it is the first segment of a board's address, and everything after it is an entry, so `/kanban/backlog/3-reader/006-x.md` opens that card on that board. Ids are declared rather than derived, because a derived one would come from the path and then that first segment would sometimes be an id and sometimes a folder name.
+
+**Order comes from the vocabulary first, and from you when you say so.** `status` and `priority` read the way they mean without being configured: `todo, in-progress, done` rather than alphabetical, and `high, medium, low` rather than `high, low, medium`. `severity` and `size` too. A field wikiview does not recognise falls back to alphabetical, and `columns` or `lanes` replaces the order outright for any field at all. A value nothing in the table mentions still appears, after the ones that do.
 
 **`columns` orders and adds. It never hides.** A status present in your entries but missing from the list still gets a column, appended after the ones you named. Declaring `["todo", "in-progress", "done"]` pins that order and shows `in-progress` while it is still empty, which is the thing inference cannot do for you — but a card whose status you forgot to list appears anyway rather than vanishing off a board while sitting in the folder. Hiding cards is `where`'s job, where it is explicit.
 
@@ -145,7 +148,7 @@ A write carries the `version` it was read at, and one that has moved is refused 
 
 `POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs"}` and appends a `[[tool.wikiview.board]]` table, leaving the rest of the file alone. It refuses an id that is not a word, one already declared, and a folder with no cards under it.
 
-`PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it. Both writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
+`PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane`, `lanes` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it. Both writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
 
 `/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. A `.env` sitting beside your notes has no key there, so it cannot be requested.
 

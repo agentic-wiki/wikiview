@@ -26,6 +26,11 @@ ignore_orphans = ["*/**"]
 [[tool.wikiview.board]]
 id   = "root"
 path = "/"
-columns = ["todo", "in-progress", "done"]
+columns = ["todo", "in-progress", "done", "archived"]
 lane = "priority"
+name = "Backlog"
+where = ["type=task"]
+status = "status"
+lanes = ["high", "medium", "low"]
+blockers = "blockers"
 

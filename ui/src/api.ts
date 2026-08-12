@@ -207,6 +207,9 @@ export interface BoardSettings {
   blockers: string;
   where: string[];
   columns: string[];
+  /** The order the lane bands go in. Orders and adds, never filters, exactly as
+   *  `columns` does. */
+  lanes: string[];
 }
 
 /**
@@ -229,7 +232,10 @@ export interface Board {
   /** The filter deciding which entries are cards, in the `--where` spelling. */
   where: string[];
   columns: Column[];
-  /** The frontmatter keys the board's folder uses, so choosing a field or a
+  /** The order the lane bands go in, absent when the board has none. Ordered by
+   *  the server, which is where the config that pins it is read. */
+  lanes?: string[];
+  /** The frontmatter keys the board.s folder uses, so choosing a field or a
    *  filter is picking from what is there. Taken before the board's own filter,
    *  which is the filter you would be replacing. */
   fields: Field[];

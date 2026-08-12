@@ -105,6 +105,7 @@ export function BoardView({
         blockers: before.blockers ?? "",
         where: before.where ?? [],
         columns: order.filter((v) => v !== ""),
+        lanes: (before.lanes ?? []).filter((l) => l !== ""),
       })
       .catch(() => setBoard(before));
   });
@@ -115,8 +116,8 @@ export function BoardView({
   const cards = board.columns.reduce((n, c) => n + c.cards.length, 0);
   if (cards === 0) return <EmptyBoard board={board} tree={tree} rootLabel={rootLabel} />;
 
-  // Every lane on the board, so every column can show every one of them.
-  const axis = laneAxis(board);
+  // Every lane on the board, in the order the server put them in.
+  const axis = board.lanes ?? [];
 
   // Every path this board holds, which is what decides whether a link inside a
   // card stays here or leaves for the reader.
@@ -291,8 +292,8 @@ function BoardColumn({
       >
         {/* An unnamed column is the one holding cards with no such field, which
             is a fact about them rather than a status anybody wrote. */}
-        <h2 className="text-fg truncate text-sm font-medium">
-          {column.value || <span className="text-muted italic">no {field}</span>}
+        <h2 className="text-fg truncate text-sm font-medium tracking-wide uppercase">
+          {column.value ? heading(column.value) : <span className="text-muted italic">no {field}</span>}
         </h2>
         {/* A pinned column stays when its status stops being used; an inferred
             one vanishes with the last entry that had it. Showing them the same
@@ -330,7 +331,7 @@ function BoardColumn({
           >
             {lane && (
               <h3 className="text-muted px-1 pt-1 text-xs font-medium tracking-wide uppercase">
-                {name || "none"}
+                {name ? heading(name) : "none"}
               </h3>
             )}
             {cards.map((card) => (
@@ -644,28 +645,6 @@ function column(board: Board, value: string): Column {
 }
 
 /**
- * The lanes a board has, in the order they are first met, with the unnamed one
- * last.
- *
- * A property of the board rather than of each column: a lane is a *row*, so
- * every column shows every one of them. Derived per column instead, a lane would
- * exist only where a card already sits in it — and there would be nowhere to
- * drop a card into a lane that column had not used yet, which is most of the
- * reason to drag one.
- *
- * Unnamed last for the same reason the no-status column is: it is a fact about
- * the cards in it rather than a lane anybody chose.
- */
-function laneAxis(board: Board): string[] {
-  const seen = new Set<string>();
-  for (const column of board.columns) {
-    for (const card of column.cards) seen.add(card.lane ?? "");
-  }
-  const named = [...seen].filter((l) => l !== "");
-  return seen.has("") ? [...named, ""] : named;
-}
-
-/**
  * Cards grouped by their lane, or one unnamed group when the board has no lanes.
  *
  * A card missing the field gets its own group rather than joining another's,
@@ -676,4 +655,16 @@ function laneAxis(board: Board): string[] {
 function groupByLane(cards: Card[], lane: string | undefined, axis: string[]): [string, Card[]][] {
   if (!lane) return [["", cards]];
   return axis.map((name) => [name, cards.filter((c) => (c.lane ?? "") === name)]);
+}
+
+/**
+ * A frontmatter value as a heading.
+ *
+ * Separators become spaces and CSS makes it capitals, so `in-progress` reads as
+ * IN PROGRESS. Display only: the value itself is data, and the settings form
+ * still shows it exactly as the entries spell it, because that is what gets
+ * written back.
+ */
+function heading(value: string): string {
+  return value.replace(/[-_]+/g, " ");
 }

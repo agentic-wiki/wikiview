@@ -793,6 +793,9 @@ const boardFixture = {
   lane: "priority",
   where: ["type=task", "priority!=low"],
   blockers: "blockers",
+  // The order the bands go in, which the server settles: `priority` is a
+  // vocabulary it knows, so high before low without anybody configuring it.
+  lanes: ["high", "low", ""],
   declared: true,
   // What the folder holds, taken before the board's own filter — which is why
   // `type=note` is offerable even though no card is one. `title` has too many
@@ -853,7 +856,9 @@ test("a kanban URL renders columns of cards", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const columns = [...document.querySelectorAll("main section[aria-label] h2")].map((h) => h.textContent);
-  expect(columns).toEqual(["todo", "in-progress", "blocked", "no status"]);
+  // De-sluggified for reading; the value itself is untouched, which is what the
+  // section is still labelled with.
+  expect(columns).toEqual(["todo", "in progress", "blocked", "no status"]);
 
   // A declared column with nothing in it still appears, and says so rather than
   // looking broken.
@@ -877,7 +882,9 @@ test("a card opens over the board, and the board stays", async () => {
   expect(document.querySelector("[role=\"dialog\"]")?.textContent).toContain("The body of the entry.");
   // …and so are the columns behind it, which is the point of a sheet.
   const columns = [...document.querySelectorAll("main section[aria-label] h2")].map((h) => h.textContent);
-  expect(columns).toEqual(["todo", "in-progress", "blocked", "no status"]);
+  // De-sluggified for reading; the value itself is untouched, which is what the
+  // section is still labelled with.
+  expect(columns).toEqual(["todo", "in progress", "blocked", "no status"]);
 
   restore();
 });
@@ -1376,6 +1383,8 @@ test("dragging a column header writes the new order", async () => {
         where: ["type=task", "priority!=low"],
         // The unnamed column is left out: it is not a status anybody declared.
         columns: ["blocked", "todo", "in-progress"],
+        // Nor is the unnamed band.
+        lanes: ["high", "low"],
       },
     },
   ]);
@@ -1407,10 +1416,90 @@ test("the settings form opens seeded from the board", async () => {
   expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Status field']")?.value).toBe("status");
   expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Lane field']")?.value).toBe("priority");
 
-  // Every column on the board is offered, pinned or not, with the pinned ones
-  // ticked — so pinning is a toggle rather than retyping what is on screen.
-  const boxes = [...dialog.querySelectorAll<HTMLInputElement>("li input[type=checkbox]")];
-  expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
+  // The pinned columns, in order: the list *is* the config value, so being in it
+  // is what pinning means and where in it is the order.
+  const pinned = () => pinnedIn(dialog);
+  expect(pinned()).toEqual(["todo", "in-progress"]);
+
+  // And what the entries have that nothing has pinned, one click each rather
+  // than retyping a value already on screen.
+  const offered = [...dialog.querySelectorAll("button")]
+    .map((b) => b.getAttribute("aria-label"))
+    .filter((l) => l?.startsWith("Pin "));
+  expect(offered).toEqual(["Pin blocked"]);
+});
+
+// Order is the one thing a set of checkboxes cannot say, and it was previously
+// only sayable by hand-editing wiki.toml.
+test("the settings form reorders an axis", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  const pinned = () => pinnedIn(dialog);
+  const click = (label: string) =>
+    dialog.querySelector<HTMLElement>(`[aria-label='${label}']`)!.click();
+
+  expect(pinned()).toEqual(["todo", "in-progress"]);
+  await act(async () => click("Move in-progress up"));
+  expect(pinned()).toEqual(["in-progress", "todo"]);
+
+  const writes = captureWrites();
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(writes[0]?.body.columns).toEqual(["in-progress", "todo"]);
+});
+
+// Lanes are the axis that had no control at all: the order was config-file-only.
+test("the lanes tab orders lanes, and says so when there are none", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  const tab = (name: string) =>
+    [...dialog.querySelectorAll("[role=tab]")].find((t) => t.textContent === name) as HTMLElement;
+  await act(async () => tab("lanes").click());
+
+  const pinned = () => pinnedIn(dialog);
+  expect(pinned()).toEqual(["high", "low"]);
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Move low up']")!.click());
+  expect(pinned()).toEqual(["low", "high"]);
+
+  const writes = captureWrites();
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(writes[0]?.body.lanes).toEqual(["low", "high"]);
+
+});
+
+// With no lane field the tab says so rather than being absent: a tab that is not
+// there reads as a feature that does not exist, and the fix is one control up.
+test("the lanes tab explains itself on a board without lanes", async () => {
+  await mountAt("/wiki/index.md");
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/api/board/") && init?.method === undefined) {
+      const { lane, lanes, ...rest } = boardFixture;
+      void lane;
+      void lanes;
+      return Promise.resolve(
+        new Response(JSON.stringify(rest), { headers: { "content-type": "application/json" } }),
+      );
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  await act(async () => navigateTo("/kanban/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  const lanes = [...dialog.querySelectorAll("[role=tab]")].find(
+    (t) => t.textContent === "lanes",
+  ) as HTMLElement;
+  await act(async () => lanes.click());
+  expect(dialog.textContent).toContain("No lane field");
 });
 
 // Recalling whether this bundle spells it `status` or `state` is the mistake
@@ -1501,6 +1590,7 @@ test("saving the settings form writes them", async () => {
         blockers: "blockers",
         where: ["type=task", "priority!=low"],
         columns: ["todo", "in-progress"],
+        lanes: ["high", "low"],
       },
     },
   ]);
@@ -1890,3 +1980,9 @@ test("cards and lane bands do not shrink", async () => {
   const band = [...columnEl("todo").querySelectorAll("[data-lane]")][0]!;
   expect(band.className).toContain("shrink-0");
 });
+
+/** The values pinned on the axis tab that is open, in order. */
+function pinnedIn(dialog: Element): (string | null | undefined)[] {
+  const list = dialog.querySelector("[aria-label^='Pinned ']");
+  return [...(list?.querySelectorAll("li") ?? [])].map((li) => li.querySelector("span")?.textContent);
+}

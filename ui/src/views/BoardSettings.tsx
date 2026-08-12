@@ -16,7 +16,7 @@ export function BoardSettings({
   onClose: () => void;
 }) {
   const [settings, setSettings] = useState<Settings>(() => current(board));
-  const [adding, setAdding] = useState("");
+  const [tab, setTab] = useState<"columns" | "lanes">("columns");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -30,23 +30,16 @@ export function BoardSettings({
 
   const set = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
 
-  // Every column on the board, pinned or not, so pinning is a toggle rather than
-  // retyping a status that is already on screen.
-  const known = [...new Set([...board.columns.map((c) => c.value), ...settings.columns])].filter(
-    (v) => v !== "",
-  );
+  // What the entries actually have on each axis, so pinning is a click rather
+  // than retyping a value already on screen. The unnamed one is left out: it is
+  // not a value anybody wrote, so there is nothing to pin.
+  const presentColumns = board.columns.map((c) => c.value).filter((v) => v !== "");
+  const presentLanes = (board.lanes ?? []).filter((v) => v !== "");
 
   // A column or a lane is one value, and a list has many, so a list-valued key
   // is not offered as either. It stays in the filter, where membership is
   // exactly what `tags=bug` means.
   const groupable = board.fields.filter((f) => !f.list);
-
-  const canAdd = adding !== "" && !settings.columns.includes(adding);
-  const addColumn = () => {
-    if (!canAdd) return;
-    set({ columns: [...settings.columns, adding] });
-    setAdding("");
-  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,9 +71,23 @@ export function BoardSettings({
         onSubmit={save}
         className="border-border bg-bg flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border shadow-2xl"
       >
+        {/* The path was here and is now under the name, where it says which
+            board this is rather than sitting where a dialog's close is. */}
         <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
-          <span className="text-fg text-sm font-medium">Board settings</span>
-          <span className="text-muted ml-auto truncate font-mono text-xs">{board.path}</span>
+          <div className="min-w-0">
+            <span className="text-fg block text-sm font-medium">Board settings</span>
+            <span className="text-muted block truncate font-mono text-xs">{board.path}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            className="text-muted hover:text-fg hover:bg-fg/5 ml-auto grid size-7 shrink-0 place-items-center rounded-md"
+          >
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </svg>
+          </button>
         </header>
 
         <div className="min-h-0 grow space-y-5 overflow-y-auto p-4 text-sm">
@@ -132,65 +139,45 @@ export function BoardSettings({
             />
           </Field>
 
+          {/* Two axes, one shape: an ordered list of values for a field. Tabbed
+              rather than stacked because they are alternatives to look at, not
+              two things to fill in, and side by side they would halve the width
+              each has for a value like `in-progress`. */}
           <div className="space-y-2">
-            <span className="text-fg block text-xs font-medium">Columns</span>
-            <p className="text-muted text-xs">
-              Pinned columns keep their order and stay when empty.
-            </p>
-            {/* Capped, because a status field with thirty values would otherwise
-                push everything else off the dialog. */}
-            <ul className="max-h-40 space-y-1 overflow-y-auto">
-              {known.map((value) => (
-                <li key={value}>
-                  <label className="hover:bg-fg/5 flex items-center gap-2 rounded-md px-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={settings.columns.includes(value)}
-                      onChange={(e) =>
-                        set({
-                          columns: e.target.checked
-                            ? [...settings.columns, value]
-                            : settings.columns.filter((c) => c !== value),
-                        })
-                      }
-                    />
-                    <span className="text-fg font-mono text-xs">{value}</span>
-                    {!board.columns.some((c) => c.value === value) && (
-                      <span className="text-muted ml-auto text-xs">nothing has it yet</span>
-                    )}
-                  </label>
-                </li>
+            <div role="tablist" className="border-border flex gap-1 border-b">
+              {(["columns", "lanes"] as const).map((axis) => (
+                <button
+                  key={axis}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === axis}
+                  onClick={() => setTab(axis)}
+                  className={[
+                    "-mb-px border-b-2 px-3 py-1.5 text-xs font-medium capitalize",
+                    tab === axis
+                      ? "border-accent text-fg"
+                      : "text-muted hover:text-fg border-transparent",
+                  ].join(" ")}
+                >
+                  {axis}
+                </button>
               ))}
-            </ul>
-
-            {/* A column nothing is in yet is the whole reason to declare one, and
-                inference can never produce it. */}
-            <div className="flex gap-2">
-              <input
-                value={adding}
-                onChange={(e) => setAdding(e.target.value)}
-                // Enter adds the column rather than saving the dialog, which is
-                // what a text box beside a button is for. A nested form would be
-                // the other way to say this, and HTML does not allow one.
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addColumn();
-                  }
-                }}
-                placeholder="in-progress"
-                aria-label="New column"
-                className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-2 py-1 font-mono text-xs"
-              />
-              <button
-                type="button"
-                disabled={!canAdd}
-                onClick={addColumn}
-                className="border-border text-muted hover:text-fg shrink-0 rounded-md border px-2 py-1 text-xs disabled:opacity-50"
-              >
-                Add column
-              </button>
             </div>
+
+            {tab === "lanes" && settings.lane === "" ? (
+              // Said rather than hidden: a missing tab reads as a feature that
+              // does not exist, and the fix is one control up.
+              <p className="text-muted px-1 py-2 text-xs">
+                No lane field, so there are no lanes to order.
+              </p>
+            ) : (
+              <Axis
+                label={tab === "columns" ? "column" : "lane"}
+                values={tab === "columns" ? settings.columns : settings.lanes}
+                present={tab === "columns" ? presentColumns : presentLanes}
+                onChange={(next) => set(tab === "columns" ? { columns: next } : { lanes: next })}
+              />
+            )}
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -215,6 +202,171 @@ export function BoardSettings({
         </footer>
       </form>
     </div>
+  );
+}
+
+/**
+ * One axis of a board: the values it is pinned to, in order.
+ *
+ * The list *is* the config value, which is why order is edited here rather than
+ * inferred from a set of checkboxes: being in the list is what pinning means,
+ * and where in the list is the only place an order can be said.
+ *
+ * Buttons rather than dragging. The board already drags, so this could too — but
+ * this is where a board gets configured, and configuration reachable only with a
+ * pointer is configuration some people cannot do. A five-item list is not the
+ * place to spend that.
+ */
+function Axis({
+  label,
+  values,
+  present,
+  onChange,
+}: {
+  /** What one of these is called, for the labels a screen reader reads. */
+  label: string;
+  values: string[];
+  /** What the entries actually have, so pinning is a click rather than retyping
+   *  a value already on screen. */
+  present: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const [adding, setAdding] = useState("");
+  const rest = present.filter((v) => !values.includes(v));
+  const canAdd = adding !== "" && !values.includes(adding);
+  const add = (value: string) => {
+    onChange([...values, value]);
+    setAdding("");
+  };
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= values.length) return;
+    const next = [...values];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item!);
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      {values.length === 0 ? (
+        <p className="text-muted px-1 py-1 text-xs">
+          Nothing pinned, so the order is the one wikiview infers.
+        </p>
+      ) : (
+        <ul aria-label={`Pinned ${label}s`} className="max-h-40 space-y-1 overflow-y-auto">
+          {values.map((value, i) => (
+            <li key={value} className="hover:bg-fg/5 flex items-center gap-1 rounded-md px-1 py-1">
+              <span className="text-fg grow truncate font-mono text-xs">{value}</span>
+              {!present.includes(value) && (
+                <span className="text-muted shrink-0 text-xs">nothing has it yet</span>
+              )}
+              <Nudge label={`Move ${value} up`} disabled={i === 0} onClick={() => move(i, i - 1)}>
+                <path d="M6 15l6-6 6 6" />
+              </Nudge>
+              <Nudge
+                label={`Move ${value} down`}
+                disabled={i === values.length - 1}
+                onClick={() => move(i, i + 1)}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </Nudge>
+              <button
+                type="button"
+                aria-label={`Unpin ${value}`}
+                onClick={() => onChange(values.filter((v) => v !== value))}
+                className="text-muted hover:text-fg shrink-0 px-1 text-xs"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* What the entries have but nothing has pinned. One click each, because
+          the alternative is retyping a value that is already on screen. */}
+      {rest.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-muted text-xs">Also in use:</span>
+          {rest.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => add(value)}
+              aria-label={`Pin ${value}`}
+              className="border-border text-muted hover:text-fg rounded border px-1.5 py-0.5 font-mono text-xs"
+            >
+              + {value}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* A value nothing has yet is the whole reason to pin one, and inference
+          can never produce it. */}
+      <div className="flex gap-2">
+        <input
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          // Enter adds rather than saving the dialog, which is what a text box
+          // beside a button is for. A nested form would be the other way to say
+          // it, and HTML does not allow one.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (canAdd) add(adding);
+            }
+          }}
+          placeholder={label === "column" ? "in-progress" : "urgent"}
+          aria-label={`New ${label}`}
+          className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-2 py-1 font-mono text-xs"
+        />
+        <button
+          type="button"
+          disabled={!canAdd}
+          onClick={() => add(adding)}
+          className="border-border text-muted hover:text-fg shrink-0 rounded-md border px-2 py-1 text-xs capitalize disabled:opacity-50"
+        >
+          Add {label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** One of the two order buttons, which differ only by which way the arrow points. */
+function Nudge({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="text-muted hover:text-fg hover:bg-fg/10 shrink-0 rounded p-0.5 disabled:opacity-30"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="size-3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        {children}
+      </svg>
+    </button>
   );
 }
 
@@ -419,6 +571,9 @@ function current(board: Board): Settings {
     blockers: board.blockers ?? "",
     where: board.where ?? [],
     columns: board.columns.filter((c) => c.pinned).map((c) => c.value),
+    // Every band the board has, in the order it is showing them: saving from
+    // this form pins what is on screen rather than silently reordering it.
+    lanes: (board.lanes ?? []).filter((l) => l !== ""),
   };
 }
 
