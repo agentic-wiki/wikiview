@@ -19,6 +19,7 @@ export function BoardView({
   id,
   card,
   tree,
+  changedAt,
   rootLabel,
   version,
   refresh,
@@ -29,6 +30,8 @@ export function BoardView({
   card: string;
   /** The folder tree, for offering a board over one when this board is empty. */
   tree: TreeNode;
+  /** When each entry.s content last moved, for the card opened over the board. */
+  changedAt: Record<string, number>;
   rootLabel: string;
   version: number;
   refresh: number;
@@ -152,6 +155,7 @@ export function BoardView({
           path={card}
           version={version}
           refresh={refresh}
+          changedAt={changedAt[card]}
           onBoard={onBoard}
           // Replaced rather than pushed: closing a card should not leave a
           // history entry you have to press back through twice.
@@ -401,6 +405,7 @@ function CardSheet({
   path,
   version,
   refresh,
+  changedAt,
   onBoard,
   onClose,
 }: {
@@ -408,6 +413,7 @@ function CardSheet({
   path: string;
   version: number;
   refresh: number;
+  changedAt?: number;
   onBoard: Set<string>;
   onClose: () => void;
 }) {
@@ -474,6 +480,7 @@ function CardSheet({
             path={path}
             version={version}
             refresh={refresh}
+            changedAt={changedAt}
             // A link to something else on this board opens that card and keeps
             // the board. Anything else leaves for the reader, which is what
             // makes an off-board link ordinary rather than decorated.

@@ -101,7 +101,7 @@ function Reader({
   tree: TreeNode;
   refresh: number;
 }) {
-  const { unseen, markSeen } = useSeen(bundle.id, tree, entryPath(useLocation().pathname));
+  const { unseen, markSeen, changedAt } = useSeen(bundle.id, tree, entryPath(useLocation().pathname));
 
   return (
     <Shell bundle={bundle} tree={tree} unseen={unseen}>
@@ -110,7 +110,17 @@ function Reader({
       <Routes>
         {/* The front door is the bundle's own index.md. */}
         <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
-        <Route path="/wiki/*" element={<Router tree={tree} version={bundle.version} refresh={refresh} />} />
+        <Route
+          path="/wiki/*"
+          element={
+            <Router
+              tree={tree}
+              changedAt={changedAt}
+              version={bundle.version}
+              refresh={refresh}
+            />
+          }
+        />
         {/* A board is addressed by its id, and `root` is the one every bundle
             has without declaring anything. */}
         <Route
@@ -118,6 +128,7 @@ function Reader({
           element={
             <BoardRoute
               tree={tree}
+              changedAt={changedAt}
               rootLabel={bundle.label}
               version={bundle.version}
               refresh={refresh}
@@ -142,10 +153,14 @@ function Reader({
  */
 function Router({
   tree,
+  changedAt,
   version,
   refresh,
 }: {
   tree: TreeNode;
+  /** When each entry's content last moved, so a copy already read can be known
+   *  to be current rather than guessed at. */
+  changedAt: Record<string, number>;
   /** The version the data on screen was read at; travels with writes. */
   version: number;
   /** Changes when the server reports new content; forces a refetch. */
@@ -163,7 +178,9 @@ function Router({
     if (folder.index) return <Navigate to={"/wiki" + folder.index} replace />;
     return <FolderView folder={folder} />;
   }
-  return <EntryView path={path} version={version} refresh={refresh} />;
+  return (
+    <EntryView path={path} version={version} refresh={refresh} changedAt={changedAt[path]} />
+  );
 }
 
 /**
@@ -197,11 +214,13 @@ function entryPath(pathname: string): string {
  */
 function BoardRoute({
   tree,
+  changedAt,
   rootLabel,
   version,
   refresh,
 }: {
   tree: TreeNode;
+  changedAt: Record<string, number>;
   rootLabel: string;
   version: number;
   refresh: number;
@@ -216,6 +235,7 @@ function BoardRoute({
       id={id}
       card={card}
       tree={tree}
+      changedAt={changedAt}
       rootLabel={rootLabel}
       version={version}
       refresh={refresh}

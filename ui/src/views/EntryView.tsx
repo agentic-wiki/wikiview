@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api, type Entry } from "@/api";
+import { isCurrent, recall, remember } from "@/cache";
 import { Markdown } from "@/markdown/Markdown";
 import { NotFound } from "@/views/NotFound";
 import { Loading } from "@/views/Loading";
@@ -9,11 +10,16 @@ export function EntryView({
   path,
   version,
   refresh,
+  changedAt,
   destination,
 }: {
   path: string;
   version: number;
   refresh: number;
+  /** The version this entry's content last moved at, from the tree. Undefined
+   *  for a path the tree does not list, which is a reason to fetch rather than
+   *  to trust a copy. */
+  changedAt?: number;
   /** Where links in the body should go. The board overrides it so a link to a
    *  card stays on the board; the reader leaves it alone. */
   destination?: (bundlePath: string) => string;
@@ -32,11 +38,21 @@ export function EntryView({
   const [error, setError] = useState<{ path: string; message: string } | null>(null);
 
   useEffect(() => {
+    // A copy taken at or after the version this entry last moved at *is* the
+    // file, so there is nothing to ask for. This is the common case in a
+    // session: most navigation revisits, and most versions move because of some
+    // other entry — which is exactly when a bundle-wide check would refetch
+    // everything for nothing.
+    if (isCurrent(path, changedAt)) {
+      setError(null);
+      return;
+    }
     const ac = new AbortController();
     api
       .entry(path, ac.signal)
       .then((e) => {
         if (!ac.signal.aborted) {
+          remember(path, e, version);
           setLoaded({ path, entry: e });
           setError(null);
         }
@@ -45,24 +61,34 @@ export function EntryView({
         if (!ac.signal.aborted) setError({ path, message: String(e.message ?? e) });
       });
     return () => ac.abort();
-  }, [path, refresh]);
+  }, [path, refresh, changedAt, version]);
 
-  const entry = loaded?.entry ?? null;
+  // The entry this path is showing, read during render so one visited earlier is
+  // on screen in the same commit as the navigation rather than a frame after it.
+  // Undefined until a first visit lands, which is when the outgoing entry below
+  // keeps the layout — and its scroll position — from collapsing.
+  const shown = loaded?.path === path ? loaded.entry : recall(path)?.entry;
+  const entry = shown ?? loaded?.entry ?? null;
 
   const toggle = useCallback(
     async (line: number, done: boolean) => {
-      // A checkbox belongs to the entry it was rendered from. While a
-      // navigation is in flight that entry is not the one at `path`, and a line
+      // A checkbox belongs to the entry it was rendered from. While a first
+      // visit is in flight that entry is not the one at `path`, and a line
       // number means nothing across two files.
-      if (!loaded || loaded.path !== path) return;
+      if (!shown) return;
       // Applied optimistically, then confirmed by the refetch the version bump
       // triggers. A refused write leaves this correction visible only until that
       // refetch replaces it with the truth.
-      const e = loaded.entry;
-      setLoaded({
-        path,
-        entry: { ...e, checkboxes: e.checkboxes.map((c) => (c.line === line ? { ...c, done } : c)) },
-      });
+      //
+      // Kept as well as shown: without that, navigating away and back would
+      // render the copy taken *before* the tick and read as the write having
+      // failed.
+      const next = {
+        ...shown,
+        checkboxes: shown.checkboxes.map((c) => (c.line === line ? { ...c, done } : c)),
+      };
+      remember(path, next, version);
+      setLoaded({ path, entry: next });
       try {
         await api.setCheckbox(path, line, done, version);
       } catch (err) {
@@ -72,11 +98,14 @@ export function EntryView({
         setError({ path, message: String((err as Error).message) });
         api
           .entry(path)
-          .then((fresh) => setLoaded({ path, entry: fresh }))
+          .then((fresh) => {
+            remember(path, fresh, version);
+            setLoaded({ path, entry: fresh });
+          })
           .catch(() => {});
       }
     },
-    [loaded, path, version],
+    [shown, path, version],
   );
 
   // A missing entry is not an error in this format: a link may point at

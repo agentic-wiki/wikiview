@@ -4,6 +4,7 @@ import { StrictMode, act } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { App } from "@/App";
 import type { BundleInfo, Entry, TreeNode } from "@/api";
+import { forget } from "@/cache";
 
 /**
  * These mount the real app and drive it, which is the only way to know it
@@ -94,6 +95,22 @@ const entry: Entry = {
   checkboxes: [],
 };
 
+/** The front door, with a body of its own. Distinct from every other entry on
+ *  purpose: serving one fixture for two paths makes "the right entry rendered"
+ *  unobservable, and a test that cannot see it passes for the wrong reason. */
+const indexEntry: Entry = {
+  path: "/index.md",
+  title: "The Front Door",
+  type: "",
+  frontmatter: { okf_version: "0.1" },
+  body: "# The Front Door\n\nWhere the bundle starts.\n",
+  links: [],
+  frontmatterRefs: [],
+  backlinks: [],
+  headings: [{ level: 1, text: "The Front Door", id: "the-front-door", line: 4, bodyLine: 1 }],
+  checkboxes: [],
+};
+
 /** An entry whose checkbox sits on line 6 — deliberately not the line a client
  *  could infer by counting rendered items, so the test proves the server-given
  *  line is what travels. */
@@ -174,9 +191,8 @@ function stubFetch() {
     // Only the entries the fixture actually declares. A catch-all here would
     // mean a "missing" entry still returned content, and the not-found path
     // would never be exercised.
-    if (url.includes("/api/entry/notes/a.md") || url.includes("/api/entry/index.md")) {
-      return body(entry);
-    }
+    if (url.includes("/api/entry/index.md")) return body(indexEntry);
+    if (url.includes("/api/entry/notes/a.md")) return body(entry);
     return Promise.resolve(
       new Response(JSON.stringify({ error: "no entry at that path" }), {
         status: 404,
@@ -205,7 +221,12 @@ let container: HTMLElement | undefined;
 // The reader remembers view preferences per bundle, so without this each test
 // would start inside the last one's browser and the tree would open where a
 // previous test left it.
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  // Entries read in one test are not entries this one has read, and a copy left
+  // behind would answer a fetch that should have been made.
+  forget();
+});
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -281,7 +302,7 @@ test("a folder with an index redirects to it rather than listing", async () => {
   // The root has an index.md, so navigating to the folder must land on the entry
   // — one entry, one URL.
   const text = await mountAt("/wiki/");
-  expect(text).toContain("The body of the entry.");
+  expect(text).toContain("Where the bundle starts.");
 });
 
 test("a folder without an index lists its entries", async () => {
@@ -1143,7 +1164,7 @@ test("returning to entries from a board opens the front door", async () => {
   await act(async () => openSection("Entries"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  expect(document.querySelector("article")?.textContent).toContain("The body of the entry.");
+  expect(document.querySelector("article")?.textContent).toContain("Where the bundle starts.");
 });
 
 /** Clicks a rail icon by its label. */
@@ -1601,7 +1622,7 @@ test("the panel does not move until the view does", async () => {
 
     // The reader is still on screen, so the panel it sits beside must be too.
     expect(panel.className).toContain("w-64");
-    expect(main.textContent).toContain("The body of the entry.");
+    expect(main.textContent).toContain("Where the bundle starts.");
   } finally {
     flags.IS_REACT_ACT_ENVIRONMENT = true;
   }
@@ -1609,7 +1630,7 @@ test("the panel does not move until the view does", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   // And now both, together.
   expect(panel.className).toContain("w-0");
-  expect(main.textContent).not.toContain("The body of the entry.");
+  expect(main.textContent).not.toContain("Where the bundle starts.");
 });
 
 // And the same the other way: the panel used to open beside the board before
@@ -1637,3 +1658,110 @@ test("the panel does not open until the reader arrives", async () => {
   expect(panel.className).toContain("w-64");
   expect(main.textContent).toContain("The Front Door");
 });
+
+// Every navigation used to be a round trip, so there was a window with nothing
+// correct to show. A copy taken on the way past closes it.
+test("returning to an entry read earlier renders it with no request", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const before = fetchCount();
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  // On screen in the same commit as the navigation, before any promise settles.
+  expect(document.querySelector("main")?.textContent).toContain("The body of the entry.");
+  expect(fetchCount()).toBe(before);
+
+  // …and still nothing asked for once everything has settled.
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(fetchCount()).toBe(before);
+});
+
+// The freshness question is answered per entry, not per bundle. An agent editing
+// something else is the common case while a bundle is open, and a bundle-wide
+// check would refetch what you are reading every time it happened.
+test("an edit to another entry does not refetch the one on screen", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // Both read once, so what follows is about revisiting rather than arriving.
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // A version the client has not seen: the bundle and tree refetch, and the tree
+  // says which entry moved — not this one.
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const before = fetchCount();
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(fetchCount()).toBe(before);
+});
+
+// A copy is about latency, never about truth. When the file did change, the copy
+// is shown and replaced rather than trusted.
+test("an entry that changed on disk is refetched", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  // The tree now reports a.md as having moved at a later version than the copy
+  // was taken at, which is the whole of the staleness rule.
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/api/tree")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(withChangedAt(tree, "/notes/a.md", 99)), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("/api/entry/notes/a.md")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ ...entry, body: "# A Note\n\nRewritten on disk.\n", links: [] }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelector("main")?.textContent).toContain("Rewritten on disk.");
+});
+
+// A tick that is not kept as well as shown reads as the write having failed:
+// navigate away, come back, and the box is empty again.
+test("a checkbox ticked survives navigating away and back", async () => {
+  await mountAt("/wiki/notes/checks.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  captureWrites();
+
+  const box = document.querySelector<HTMLInputElement>("main input[type=checkbox]")!;
+  expect(box.checked).toBe(false);
+  await act(async () => box.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => navigateTo("/wiki/notes/checks.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(document.querySelector<HTMLInputElement>("main input[type=checkbox]")?.checked).toBe(true);
+});
+
+/** The tree with one entry's changedAt moved on, as a rebuild would report it. */
+function withChangedAt(node: TreeNode, path: string, at: number): TreeNode {
+  return {
+    ...node,
+    entries: node.entries.map((e) => (e.path === path ? { ...e, changedAt: at } : e)),
+    children: node.children.map((c) => withChangedAt(c, path, at)),
+  };
+}

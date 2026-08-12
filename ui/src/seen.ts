@@ -61,7 +61,10 @@ export function useSeen(bundleId: string, tree: TreeNode, current: string) {
     [changedAt, setSeen],
   );
 
-  return { unseen, markSeen };
+  // Handed back as well as used here, because "when did this entry's content
+  // last move" answers two questions with one table: whether to mark it as
+  // changed, and whether a copy of it already read is still the file.
+  return { unseen, markSeen, changedAt };
 }
 
 /** Whether anything below this folder is unseen, so the mark leads to it. */
