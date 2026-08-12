@@ -132,6 +132,7 @@ export function BoardView({
         <span className="text-muted shrink-0 font-mono text-xs">{board.path}</span>
         <button
           type="button"
+          data-print="hide"
           onClick={() => setEditing(true)}
           className="text-muted hover:text-fg hover:bg-fg/5 ml-auto shrink-0 rounded-md px-2 py-1 text-xs"
         >
@@ -141,8 +142,15 @@ export function BoardView({
 
       {/* Columns scroll sideways as a set while each scrolls its own cards, so a
           long column does not push the board's own height around. Marked as the
-          scroller so a drag towards the edge can bring the rest into reach. */}
-      <div data-scroller className="flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4">
+          scroller so a drag towards the edge can bring the rest into reach.
+
+          On paper, a card open over the board makes the board context you are
+          not reading: what you are looking at is what prints. */}
+      <div
+        data-scroller
+        data-print={card ? "hide" : undefined}
+        className="flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4"
+      >
         {board.columns.map((column) => (
           <BoardColumn
             key={column.value || " unset"}
@@ -210,7 +218,8 @@ function EmptyBoard({
             <code>{board.field}</code>.
           </p>
         </div>
-        <div className="border-border rounded-lg border p-4">
+        {/* A form is a control, and paper takes no input. */}
+        <div data-print="hide" className="border-border rounded-lg border p-4">
           <p className="text-muted mb-3 text-sm">Point a board at a folder that has some:</p>
           <NewBoard tree={tree} rootLabel={rootLabel} />
         </div>
@@ -481,6 +490,7 @@ function Ghost({ card, drag }: { card: Card; drag: DragState<Card> }) {
       // under the pointer exactly where it was picked up rather than jumping to
       // a corner the moment it lifts.
       style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
+      data-print="hide"
       className="border-accent bg-bg pointer-events-none fixed z-50 rotate-1 rounded-md border p-2 shadow-lg"
     >
       <CardFace card={card} />
@@ -564,6 +574,9 @@ function CardSheet({
     // columns permanently, and the columns are the thing you came for; a dialog
     // borrows the screen and gives it back.
     <div
+      // On paper the backdrop is a grey rectangle and a fixed box prints one
+      // clipped page, so the sheet stops being a sheet and becomes the page.
+      data-print="sheet"
       className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-[8vh]"
       onClick={onClose}
       role="presentation"
@@ -583,6 +596,7 @@ function CardSheet({
           <span className="text-muted truncate font-mono text-xs">{path}</span>
           <Link
             to={"/wiki" + path}
+            data-print="hide"
             className="text-muted hover:text-fg ml-auto shrink-0 text-xs underline decoration-dotted underline-offset-2"
           >
             open in reader
@@ -590,6 +604,7 @@ function CardSheet({
           <button
             type="button"
             onClick={onClose}
+            data-print="hide"
             aria-label="Close card"
             className="text-muted hover:text-fg hover:bg-fg/5 grid size-7 shrink-0 place-items-center rounded-md"
           >

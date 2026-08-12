@@ -59,6 +59,7 @@ export function BoardSettings({
 
   return (
     <div
+      data-print="hide"
       className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-[8vh]"
       onClick={onClose}
       role="presentation"

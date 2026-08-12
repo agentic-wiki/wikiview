@@ -150,6 +150,7 @@ export function Shell({
       <header className="border-border bg-surface flex h-12 shrink-0 items-center gap-3 border-b px-3">
         <button
           type="button"
+          data-print="hide"
           aria-label={panelOpen ? "Hide navigation" : "Show navigation"}
           aria-expanded={panelOpen}
           onClick={() => toggle(section, !panelOpen)}
@@ -166,11 +167,13 @@ export function Shell({
           <Breadcrumbs bundleName={bundle.label} root={tree} path={path} />
         </div>
 
-        <div className="hidden w-full max-w-sm shrink justify-center sm:flex">
+        <div data-print="hide" className="hidden w-full max-w-sm shrink justify-center sm:flex">
           <Omnibar tree={tree} unseen={unseen} />
         </div>
 
-        <ThemeToggle />
+        <span data-print="hide">
+          <ThemeToggle />
+        </span>
       </header>
 
       <div className="relative flex min-h-0 grow">
@@ -179,6 +182,7 @@ export function Shell({
         {/* Offset by the rail's collapsed width; the rail expands over this
             rather than pushing it, so nothing here reflows. */}
         <aside
+          data-print="hide"
           className={[
             "border-border bg-bg ml-14 shrink-0 overflow-y-auto border-r",
             animate ? "transition-[width] duration-200 ease-out" : "",

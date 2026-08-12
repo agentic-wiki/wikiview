@@ -119,6 +119,7 @@ export function EntryView({
 
   return (
     <article className="mx-auto max-w-3xl px-6 py-8">
+      <Print />
       <Frontmatter entry={entry} />
       {/* Below the frontmatter strip, where the body's own opening heading would
           sit — so an entry that has one and an entry that borrows one look the
@@ -181,7 +182,14 @@ function Frontmatter({ entry }: { entry: Entry }) {
   const refs = new Map(entry.frontmatterRefs.map((r) => [r.key + "\u0000" + r.value, r]));
 
   return (
-    <dl className="border-border mb-6 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b pb-4 text-xs">
+    // The rule sits on a plain block and the chips on a flex one inside it,
+    // which is what gets the divider all the way across. A flex container
+    // establishes its own formatting context, so it steps aside from the floated
+    // print button and its border stops short by exactly the button's width. An
+    // ordinary block does not: only its line boxes avoid the float, while its
+    // border box still spans the full column.
+    <div className="border-border mb-6 border-b pb-4">
+      <dl className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
       {fields.map(([key, value]) => (
         // Key and value read as one unit, so they share a chip and the accent
         // separates them rather than a gap doing it. Values are never coloured
@@ -216,7 +224,8 @@ function Frontmatter({ entry }: { entry: Entry }) {
           </dd>
         </div>
       ))}
-    </dl>
+      </dl>
+    </div>
   );
 }
 
@@ -253,5 +262,46 @@ function Backlinks({ entry }: { entry: Entry }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Print this entry.
+ *
+ * A real float rather than a position, because it has nothing dependable to
+ * attach to: the frontmatter strip is absent on an entry with no metadata, and
+ * the title is absent whenever the body already names itself. Floated, it
+ * attaches to no element at all — whatever happens to come first flows around
+ * it, and it can never overlap the thing it sits beside.
+ *
+ * `window.print()` and nothing else. The browser already turns a page into a
+ * PDF, and everyone already knows ⌘P; this only says so on screen for the people
+ * who do not.
+ */
+function Print() {
+  return (
+    <button
+      type="button"
+      data-print="hide"
+      onClick={() => window.print()}
+      aria-label="Print this entry"
+      title="Print"
+      className="text-muted hover:text-fg hover:bg-fg/5 float-right ml-3 rounded-md p-1.5"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="size-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M6 9V3h12v6" />
+        <path d="M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2" />
+        <path d="M6 14h12v7H6z" />
+      </svg>
+    </button>
   );
 }

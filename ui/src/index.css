@@ -134,3 +134,80 @@ body { background: var(--color-bg); color: var(--color-fg); }
 .markdown .hljs-number, .markdown .hljs-symbol { color: oklch(62% 0.15 45); }
 .markdown .hljs-title, .markdown .hljs-name, .markdown .hljs-section { color: var(--color-accent); }
 .markdown .hljs-type, .markdown .hljs-built_in { color: oklch(60% 0.12 220); }
+
+/* Print.
+ *
+ * A stylesheet rather than a feature: every browser already turns a page into a
+ * PDF and everyone already knows ⌘P. What was missing is a page worth printing.
+ *
+ * The two rules that decide whether printing works at all are the last ones you
+ * would think of. The shell is a full-height flex layout whose view area scrolls
+ * itself, so without releasing the height and the overflow a long entry prints
+ * as one page: the part that happened to be on screen. Everything else here is
+ * presentation. */
+@media print {
+  /* Ink, whatever the screen is set to. A dark theme printed as-is wastes a
+     cartridge and is unreadable in the bargain. */
+  :root, :root[data-theme="dark"], :root[data-theme="light"] {
+    --color-bg: #fff;
+    --color-surface: #fff;
+    --color-fg: #000;
+    --color-muted: #444;
+    --color-border: #bbb;
+    --color-accent: #000;
+    color-scheme: light;
+  }
+
+  html, body, #root { height: auto; overflow: visible; }
+  /* Every scroll container in the shell, released. A box that scrolls on screen
+     prints only what is inside it. */
+  main, aside, section, [data-scroller] { overflow: visible !important; height: auto !important; }
+
+  /* Controls. They exist to reach somewhere else, and paper goes nowhere. */
+  [data-print="hide"] { display: none !important; }
+
+  /* Nothing that reads as one thing is split down the middle. */
+  pre, blockquote, tr, img, table { break-inside: avoid; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+
+  /* A wiki entry is dense with internal links and every one of them would grow a
+     bundle path mid-sentence. An external URL is the one a reader cannot
+     recover from the text. */
+  .markdown a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; word-break: break-all; }
+
+  /* A board is a horizontal thing and paper is a vertical one, so it prints as
+     what it says rather than as what it looks like: a section per column, its
+     cards listed under it. Printing the layout instead would clip every column
+     past the first and reproduce nothing a reader could use. */
+  /* The `:not()` is doing real work. Hiding and stacking are the same
+     specificity and both !important, so whichever is written last wins: without
+     the guard this rule un-hides a board that a card is open over, and it prints
+     as a stacked board followed by the card it was meant to make way for. */
+  [data-scroller]:not([data-print="hide"]) { display: block !important; }
+  [data-scroller]:not([data-print="hide"]) > section {
+    width: auto !important;
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+}
+
+/* The card sheet, which on screen is a fixed dialog over a backdrop. Printed as
+ * it stands, the backdrop is a grey rectangle and the fixed box yields one
+ * clipped page, so it stops being a sheet and becomes the page. */
+@media print {
+  [data-print="sheet"] {
+    position: static !important;
+    display: block !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  [data-print="sheet"] > [role="dialog"] {
+    height: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  [data-print="sheet"] > [role="dialog"] > div { overflow: visible !important; }
+}

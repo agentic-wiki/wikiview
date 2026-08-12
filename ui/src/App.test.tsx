@@ -710,7 +710,9 @@ test("a prepended title sits below the frontmatter strip, not above it", async (
   await mountAt("/wiki/notes/checks.md");
   const article = document.querySelector("article")!;
   const kids = [...article.children];
-  const strip = kids.findIndex((n) => n.tagName === "DL");
+  // The strip is a plain block wrapping the chips, so the divider it carries
+  // spans the column rather than stopping short of the floated print button.
+  const strip = kids.findIndex((n) => n.tagName === "DL" || n.querySelector("dl") !== null);
   const heading = kids.findIndex((n) => n.tagName === "H1");
   expect(strip).toBeGreaterThanOrEqual(0);
   expect(heading).toBeGreaterThan(strip);
@@ -1986,3 +1988,110 @@ function pinnedIn(dialog: Element): (string | null | undefined)[] {
   const list = dialog.querySelector("[aria-label^='Pinned ']");
   return [...(list?.querySelectorAll("li") ?? [])].map((li) => li.querySelector("span")?.textContent);
 }
+
+// Printing is a stylesheet, so what a test can hold is the markup it keys off:
+// which elements are chrome and which are the page. The rules themselves are in
+// index.css and only a renderer could check them.
+test("printing an entry keeps the entry and drops the navigation", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const hidden = (selector: string) =>
+    document.querySelector(selector)?.closest("[data-print='hide']") !== null;
+  // Ways to reach another page, and paper goes nowhere.
+  expect(hidden("nav[aria-label='Sections']")).toBe(true);
+  expect(hidden("aside")).toBe(true);
+  expect(hidden("[aria-label='Search entries and boards']")).toBe(true);
+
+  // The breadcrumb stays: on paper it is the only thing saying which entry this
+  // sheet came from. So does the entry.
+  expect(hidden("nav[aria-label='Breadcrumb']")).toBe(false);
+  expect(document.querySelector("article")?.closest("[data-print='hide']")).toBeNull();
+});
+
+// A board is a horizontal thing and paper is vertical, so it prints as what it
+// says rather than what it looks like — but only the controls are marked; the
+// stacking is CSS.
+test("printing a board drops its controls and keeps its columns", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const settings = [...document.querySelectorAll("main header button")].find(
+    (b) => b.textContent === "Settings",
+  )!;
+  expect(settings.getAttribute("data-print")).toBe("hide");
+  // The columns are the content, and the scroller is what the print rules stack.
+  const scroller = document.querySelector("[data-scroller]")!;
+  expect(scroller.getAttribute("data-print")).toBeNull();
+  expect(scroller.querySelectorAll("section[aria-label]").length).toBeGreaterThan(0);
+});
+
+// What you are looking at is what prints: a card open makes the board behind it
+// context you are not reading.
+test("printing a card open over a board drops the board", async () => {
+  await mountAt("/kanban/notes/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(document.querySelector("[data-scroller]")?.getAttribute("data-print")).toBe("hide");
+  // The sheet becomes the page rather than staying a fixed box over a backdrop.
+  const sheet = document.querySelector("[data-print='sheet']");
+  expect(Boolean(sheet)).toBe(true);
+  expect(sheet!.querySelector("[role='dialog']")?.textContent).toContain("The body of the entry.");
+  // Its own controls go with the rest of the chrome.
+  expect(sheet!.querySelector("[aria-label='Close card']")?.getAttribute("data-print")).toBe("hide");
+});
+
+// The affordance has nothing dependable to attach to: an entry with no metadata
+// has no frontmatter strip, and one whose body names itself has no title
+// element. Floated, it attaches to neither.
+test("an entry offers to print itself, whatever it is made of", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const button = document.querySelector<HTMLElement>("article [aria-label='Print this entry']")!;
+  expect(Boolean(button)).toBe(true);
+  // A control, so it does not print itself.
+  expect(button.getAttribute("data-print")).toBe("hide");
+
+  let printed = 0;
+  const real = window.print;
+  window.print = () => void printed++;
+  try {
+    await act(async () => button.click());
+  } finally {
+    window.print = real;
+  }
+  expect(printed).toBe(1);
+
+  // `differs.md` opens with a heading of its own, so no title is prepended, and
+  // its frontmatter is only a title — so it has no strip either. Both of the
+  // things the button might have been attached to are gone.
+  await act(async () => navigateTo("/wiki/notes/differs.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // Its own heading is there; the entry's title is not prepended above it.
+  const headings = [...document.querySelectorAll("article h1")].map((h) => h.textContent ?? "");
+  expect(headings.some((h) => h.includes("Steps"))).toBe(true);
+  expect(headings.some((h) => h.includes("Deployment runbook"))).toBe(false);
+  expect(Boolean(document.querySelector("article dl"))).toBe(false);
+  expect(Boolean(document.querySelector("article [aria-label='Print this entry']"))).toBe(true);
+});
+
+// The divider spans the column rather than stopping short of the print button.
+// A flex container establishes its own formatting context and steps aside from a
+// float; an ordinary block does not, so only its line boxes move and its border
+// still crosses the full width. Merging these two back into one element is the
+// regression, and it is invisible without a renderer.
+test("the frontmatter divider is not shortened by the print button", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const chips = document.querySelector("article dl")!;
+  const rule = chips.parentElement!;
+  expect(rule.className).toContain("border-b");
+  expect(rule.className).not.toContain("flex");
+  expect(chips.className).toContain("flex");
+  // And the button it has to cross under is the floated one.
+  expect(document.querySelector("article [aria-label='Print this entry']")?.className).toContain(
+    "float-right",
+  );
+});

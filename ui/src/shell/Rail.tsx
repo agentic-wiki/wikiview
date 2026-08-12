@@ -29,6 +29,7 @@ export function Rail({
 }) {
   return (
     <nav
+      data-print="hide"
       aria-label="Sections"
       className="border-border bg-surface absolute inset-y-0 left-0 z-20 flex w-14 flex-col gap-1 border-r p-2"
     >
