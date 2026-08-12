@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"sync"
 
 	"github.com/agentic-wiki/wikiview/internal/config"
 	"github.com/agentic-wiki/wikiview/internal/store"
@@ -22,6 +23,9 @@ type Server struct {
 	ui     fs.FS
 	mux    *http.ServeMux
 	id     string
+	// announcing keeps rebuilding and announcing together, so overlapping
+	// rebuilds are reported in order and each version exactly once.
+	announcing sync.Mutex
 }
 
 // New builds the server. ui is the built frontend, or nil to serve the API only

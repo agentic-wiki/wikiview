@@ -361,3 +361,71 @@ func TestAnUnreadableConfigStillRebuilds(t *testing.T) {
 		t.Errorf("entries=%d, want the previous index still serving", got)
 	}
 }
+
+// A deleted entry is absent from ChangedAt rather than marked in it, so a
+// version that moved because of one had nothing pointing at it — and the console
+// said "no entry content moved" while the bundle was visibly changing.
+func TestRebuildNamesWhatWasRemoved(t *testing.T) {
+	dir := writeBundle(t)
+	write(t, dir, "notes/b.md", "---\ntype: note\n---\nb\n")
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(filepath.Join(dir, "notes", "b.md")); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := s.Rebuild(); err != nil || !changed {
+		t.Fatalf("rebuild after a delete: changed=%v err=%v", changed, err)
+	}
+
+	v := s.View()
+	if len(v.Removed) != 1 || v.Removed[0] != "/notes/b.md" {
+		t.Errorf("removed = %v", v.Removed)
+	}
+	if v.ConfigMoved {
+		t.Error("a deleted entry was blamed on wiki.toml")
+	}
+	// Nothing else moved, which is exactly why the removal had to be reported.
+	for path, at := range v.ChangedAt {
+		if at == v.Version {
+			t.Errorf("%s claims to have moved at this version", path)
+		}
+	}
+
+	// And the next rebuild does not still claim it: this describes the step, not
+	// the bundle.
+	write(t, dir, "notes/c.md", "---\ntype: note\n---\nc\n")
+	if _, err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.View().Removed) != 0 {
+		t.Errorf("removed = %v, want nothing on a rebuild that removed nothing", s.View().Removed)
+	}
+}
+
+func TestRebuildSaysWhenTheConfigMoved(t *testing.T) {
+	dir := writeBundle(t)
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, dir, "wiki.toml", "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"n\"\npath = \"/notes\"\n")
+	if changed, err := s.Rebuild(); err != nil || !changed {
+		t.Fatalf("rebuild after a config edit: changed=%v err=%v", changed, err)
+	}
+	if v := s.View(); !v.ConfigMoved || len(v.Removed) != 0 {
+		t.Errorf("configMoved=%v removed=%v", v.ConfigMoved, v.Removed)
+	}
+
+	// An entry edit is not the config moving.
+	write(t, dir, "notes/a.md", "---\ntype: note\n---\nedited\n")
+	if _, err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if s.View().ConfigMoved {
+		t.Error("an entry edit was blamed on wiki.toml")
+	}
+}

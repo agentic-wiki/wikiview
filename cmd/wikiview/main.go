@@ -157,13 +157,8 @@ func run(root, addr string) error {
 	// than an outage.
 	go func() {
 		err := watch.Watch(ctx, s.Dir, watch.DefaultQuiet, func() {
-			changed, err := s.Rebuild()
-			if err != nil {
+			if err := srv.RebuildAndNotify(); err != nil {
 				log.Printf("rebuild failed, serving the previous index: %v", err)
-				return
-			}
-			if changed {
-				srv.Notify(s.View().Version)
 			}
 		})
 		if err != nil {

@@ -29,6 +29,12 @@ type Store struct {
 	entries   map[string]string   // path to content digest, for the next comparison
 	changedAt map[string]uint64   // path to the version its content last moved at
 	files     map[string]struct{} // entries, plus the non-entries they link to
+
+	// Why the version last moved, for whoever has to account for it. Everything
+	// else here describes the bundle; these two describe the step that got to it.
+	config      string   // wiki.toml's digest, for the next comparison
+	removed     []string // entries the last rebuild found gone
+	configMoved bool     // whether wiki.toml was what changed
 }
 
 // View is the store's state at one instant.
@@ -56,6 +62,13 @@ type View struct {
 	// reading one a map lookup instead of a file search. A `.env` next to your
 	// notes is not in here, because nothing refers to it.
 	Files map[string]struct{}
+	// Removed lists the entries the rebuild that produced this version found
+	// gone, and ConfigMoved says whether wiki.toml was what changed. Neither can
+	// be worked out from anything else here — a deleted entry is absent from
+	// ChangedAt rather than marked in it — and between them every version has a
+	// reason that can be named. Read-only.
+	Removed     []string
+	ConfigMoved bool
 }
 
 // Open locates the bundle containing dir and builds its index.
@@ -92,7 +105,8 @@ func (s *Store) Rebuild() (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	digest := combine(entries, configDigest(b.Dir))
+	config := configDigest(b.Dir)
+	digest := combine(entries, config)
 
 	files := bundleFiles(idx)
 
@@ -118,7 +132,21 @@ func (s *Store) Rebuild() (changed bool, err error) {
 			changedAt[path] = s.version
 		}
 	}
+
+	// What is *gone* is nowhere in the map above, so it has to be worked out
+	// while both sides are still in hand. A version that moved because entries
+	// were deleted otherwise has nothing to point at and reads as unexplained.
+	removed := []string{}
+	for path := range s.entries {
+		if _, still := entries[path]; !still {
+			removed = append(removed, path)
+		}
+	}
+	slices.Sort(removed)
+
 	s.entries, s.changedAt = entries, changedAt
+	s.removed, s.configMoved = removed, config != s.config
+	s.config = config
 	return true, nil
 }
 
@@ -132,7 +160,14 @@ func (s *Store) Rebuild() (changed bool, err error) {
 func (s *Store) View() View {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return View{Index: s.idx, Version: s.version, ChangedAt: s.changedAt, Files: s.files}
+	return View{
+		Index:       s.idx,
+		Version:     s.version,
+		ChangedAt:   s.changedAt,
+		Files:       s.files,
+		Removed:     s.removed,
+		ConfigMoved: s.configMoved,
+	}
 }
 
 // bundleFiles collects every path the bundle has a file for: its entries, and

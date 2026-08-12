@@ -246,13 +246,11 @@ func onBoard(v store.View, board config.Board, entryPath string) bool {
 // Rebuilt here rather than waiting for the watcher, so the response already
 // reflects the write and the client is never briefly told a stale version.
 func (s *Server) committed(w http.ResponseWriter) {
-	if _, err := s.store.Rebuild(); err != nil {
+	if err := s.RebuildAndNotify(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorBody{err.Error()})
 		return
 	}
-	version := s.store.View().Version
-	s.Notify(version)
-	writeJSON(w, http.StatusOK, map[string]uint64{"version": version})
+	writeJSON(w, http.StatusOK, map[string]uint64{"version": s.store.View().Version})
 }
 
 // conflictBody carries the current version so a client can resync in one step

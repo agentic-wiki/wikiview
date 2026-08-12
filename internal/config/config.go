@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/agentic-wiki/wiki/bundle"
 	"github.com/agentic-wiki/wiki/index"
@@ -134,15 +135,11 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 	// key, which otherwise decodes into nothing and is silently ignored — the
 	// same footgun the engine surfaces for its own keys.
 	var loose map[string]any
-	if _, err := b.DecodeTool("wikiview", &loose); err != nil {
+	var cfg Config
+	if err := decodeTool(b, &loose, &cfg); err != nil {
 		return Config{}, []string{err.Error()}
 	}
 	problems = append(problems, unknownKeys(loose)...)
-
-	var cfg Config
-	if _, err := b.DecodeTool("wikiview", &cfg); err != nil {
-		return Config{}, append(problems, err.Error())
-	}
 
 	// The id identifies a board, so two claiming one is a config that cannot
 	// mean what it says: the second is unreachable, and silently taking the
@@ -202,6 +199,31 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 		}
 	}
 	return cfg, problems
+}
+
+// decoding serialises the engine's TOML decoder.
+//
+// `bundle.DecodeTool` decodes through a `toml.MetaData` that records what it has
+// read as it goes, so it writes to the very thing it is reading from. Two
+// requests decoding one bundle at the same moment is a concurrent map write,
+// which is not a race the runtime tolerates: it takes the process down. That is
+// not theoretical — it killed a server with a board open while the tree
+// refetched beside it.
+//
+// A lock rather than a copy of the bundle, because the unsafety belongs to
+// decoding and this is the only place that does it. Held across both passes and
+// nothing else: the checks below walk the index, which is read-only and wants no
+// lock at all.
+var decoding sync.Mutex
+
+func decodeTool(b *bundle.Bundle, loose *map[string]any, cfg *Config) error {
+	decoding.Lock()
+	defer decoding.Unlock()
+	if _, err := b.DecodeTool("wikiview", loose); err != nil {
+		return err
+	}
+	_, err := b.DecodeTool("wikiview", cfg)
+	return err
 }
 
 // IsList reports whether a frontmatter key holds a list anywhere in scope.

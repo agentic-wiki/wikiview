@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
 // broker fans a version number out to connected clients.
@@ -77,6 +79,29 @@ func (b *broker) count() int {
 	return len(b.clients)
 }
 
+// RebuildAndNotify re-reads the bundle and tells every listener, as one step.
+//
+// One step because they are one: taken apart, two of them overlapping each read
+// the version *after* both had landed, so one version was announced twice and
+// the one between it was never announced at all. Whoever is watching a terminal
+// was then told a rebuild happened that they could not account for.
+//
+// The lock is only around this pair. Rebuild has its own, and a request reading
+// the index takes none.
+func (s *Server) RebuildAndNotify() error {
+	s.announcing.Lock()
+	defer s.announcing.Unlock()
+
+	changed, err := s.store.Rebuild()
+	if err != nil {
+		return err
+	}
+	if changed {
+		s.Notify()
+	}
+	return nil
+}
+
 // Notify publishes the store's current version to every connected client, and
 // says on the console what moved and who was told.
 //
@@ -85,20 +110,24 @@ func (b *broker) count() int {
 // or because a checkbox was ticked through the API. A server you are watching
 // in a terminal should account for every version its clients are asked to
 // refetch at.
-func (s *Server) Notify(version uint64) {
+//
+// The version comes from the same View the rest of this reads. Passed in, it
+// could describe a different rebuild than the one whose `changedAt` is being
+// consulted, and then the line names the wrong entries.
+func (s *Server) Notify() {
 	v := s.store.View()
 	// changedAt equals the current version exactly for the entries this rebuild
 	// moved, so there is nothing to diff.
 	var moved []string
 	for path, at := range v.ChangedAt {
-		if at == version {
+		if at == v.Version {
 			moved = append(moved, path)
 		}
 	}
 	slices.Sort(moved)
-	log.Printf("v%d, %s, %d listening", version, summarize(moved), s.events.count())
+	log.Printf("v%d, %s, %d listening", v.Version, describe(v, moved), s.events.count())
 
-	s.events.publish(version)
+	s.events.publish(v.Version)
 }
 
 // listedChanges is how many paths a log line names before it starts counting.
@@ -106,15 +135,37 @@ func (s *Server) Notify(version uint64) {
 // next thing that happens.
 const listedChanges = 5
 
-func summarize(paths []string) string {
-	switch {
-	case len(paths) == 0:
-		return "no entry content moved" // a rename or a delete can do this
-	case len(paths) <= listedChanges:
-		return strings.Join(paths, " ")
-	default:
-		return fmt.Sprintf("%s and %d more", strings.Join(paths[:listedChanges], " "), len(paths)-listedChanges)
+// describe says why a version moved.
+//
+// Every reason gets named, because a line that cannot account for a version is
+// worse than no line: somebody reading a terminal has to decide whether their
+// bundle is fine, and "nothing changed, here is a new version" does not help
+// them. A deletion is the case that used to read that way — a removed entry is
+// absent from ChangedAt rather than marked in it, so nothing pointed at it.
+func describe(v store.View, moved []string) string {
+	var parts []string
+	if len(moved) > 0 {
+		parts = append(parts, summarize(moved))
 	}
+	if n := len(v.Removed); n > 0 {
+		parts = append(parts, "removed "+summarize(v.Removed))
+	}
+	if v.ConfigMoved {
+		parts = append(parts, "wiki.toml")
+	}
+	if len(parts) == 0 {
+		// Reached only if the digest moved for a reason none of the above covers,
+		// which would be a bug in the digest rather than something to hide.
+		return "unaccounted for"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func summarize(paths []string) string {
+	if len(paths) <= listedChanges {
+		return strings.Join(paths, " ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(paths[:listedChanges], " "), len(paths)-listedChanges)
 }
 
 // Close ends every open event stream.

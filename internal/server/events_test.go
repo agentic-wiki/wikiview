@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
 // SSE is tested over a real server and client rather than an httptest.Recorder:
@@ -67,7 +69,7 @@ func TestEventsCarryVersionsNotPayloads(t *testing.T) {
 	readEvent(t, r) // the opening version
 
 	waitFor(t, func() bool { return srv.events.count() == 1 })
-	srv.Notify(7)
+	srv.events.publish(7)
 
 	if got := readEvent(t, r); got != "7" {
 		t.Errorf("received %q, want the published version", got)
@@ -211,5 +213,38 @@ func TestPublishWithChurningClients(t *testing.T) {
 
 	if n := b.count(); n != 0 {
 		t.Errorf("%d subscribers left behind", n)
+	}
+}
+
+// A line that cannot account for a version is worse than no line: whoever is
+// watching a terminal has to decide whether their bundle is fine, and "nothing
+// changed, here is a new version" does not help them.
+func TestDescribeNamesEveryReason(t *testing.T) {
+	cases := []struct {
+		why   string
+		view  store.View
+		moved []string
+		want  string
+	}{
+		{"edits", store.View{}, []string{"/a.md", "/b.md"}, "/a.md /b.md"},
+		{"a delete, which nothing else can point at",
+			store.View{Removed: []string{"/gone.md"}}, nil, "removed /gone.md"},
+		{"the config, which moves the version with no entry touched",
+			store.View{ConfigMoved: true}, nil, "wiki.toml"},
+		{"all at once, in one line",
+			store.View{Removed: []string{"/gone.md"}, ConfigMoved: true}, []string{"/a.md"},
+			"/a.md, removed /gone.md, wiki.toml"},
+		{"a long list counts rather than filling the terminal",
+			store.View{}, []string{"/1.md", "/2.md", "/3.md", "/4.md", "/5.md", "/6.md", "/7.md"},
+			"/1.md /2.md /3.md /4.md /5.md and 2 more"},
+		{"and a version with no reason says so rather than implying calm",
+			store.View{}, nil, "unaccounted for"},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			if got := describe(c.view, c.moved); got != c.want {
+				t.Errorf("describe = %q, want %q", got, c.want)
+			}
+		})
 	}
 }

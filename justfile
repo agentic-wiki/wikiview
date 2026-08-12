@@ -28,9 +28,13 @@ vet:
 lint:
     staticcheck ./...
 
-# Pre-commit quality gate: vet + lint + test
+# Pre-commit quality gate: vet + lint + test, with the race detector
+#
+# The race run is in here because a concurrency bug got past a gate without it
+# and crashed a running server. It needs cgo and a C compiler; on a machine
+# without one, drop `test-race` and run it in CI instead.
 [group('dev')]
-check: vet lint test ui-check ui-test
+check: vet lint test test-race ui-check ui-test
 
 # Run unit tests
 [group('test')]

@@ -75,4 +75,8 @@ Catching a misspelled key needs decoding twice, once into `map[string]any` to se
 
 The config is decoded per request rather than held. It follows the same file the index does, so a board declared in `wiki.toml` is there on the next fetch, and the store keeps one concern.
 
+**Decoding is serialised, and has to be.** `bundle.DecodeTool` decodes through a `toml.MetaData` that records what it has read as it goes, so it writes to the very thing it reads from. Two requests decoding one bundle at the same moment is a concurrent map write, which is not a race the Go runtime tolerates — it takes the process down. That is not theoretical: it killed a server with a board open while the tree refetched beside it, on a bundle an agent was editing.
+
+A lock around the two `DecodeTool` calls, and nothing wider: the checks after them walk the index, which is read-only and wants no lock. Worth revisiting if decoding ever shows up as contention, where holding the decoded config per rebuild is the obvious answer — but that trades a decode for cache invalidation, and the crash is fixed either way.
+
 **Left to the board tasks**, since they are about rendering rather than reading: pinning column order on screen, surfacing boards in navigation, and the rule that an entry whose status is undeclared still gets a column.
