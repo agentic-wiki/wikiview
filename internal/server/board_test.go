@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,6 +44,7 @@ func newBoardServer(t *testing.T, toml string) *Server {
 const declaredBoard = `spec = "0.1"
 
 [[tool.wikiview.board]]
+id      = "backlog"
 path    = "/backlog"
 columns = ["todo", "in-progress", "done"]
 lane    = "priority"
@@ -131,23 +133,41 @@ func TestWhereDecidesWhatIsACard(t *testing.T) {
 	}
 }
 
-// Boarding is discovery rather than permission: a folder nobody declared still
-// boards, with exactly the defaults a bare declaration would have taken.
-func TestAnUndeclaredFolderStillBoards(t *testing.T) {
-	b := board(t, newBoardServer(t, "spec = \"0.1\"\n"), "/api/board/backlog")
+// A bundle that configures nothing still has a kanban, so opening one is never
+// gated behind editing a file.
+func TestTheRootBoardNeedsNoConfig(t *testing.T) {
+	srv := newBoardServer(t, "spec = \"0.1\"\n")
+	b := board(t, srv, "/api/board/root")
 
 	if b.Declared {
-		t.Error("declared=true for a folder no config mentions")
+		t.Error("declared=true for the built-in board")
 	}
-	if b.Field != "status" {
-		t.Errorf("field=%q, want the default", b.Field)
+	if b.Path != "/" || b.ID != "root" {
+		t.Errorf("board=%+v, want the whole bundle under the root id", b)
 	}
-	if b.Lane != "" {
-		t.Errorf("lane=%q, want none until asked for", b.Lane)
+	if b.Field != "status" || b.Lane != "" {
+		t.Errorf("field=%q lane=%q, want the defaults", b.Field, b.Lane)
 	}
-	// Nothing pins the order here, so the columns are whatever the entries have.
+	// Nothing pins the order, so the columns are whatever the entries have.
 	if got := columnValues(b); len(got) != 4 {
 		t.Errorf("columns=%v, want one per status plus the unset one", got)
+	}
+}
+
+// The first segment of a board address is always an id, which is what lets the
+// rest of it be an entry path. A folder name there is a wrong address rather
+// than an invitation to board that folder.
+func TestAnIDNobodyDeclaredIsNotFound(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+
+	// `/backlog` is a real folder with a real board over it, under the id
+	// "backlog" — but the *path* is not an address.
+	for _, path := range []string{"/api/board/3-reader", "/api/board/nonsense"} {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rec.Code)
+		}
 	}
 }
 
@@ -166,7 +186,7 @@ func TestLanesOnlyWhenDeclared(t *testing.T) {
 		t.Errorf("a card with no priority reported lane %q", got)
 	}
 
-	without := board(t, newBoardServer(t, "spec = \"0.1\"\n"), "/api/board/backlog")
+	without := board(t, newBoardServer(t, "spec = \"0.1\"\n"), "/api/board/root")
 	if without.Lane != "" {
 		t.Errorf("lane=%q with no config", without.Lane)
 	}
@@ -188,8 +208,8 @@ func TestBoardsAreNamedWithoutBeingTold(t *testing.T) {
 	}
 
 	// The root has no folder name to borrow, so it takes the bundle's own.
-	root := newBoardServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\npath = \"/\"\n")
-	if got := board(t, root, "/api/board/").Name; got == "" || got == "/" {
+	root := newBoardServer(t, "spec = \"0.1\"\n")
+	if got := board(t, root, "/api/board/root").Name; got == "" || got == "/" {
 		t.Errorf("root board name=%q, want the bundle's name", got)
 	}
 
@@ -197,10 +217,33 @@ func TestBoardsAreNamedWithoutBeingTold(t *testing.T) {
 	named := newBoardServer(t, `spec = "0.1"
 
 [[tool.wikiview.board]]
+id   = "backlog"
 path = "/backlog"
 name = "This Quarter"
 `)
 	if got := board(t, named, "/api/board/backlog").Name; got != "This Quarter" {
 		t.Errorf("name=%q, want the declared one", got)
+	}
+}
+
+// A board with no id has no address. Listing it would offer a link to
+// `/kanban/`, which resolves to the root board — so a broken declaration would
+// look like a working board showing somebody else's cards.
+func TestABoardWithNoIDIsNotOffered(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+path = "/backlog"
+
+[[tool.wikiview.board]]
+id   = "fine"
+path = "/backlog"
+`)
+	var info BundleInfo
+	if code := get(t, srv, "/api/bundle", &info); code != http.StatusOK {
+		t.Fatalf("code=%d", code)
+	}
+	if len(info.Boards) != 1 || info.Boards[0].ID != "fine" {
+		t.Errorf("boards=%+v, want only the one that can be opened", info.Boards)
 	}
 }

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import type { BoardConfig, BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
@@ -30,13 +30,18 @@ export function Shell({
   unseen: Set<string>;
   children: ReactNode;
 }) {
-  const [section, setSection] = useState<RailSection>("entries");
+  const location = useLocation();
+  const [section, setSection] = useState<RailSection>(() => sectionFor(location.pathname));
   // Open on desktop, closed on narrow screens. Boards and grids need width;
   // this is a working tool on a wide screen before it is a phone app.
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
-  const location = useLocation();
   const navigate = useNavigate();
-  const path = location.pathname.replace(/^\/wiki\/?/, "");
+  // Only a reader route has a bundle path in it. On a board the pathname is an
+  // id, and treating it as a path built links like `/wiki/kanban` — a trail
+  // through folders that do not exist.
+  const path = location.pathname.startsWith("/wiki")
+    ? location.pathname.replace(/^\/wiki\/?/, "")
+    : "";
   // The board you were last on, so the rail returns you to it rather than to
   // whichever one happens to be declared first. A view preference, so it is
   // scoped to this bundle like the rest.
@@ -73,16 +78,37 @@ export function Shell({
       return;
     }
     setSection(next);
-    setPanelOpen(true);
-    if (here) return; // already looking at one; show the panel beside it
 
-    if (next === "entries") navigate(frontDoor(tree));
-    if (next === "boards") {
-      const boards = bundle.boards ?? [];
-      const target = boards.find((b) => b.path === lastBoard) ?? boards[0];
-      if (target) navigate(boardHref(target));
+    // Going somewhere and showing the panel are separate decisions. Tangling
+    // them is how clicking Entries from a board ended up doing nothing: the
+    // icon was already the active one, so it took a shortcut past the
+    // navigation it owed you.
+    const boards = bundle.boards ?? [];
+    if (!here) {
+      if (next === "entries") navigate(frontDoor(tree));
+      if (next === "boards") {
+        const target = boards.find((b) => b.id === lastBoard) ?? boards[0];
+        if (target) navigate(boardHref(target));
+      }
     }
+
+    // A list of one board is not a choice, so arriving at that board does not
+    // also spend width on a chooser. Everything else opens the panel, including
+    // clicking Boards while already on one — there, showing the list is the
+    // only thing the click can do, and an icon that does nothing is the bug
+    // this whole rail already had once.
+    setPanelOpen(!(next === "boards" && boards.length === 1 && !here));
   };
+  // The rail follows the route. Loading /kanban directly used to show the
+  // Entries icon lit and the file tree open beside a board, because the section
+  // started at a guess and only a rail click ever corrected it.
+  //
+  // On route changes rather than on every render, so a section with no route of
+  // its own — Search — is not flipped back the instant you select it.
+  useEffect(() => {
+    setSection(sectionFor(location.pathname));
+  }, [location.pathname]);
+
   // The view area scrolls, not the document, so scroll restoration works from
   // this element rather than from the window.
   const viewRef = useRef<HTMLElement>(null);
@@ -155,6 +181,11 @@ export function Shell({
   );
 }
 
+/** Which section a route belongs to. Search has no route, so it is never one. */
+function sectionFor(pathname: string): RailSection {
+  return pathname.startsWith("/kanban") ? "boards" : "entries";
+}
+
 /**
  * The boards a bundle declares.
  *
@@ -163,15 +194,7 @@ export function Shell({
  * than leaving an empty panel reading as "boards do not work here".
  */
 function Boards({ boards, onPick }: { boards?: BoardConfig[]; onPick: (path: string) => void }) {
-  if (!boards?.length) {
-    return (
-      <p className="text-muted p-3 text-sm">
-        None declared in <code>wiki.toml</code>. You can still open any folder as
-        a board by visiting its address, like{" "}
-        <code className="whitespace-nowrap">/kanban/notes</code>.
-      </p>
-    );
-  }
+  if (!boards?.length) return <NoBoards />;
 
   return (
     <ul className="p-2">
@@ -183,7 +206,7 @@ function Boards({ boards, onPick }: { boards?: BoardConfig[]; onPick: (path: str
               space is affordable. */}
           <NavLink
             to={boardHref(b)}
-            onClick={() => onPick(b.path)}
+            onClick={() => onPick(b.id)}
             className={({ isActive }) =>
               [
                 "block rounded-md px-2 py-1.5",
@@ -210,9 +233,45 @@ function Boards({ boards, onPick }: { boards?: BoardConfig[]; onPick: (path: str
   );
 }
 
-/** A board's address. The root board is `/kanban`, not `/kanban//`. */
+/**
+ * What the Boards panel shows before there are any.
+ *
+ * The empty state of a feature is the one moment somebody is definitely willing
+ * to read how it works, so it says the two things worth knowing: that a folder
+ * boards without any configuration, and what to write to keep one.
+ *
+ * The snippet is the whole of it — one required key — which is a better
+ * argument for the config being cheap than a sentence claiming so. Declaring it
+ * from here rather than by hand is [choosing which folders are
+ * boards](backlog/4-boards/002-choosing-boards.md), and needs something that
+ * can write TOML.
+ */
+function NoBoards() {
+  return (
+    <div className="space-y-3 p-3 text-sm">
+      <p className="text-fg font-medium">No boards yet</p>
+      <p className="text-muted">
+        Any folder opens as one at <code>/kanban/</code> followed by its path, without
+        configuring anything.
+      </p>
+      <p className="text-muted">To keep one here, add it to the bundle's <code>wiki.toml</code>:</p>
+      <pre className="border-border bg-surface text-muted overflow-x-auto rounded-md border p-2 text-xs">
+        {`[[tool.wikiview.board]]\npath = "/backlog"`}
+      </pre>
+    </div>
+  );
+}
+
+/**
+ * A board's address.
+ *
+ * The id rather than the path, because two boards can be over one folder and
+ * only the id tells them apart. A folder nobody declared is still reachable by
+ * its path — the server resolves ids first and falls back — but a declared
+ * board is always linked to by the name it declared.
+ */
 function boardHref(b: BoardConfig): string {
-  return "/kanban" + (b.path === "/" ? "" : b.path);
+  return "/kanban/" + b.id;
 }
 
 /**

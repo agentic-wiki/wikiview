@@ -28,9 +28,21 @@ import (
 //	columns = ["backlog", "todo", "in-progress", "done"] # default: inferred
 //	lane    = "priority"                                 # default: no lanes
 type Board struct {
-	// Path is the folder the board is over, and the board's identity. The only
-	// required key.
+	// Path is the folder the board is over. The only required key.
 	Path string `toml:"path" json:"path"`
+	// ID identifies the board, which the path cannot once two boards are over one
+	// folder — everything and just bugs, or the same tasks grouped two ways. It
+	// is what the URL carries: `/kanban/<id>/<entry path>`.
+	//
+	// Required, and never derived here. A derived id would have to come from the
+	// path, and then the first segment of a board URL is sometimes an id and
+	// sometimes a folder name — which is the ambiguity the id exists to remove.
+	// Suggesting one from the board's name belongs to whatever creates boards,
+	// where a person can see it and change it.
+	//
+	// A word, never a path. A slash would put it back in competition with the
+	// folder names it sits among.
+	ID string `toml:"id" json:"id"`
 	// Name is what to call this board on screen. Optional: a folder already has
 	// a readable name, so this is for when that one is wrong rather than
 	// something every board has to carry.
@@ -66,14 +78,19 @@ var (
 	defaultStatus = "status"
 )
 
-// Default is the board a folder gets when nothing declares one.
+// RootID names the board every bundle has without configuring one.
+const RootID = "root"
+
+// Root is that board: the whole bundle, with every default.
 //
-// Declaring a board decides what the UI surfaces, not what is permitted: any
-// folder boards by URL. So an undeclared folder takes exactly what a bare
-// `[[tool.wikiview.board]]` would have given it, and the two paths through the
-// code cannot drift into two different sets of defaults.
-func Default(path string) Board {
-	b := Board{Path: path, Status: defaultStatus, Where: defaultWhere}
+// One built-in rather than "any folder boards by URL", so the first segment of
+// a board address is always an id and never sometimes a folder name. A bundle
+// with no config still has a kanban to open; a second one is something you
+// declare, and declaring it is what gives it an id to be addressed by.
+//
+// A declared board may take this id, and then it is simply that board.
+func Root() Board {
+	b := Board{Path: "/", ID: RootID, Status: defaultStatus, Where: defaultWhere}
 	for _, w := range b.Where {
 		if f, err := index.ParseFilter(w); err == nil {
 			b.Filters = append(b.Filters, f)
@@ -111,9 +128,10 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 		return Config{}, append(problems, err.Error())
 	}
 
-	// `path` is the board's identity, so two boards claiming one is a config
-	// that cannot mean what it says: the second is unreachable, and silently
-	// taking the first would hide a declaration somebody wrote on purpose.
+	// The id identifies a board, so two claiming one is a config that cannot
+	// mean what it says: the second is unreachable, and silently taking the
+	// first would hide a declaration somebody wrote on purpose. Two boards over
+	// the same *path* are fine now — that is what ids are for.
 	seen := map[string]int{}
 
 	for i := range cfg.Board {
@@ -122,12 +140,19 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 			problems = append(problems, fmt.Sprintf("board %d: path is required", i+1))
 			continue
 		}
-		key := strings.TrimSuffix(board.Path, "/")
-		if first, ok := seen[key]; ok {
+		if board.ID == "" {
+			problems = append(problems, fmt.Sprintf("board %d (%s): id is required", i+1, board.Path))
+			continue
+		}
+		if strings.Contains(board.ID, "/") {
 			problems = append(problems, fmt.Sprintf(
-				"board %d: %s is already board %d, and only the first is reachable", i+1, board.Path, first))
+				"board %d: id %q contains a slash, and an id is a word rather than a path", i+1, board.ID))
+		}
+		if first, ok := seen[board.ID]; ok {
+			problems = append(problems, fmt.Sprintf(
+				"board %d: id %q is already board %d, so give them different ids", i+1, board.ID, first))
 		} else {
-			seen[key] = i + 1
+			seen[board.ID] = i + 1
 		}
 		if board.Status == "" {
 			board.Status = defaultStatus
@@ -154,7 +179,7 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 var (
 	topKeys   = map[string]bool{"board": true}
 	boardKeys = map[string]bool{
-		"path": true, "name": true, "where": true, "status": true, "columns": true, "lane": true,
+		"path": true, "id": true, "name": true, "where": true, "status": true, "columns": true, "lane": true,
 	}
 )
 

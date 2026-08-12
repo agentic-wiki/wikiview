@@ -37,7 +37,7 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("GET /api/bundle", srv.handleBundle)
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
 	srv.mux.HandleFunc("GET /api/tree", srv.handleTree)
-	srv.mux.HandleFunc("GET /api/board/{path...}", srv.handleBoard)
+	srv.mux.HandleFunc("GET /api/board/{id}", srv.handleBoard)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
 	// The wildcard has to be the final segment, so the verb leads the path
 	// rather than trailing it.
@@ -101,6 +101,12 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
 	boards := make([]config.Board, 0, len(cfg.Board))
 	for _, b := range cfg.Board {
+		// A board with no id has no address, so listing it would offer a link to
+		// `/kanban/` — which resolves to the root board and quietly shows the
+		// wrong thing. The startup message says why it is missing.
+		if b.ID == "" {
+			continue
+		}
 		boards = append(boards, named(b, v.Index.Bundle.Dir))
 	}
 	writeJSON(w, http.StatusOK, BundleInfo{

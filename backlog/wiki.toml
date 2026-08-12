@@ -24,6 +24,7 @@ ignore_orphans = ["*/**"]
 # order and declares "in-progress" before anything is in it, which inference
 # alone could never do.
 [[tool.wikiview.board]]
+id   = "root"
 path = "/"
 columns = ["todo", "in-progress", "done"]
 lane = "priority"

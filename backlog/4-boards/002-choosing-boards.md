@@ -30,12 +30,16 @@ where = ["type=task", "kind=bug"]
 
 ```
 /kanban/bugs                       the board
-/kanban/bugs/3-reader/006-x.md     a card on it
+/kanban/bugs?card=/backlog/x.md    a card on it
 ```
 
-That is the second thing it buys. A card can move back into the path, because an id is one segment and the boundary is unambiguous — `/kanban/<id>/<bundle path>` splits at the first slash and never guesses. The `?card=` query stops being necessary, though it costs nothing and could stay.
+**Ad-hoc boarding keeps the path form.** A folder nobody declared has no id, so `/kanban/<folder path>` still boards it, resolved after ids and before giving up.
 
-**Ad-hoc boarding keeps the path form.** A folder nobody declared has no id, so `/kanban/<folder path>` still boards it, resolved after ids and before giving up. Two shapes, each unambiguous on its own, and the id space is small and hand-written.
+**Which is why the card stays a query.** Putting it back in the path — `/kanban/<id>/<bundle path>` — is unambiguous only if every board has an id, and an undeclared folder does not. `/kanban/a/b` would mean either the board `a` showing card `/b` or the folder `/a/b`, and nothing in the URL says which. Deriving ids for undeclared folders does not save it: two folders named `notes` under different parents would collide, and "any folder boards by URL" is the rule that would have to give way.
+
+So an id says *which board*, and the query says *which card*, and neither has to guess what the other meant.
+
+**The default id comes from the path.** A board over `/backlog` is `backlog`; the root is `root`. A constant like `default` cannot be the default, because two boards over different folders would both claim it. Two boards whose paths end in the same segment collide too, and that is reported the same way a duplicate id is: name them.
 
 **Nothing else changes.** `path` still says which folder; `id` only says which of the boards over it. A bundle that never declares two boards over one folder never sees the difference.
 

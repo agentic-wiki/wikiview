@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { api, type Board, type Card, type Column } from "@/api";
 import { EntryView } from "@/views/EntryView";
 import { Loading } from "@/views/Loading";
@@ -13,25 +13,26 @@ import { NotFound } from "@/views/NotFound";
  * decoded and `where` is already parsed. Nothing here re-derives any of it.
  */
 export function BoardView({
-  path,
+  id,
+  card,
   version,
   refresh,
 }: {
-  path: string;
+  /** The board's id, which is the first segment of the address. */
+  id: string;
+  /** The entry open over it, or "" for none. Everything after the id. */
+  card: string;
   version: number;
   refresh: number;
 }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The open card lives in the URL, so back closes it, a refresh reopens it,
-  // and the link you send somebody opens what you were looking at.
-  const [params, setParams] = useSearchParams();
-  const open = params.get("card");
+  const navigate = useNavigate();
 
   useEffect(() => {
     const ac = new AbortController();
     api
-      .board(path, ac.signal)
+      .board(id, ac.signal)
       .then((b) => {
         if (!ac.signal.aborted) {
           setBoard(b);
@@ -42,9 +43,9 @@ export function BoardView({
         if (!ac.signal.aborted) setError(String(e.message ?? e));
       });
     return () => ac.abort();
-  }, [path, refresh]);
+  }, [id, refresh]);
 
-  if (error) return <NotFound path={path} hint="There is no folder here" />;
+  if (error) return <NotFound path={"/kanban/" + id} hint="There is no board with that id" />;
   if (!board) return <Loading />;
 
   const cards = board.columns.reduce((n, c) => n + c.cards.length, 0);
@@ -53,7 +54,9 @@ export function BoardView({
       <div className="grid h-full place-items-center p-8 text-center">
         <div>
           <p className="text-fg font-medium">Nothing to board here</p>
-          <p className="text-muted mt-1 text-sm">No entry under {path} matches this board.</p>
+          <p className="text-muted mt-1 text-sm">
+            No entry under {board.path} matches this board.
+          </p>
         </div>
       </div>
     );
@@ -61,7 +64,7 @@ export function BoardView({
 
   // Every path this board holds, which is what decides whether a link inside a
   // card stays here or leaves for the reader.
-  const onBoard = new Set(board.columns.flatMap((c) => c.cards.map((card) => card.path)));
+  const onBoard = new Set(board.columns.flatMap((c) => c.cards.map((c) => c.path)));
 
   return (
     <div className="flex h-full min-h-0">
@@ -71,6 +74,7 @@ export function BoardView({
         {board.columns.map((column) => (
           <BoardColumn
             key={column.value || " unset"}
+            board={board.id}
             column={column}
             field={board.field}
             lane={board.lane}
@@ -78,18 +82,16 @@ export function BoardView({
         ))}
       </div>
 
-      {open && (
+      {card && (
         <CardSheet
-          path={open}
+          board={board.id}
+          path={card}
           version={version}
           refresh={refresh}
           onBoard={onBoard}
-          onClose={() => {
-            // Replaced rather than pushed: closing a card should not leave a
-            // history entry you have to press back through twice.
-            params.delete("card");
-            setParams(params, { replace: true });
-          }}
+          // Replaced rather than pushed: closing a card should not leave a
+          // history entry you have to press back through twice.
+          onClose={() => navigate("/kanban/" + board.id, { replace: true })}
         />
       )}
     </div>
@@ -97,10 +99,13 @@ export function BoardView({
 }
 
 function BoardColumn({
+  board,
   column,
   field,
   lane,
 }: {
+  /** The board id, which every card address starts with. */
+  board: string;
   column: Column;
   field: string;
   lane?: string;
@@ -138,7 +143,7 @@ function BoardColumn({
               </h3>
             )}
             {cards.map((card) => (
-              <BoardCard key={card.path} card={card} />
+              <BoardCard key={card.path} board={board} card={card} />
             ))}
           </div>
         ))}
@@ -147,12 +152,12 @@ function BoardColumn({
   );
 }
 
-function BoardCard({ card }: { card: Card }) {
+function BoardCard({ board, card }: { board: string; card: Card }) {
   return (
     // Opens beside the board rather than navigating away from it. A card is
     // something you look at while keeping the columns in view.
     <Link
-      to={cardQuery(card.path)}
+      to={cardHref(board, card.path)}
       className="border-border/70 bg-bg hover:border-muted/60 block rounded-md border p-2 transition-colors"
     >
       <span className="text-fg block truncate text-sm">{card.label}</span>
@@ -174,12 +179,14 @@ function BoardCard({ card }: { card: Card }) {
  * which is the context you were reading the card in.
  */
 function CardSheet({
+  board,
   path,
   version,
   refresh,
   onBoard,
   onClose,
 }: {
+  board: string;
   path: string;
   version: number;
   refresh: number;
@@ -218,7 +225,11 @@ function CardSheet({
         aria-modal="true"
         aria-label={path}
         onClick={(e) => e.stopPropagation()}
-        className="border-border bg-bg flex max-h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl"
+        // A fixed height rather than one taken from the content. A card's entry
+        // arrives a moment after the dialog does, and a dialog sized by its
+        // contents is a header alone until it lands, then a jump. It would also
+        // resize under you when a link inside one card opens another.
+        className="border-border bg-bg flex h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl"
       >
         <header className="border-border flex shrink-0 items-center gap-2 border-b px-3 py-2">
           <span className="text-muted truncate font-mono text-xs">{path}</span>
@@ -248,7 +259,7 @@ function CardSheet({
             // A link to something else on this board opens that card and keeps
             // the board. Anything else leaves for the reader, which is what
             // makes an off-board link ordinary rather than decorated.
-            destination={(to) => (onBoard.has(to) ? cardQuery(to) : "/wiki" + to)}
+            destination={(to) => (onBoard.has(to) ? cardHref(board, to) : "/wiki" + to)}
           />
         </div>
       </div>
@@ -257,19 +268,17 @@ function CardSheet({
 }
 
 /**
- * The query that opens a card.
+ * The address of a card on a board: `/kanban/<id>/<entry path>`.
  *
- * A slash is legal in a query value, so encoding it turns a readable URL into
- * `%2Fnotes%2Fb.md` for nothing. Everything else stays encoded: `&` and `#` are
- * legal in a filename and would end the value early.
- *
- * The card is a query rather than a path segment because a board's folder and a
- * card's path both contain slashes, and joining them loses the boundary: for a
- * board over `/`, `/kanban/3-reader/006-x.md` reads equally as the board at
- * `/3-reader` or the board at `/` showing that card, and both boards exist.
+ * The id is one segment and never a folder name, so everything after the first
+ * slash is the bundle path — no separator to invent and nothing to guess. Each
+ * segment is encoded the way an entry URL's are, which leaves the slashes
+ * between them alone and escapes anything inside a name that would end the
+ * path early.
  */
-function cardQuery(path: string): string {
-  return "?card=" + encodeURIComponent(path).replace(/%2F/g, "/");
+function cardHref(board: string, path: string): string {
+  const segments = path.replace(/^\//, "").split("/").map(encodeURIComponent);
+  return "/kanban/" + encodeURIComponent(board) + "/" + segments.join("/");
 }
 
 /**

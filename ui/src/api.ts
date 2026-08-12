@@ -154,6 +154,9 @@ export interface TreeNode {
  */
 export interface BoardConfig {
   path: string;
+  /** What the URL carries. Defaults to the folder's last segment, and is what
+   *  tells two boards over the same folder apart. */
+  id: string;
   /** What to call it on screen: the config's name, or the folder made readable. */
   name: string;
   where?: string[];
@@ -186,6 +189,7 @@ export interface Column {
  */
 export interface Board {
   path: string;
+  id: string;
   name: string;
   /** The frontmatter field the columns are made of. */
   field: string;

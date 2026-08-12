@@ -24,7 +24,7 @@ const bundle: BundleInfo = {
   entries: 3,
   tools: ["wikiview"],
   version: 1,
-  boards: [{ path: "/notes", name: "Notes", status: "status" }],
+  boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status" }],
 };
 
 const tree: TreeNode = {
@@ -758,6 +758,7 @@ test("a version the client already has does not trigger a refetch", async () => 
 
 const boardFixture = {
   path: "/notes",
+  id: "notes",
   field: "status",
   lane: "priority",
   declared: true,
@@ -819,7 +820,7 @@ test("a kanban URL renders columns of cards", async () => {
 test("a card opens over the board, and the board stays", async () => {
   await mountAt("/wiki/index.md");
   const restore = stubBoard();
-  await act(async () => navigateTo("/kanban/notes?card=/notes/a.md"));
+  await act(async () => navigateTo("/kanban/notes/notes/a.md"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   // The entry is on screen…
@@ -836,13 +837,13 @@ test("a card opens over the board, and the board stays", async () => {
 test("a link inside a card stays on the board only when its target is on it", async () => {
   await mountAt("/wiki/index.md");
   const restore = stubBoard();
-  await act(async () => navigateTo("/kanban/notes?card=/notes/a.md"));
+  await act(async () => navigateTo("/kanban/notes/notes/a.md"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const links = [...document.querySelectorAll("[role=\"dialog\"] .markdown a")];
   // /notes/b.md is a card on this board, so following it swaps the sheet.
   const onBoard = links.find((a) => a.textContent === "b");
-  expect(onBoard?.getAttribute("href")).toBe("/kanban/notes?card=/notes/b.md");
+  expect(onBoard?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
 
   // /notes/gone.md is not, so it leaves for the reader.
   const offBoard = links.find((a) => a.textContent === "gone");
@@ -878,9 +879,23 @@ test("opening the boards section picks the first board", async () => {
   expect(document.querySelectorAll("main section[aria-label]").length).toBeGreaterThan(0);
 });
 
-// …but reopening it while reading a board must not move you off that board.
+// Loading a board URL directly used to light the Entries icon and open the file
+// tree beside a kanban, because the rail started at a guess and only a click
+// ever corrected it.
+test("loading a board URL shows the boards section, not the tree", async () => {
+  await mountAt("/kanban/3-reader");
+
+  const listed = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(listed.join()).toContain("Notes"); // the boards list
+  expect(listed.join()).not.toContain("Index"); // not the file tree
+});
+
+// …and reopening the section must not move you off the board you are on.
 test("reopening the section leaves the board you are on alone", async () => {
   await mountAt("/kanban/3-reader");
+  // Collapse, then reopen: the section is already Boards, so the first click
+  // takes the width back and the second returns the list.
+  await act(async () => openBoardsSection());
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
@@ -899,19 +914,30 @@ function openBoardsSection() {
 // Picking a board collapsed the panel and nothing reopened it: every rail icon
 // then changed a hidden panel, so clicking any of them did nothing you could
 // see, and the hamburger was the only way back.
-test("the rail reopens the panel after picking a board", async () => {
+test("one board is opened without spending width on a list of one", async () => {
   await mountAt("/wiki/index.md");
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  // Pick the board, which collapses the panel.
-  const board = [...document.querySelectorAll("aside a")].find((a) =>
-    a.textContent?.includes("Notes"),
-  ) as HTMLElement;
-  await act(async () => board.click());
-  expect(document.querySelectorAll("aside a").length).toBe(0); // collapsed
+  // The board is on screen and the panel stayed out of the way.
+  expect(document.querySelectorAll("main section[aria-label]").length).toBeGreaterThan(0);
+  expect(document.querySelectorAll("aside a").length).toBe(0);
 
-  // The rail brings it back, and switches what it shows.
+  // Clicking the section again is the way to the list, which is where a second
+  // board would be added from. Without this the single-board rule is a trap.
+  await act(async () => openBoardsSection());
+  const listed = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+  expect(listed.join()).toContain("Notes");
+});
+
+// The rail has to bring the panel back whatever it was last doing, or an icon
+// that changes a hidden panel is an icon that does nothing.
+test("the rail reopens the panel from a board", async () => {
+  await mountAt("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelectorAll("aside a").length).toBe(0);
+
   await act(async () => openSection("Entries"));
   const panel = [...document.querySelectorAll("aside a")].map((a) => a.textContent);
   expect(panel.join()).toContain("Index");

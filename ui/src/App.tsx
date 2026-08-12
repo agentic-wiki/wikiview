@@ -179,11 +179,19 @@ function entryPath(pathname: string): string {
   return "/" + decodeURIComponent(pathname).replace(/^\/wiki\/?/, "");
 }
 
-/** Reads the folder out of /kanban/<folder> and boards it. */
+/**
+ * Splits `/kanban/<id>/<entry path>` into the board and the card open on it.
+ *
+ * The first segment is always a board id, never a folder, which is what makes
+ * the split exact: everything after it is a bundle path, slashes and all.
+ */
 function BoardRoute({ version, refresh }: { version: number; refresh: number }) {
   const { pathname } = useLocation();
-  const path = "/" + decodeURIComponent(pathname).replace(/^\/kanban\/?/, "").replace(/\/$/, "");
-  return <BoardView path={path} version={version} refresh={refresh} />;
+  const rest = decodeURIComponent(pathname).replace(/^\/kanban\/?/, "");
+  const cut = rest.indexOf("/");
+  const id = cut < 0 ? rest : rest.slice(0, cut);
+  const card = cut < 0 ? "" : rest.slice(cut); // keeps the leading slash
+  return <BoardView id={id} card={card} version={version} refresh={refresh} />;
 }
 
 function UnknownRoute() {

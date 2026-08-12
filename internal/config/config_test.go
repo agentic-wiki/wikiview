@@ -51,7 +51,7 @@ func TestNoSectionIsNotAProblem(t *testing.T) {
 
 // Every key but `path` has a default, so a board can be declared in two lines.
 func TestDefaultsFillInWhatIsLeftOut(t *testing.T) {
-	cfg, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\npath = \"/backlog\"\n")
+	cfg, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"backlog\"\npath = \"/backlog\"\n")
 	if len(problems) != 0 {
 		t.Fatalf("problems=%v", problems)
 	}
@@ -80,11 +80,13 @@ func TestSeveralBoardsKeepTheirOwnSettings(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
 [[tool.wikiview.board]]
+id      = "backlog"
 path    = "/backlog"
 columns = ["todo", "done"]
 lane    = "priority"
 
 [[tool.wikiview.board]]
+id     = "everything"
 path   = "/"
 where  = ["type!=task"]
 status = "stage"
@@ -133,13 +135,16 @@ func TestProblemsDoNotStopTheRest(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
 [[tool.wikiview.board]]
+id    = "nowhere"
 path  = "/nowhere"
 
 [[tool.wikiview.board]]
+id    = "bad"
 path  = "/backlog"
 where = ["this is not a filter"]
 
 [[tool.wikiview.board]]
+id   = "fine"
 path = "/backlog"
 `)
 	joined := strings.Join(problems, "\n")
@@ -197,25 +202,44 @@ func TestREADMEDocumentsTheRealDefaults(t *testing.T) {
 	}
 }
 
-// `path` is the board's identity, so two boards claiming one cannot both be
-// reached. Taking the first silently would hide a declaration written on
-// purpose — and a second board over the same folder with a different `where` is
-// exactly the thing somebody would try.
-func TestADuplicatePathIsReported(t *testing.T) {
+// The point of an id: two views of one folder, which the path alone cannot
+// tell apart.
+func TestTwoBoardsOverOneFolderNeedIds(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
 [[tool.wikiview.board]]
-path = "/backlog"
+id    = "all"
+path  = "/backlog"
 
 [[tool.wikiview.board]]
-path  = "/backlog/"
-where = ["type=bug"]
+id    = "bugs"
+path  = "/backlog"
+where = ["type=task", "kind=bug"]
 `)
-	if len(problems) != 1 || !strings.Contains(problems[0], "already board 1") {
-		t.Errorf("problems=%v, want one naming the earlier board", problems)
+	if len(problems) != 0 {
+		t.Fatalf("problems=%v, want none: two boards over one folder is the point", problems)
 	}
-	// Reported, not discarded: the config still says what it says.
-	if len(cfg.Board) != 2 {
-		t.Errorf("boards=%d, want both kept", len(cfg.Board))
+	if cfg.Board[0].ID != "all" || cfg.Board[1].ID != "bugs" {
+		t.Errorf("ids=%q,%q", cfg.Board[0].ID, cfg.Board[1].ID)
+	}
+}
+
+// An id is what a board is addressed by, so a board without one cannot be
+// reached at all. Never derived: a derived id would come from the path, and
+// then a board address would sometimes start with an id and sometimes with a
+// folder name.
+func TestIDIsRequired(t *testing.T) {
+	_, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\npath = \"/backlog\"\n")
+	if len(problems) != 1 || !strings.Contains(problems[0], "id is required") {
+		t.Errorf("problems=%v, want one about the missing id", problems)
+	}
+}
+
+// An id sits in the URL among folder names, so a slash in one puts it back in
+// competition with them.
+func TestAnIDWithASlashIsReported(t *testing.T) {
+	_, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"a/b\"\npath = \"/backlog\"\n")
+	if len(problems) != 1 || !strings.Contains(problems[0], "slash") {
+		t.Errorf("problems=%v, want one about the slash", problems)
 	}
 }

@@ -19,6 +19,9 @@ import (
 // would be re-implementing rules that have one home.
 type BoardView struct {
 	Path string `json:"path"`
+	// ID is what the URL carries, so a client can link to this board without
+	// deciding for itself whether to use an id or a path.
+	ID string `json:"id"`
 	// Name is what to call this board, from the config or from the folder.
 	Name string `json:"name"`
 	// Field is the frontmatter key the columns are made of, so a client can say
@@ -53,19 +56,17 @@ type Card struct {
 
 func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
-	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
-	path = strings.TrimSuffix(path, "/")
-	if path == "" {
-		path = "/"
-	}
+	id := strings.Trim(r.PathValue("id"), "/")
 
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
-	board, declared := boardFor(cfg, path)
-	board = named(board, v.Index.Bundle.Dir)
-
-	// Any folder boards, declared or not, so an undeclared one gets the same
-	// defaults a bare `[[tool.wikiview.board]]` would have taken.
-	writeJSON(w, http.StatusOK, buildBoard(v, board, declared))
+	board, declared := boardFor(cfg, id)
+	if board.ID == "" {
+		// An id nothing declares is a wrong address, not a folder to go and
+		// board: boards are declared, and the reader is where you browse.
+		writeJSON(w, http.StatusNotFound, errorBody{"no board with that id"})
+		return
+	}
+	writeJSON(w, http.StatusOK, buildBoard(v, named(board, v.Index.Bundle.Dir), declared))
 }
 
 // named fills in a board's display name when the config does not give one.
@@ -86,19 +87,31 @@ func named(b config.Board, dir string) config.Board {
 	return b
 }
 
-// boardFor finds the declared board for path, or invents the default one.
-func boardFor(cfg config.Config, path string) (config.Board, bool) {
+// boardFor resolves an id to a board. Reports whether there is one.
+//
+// Only ids, never paths. That is what lets an address put a card after the
+// board — `/kanban/<id>/<entry path>` splits at the first segment, and there is
+// no second reading of it. A folder name in that position would make
+// `/kanban/a/b` mean either the board `a` showing `/b` or the folder `/a/b`.
+func boardFor(cfg config.Config, id string) (config.Board, bool) {
+	id = strings.Trim(id, "/")
 	for _, b := range cfg.Board {
-		if strings.TrimSuffix(b.Path, "/") == strings.TrimSuffix(path, "/") {
+		if b.ID == id {
 			return b, true
 		}
 	}
-	return config.Default(path), false
+	// The one board nothing has to declare, so an unconfigured bundle still has
+	// a kanban to open.
+	if id == "" || id == config.RootID {
+		return config.Root(), false
+	}
+	return config.Board{}, false
 }
 
 func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 	out := BoardView{
 		Path:     board.Path,
+		ID:       board.ID,
 		Name:     board.Name,
 		Field:    board.Status,
 		Lane:     board.Lane,
