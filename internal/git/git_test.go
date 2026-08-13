@@ -42,6 +42,35 @@ func write(t *testing.T, dir, name, content string) {
 	}
 }
 
+/*
+configure pins the settings that would otherwise come from the machine.
+
+**In the repository's own config, not the environment.** `must` suppresses the
+global and system files so a developer's identity does not leak into a test, but
+the code under test shells out with the ambient environment — that is the entire
+point of shelling out — so it reads config that `must` does not. Anything set one
+side of that line and not the other makes the test and the thing it is testing
+disagree about the same repository. Repo-local config is the one place both of
+them look.
+
+`core.autocrlf` is why this exists rather than being three inlined lines. Git for
+Windows turns it on in the system config, so on a Windows runner a checkout wrote
+CRLF while the test's own `git status` was still reading the file as LF, and a
+`rebase --abort` that restored the tree perfectly was reported as leaving it
+dirty. Nothing here is a Windows workaround: it is the test declaring the
+repository it means to be testing against.
+
+Signing is off for a plainer reason: a machine configured to sign commits has an
+agent, and a container running tests does not.
+*/
+func configure(t *testing.T, dir, who string) {
+	t.Helper()
+	must(t, dir, "config", "user.email", who+"@example.com")
+	must(t, dir, "config", "user.name", who)
+	must(t, dir, "config", "commit.gpgsign", "false")
+	must(t, dir, "config", "core.autocrlf", "false")
+}
+
 // A bare "remote" and a clone of it, which is the shape every action assumes.
 func repoPair(t *testing.T) (clone, remote string) {
 	t.Helper()
@@ -54,11 +83,7 @@ func repoPair(t *testing.T) (clone, remote string) {
 
 	clone = filepath.Join(root, "work")
 	must(t, root, "clone", "--quiet", remote, clone)
-	must(t, clone, "config", "user.email", "t@example.com")
-	must(t, clone, "config", "user.name", "t")
-	// Signing is the user's business and not this test's: a machine configured
-	// to sign commits has an agent, and a container running tests does not.
-	must(t, clone, "config", "commit.gpgsign", "false")
+	configure(t, clone, "t")
 	write(t, clone, "index.md", "---\nokf_version: \"0.1\"\n---\nhome\n")
 	must(t, clone, "add", ".")
 	must(t, clone, "commit", "--quiet", "--message", "first")
@@ -178,9 +203,7 @@ func TestPullTakesTheRemotesWork(t *testing.T) {
 	// Somebody else pushes, via a second checkout.
 	other := filepath.Join(t.TempDir(), "other")
 	must(t, filepath.Dir(other), "clone", "--quiet", remote, other)
-	must(t, other, "config", "user.email", "o@example.com")
-	must(t, other, "config", "user.name", "o")
-	must(t, other, "config", "commit.gpgsign", "false")
+	configure(t, other, "o")
 	write(t, other, "theirs.md", "---\ntype: note\n---\ntheirs\n")
 	must(t, other, "add", ".")
 	must(t, other, "commit", "--quiet", "--message", "theirs")
@@ -210,9 +233,7 @@ func TestAFailedPullLeavesNothingBehind(t *testing.T) {
 
 	other := filepath.Join(t.TempDir(), "other")
 	must(t, filepath.Dir(other), "clone", "--quiet", remote, other)
-	must(t, other, "config", "user.email", "o@example.com")
-	must(t, other, "config", "user.name", "o")
-	must(t, other, "config", "commit.gpgsign", "false")
+	configure(t, other, "o")
 	write(t, other, "clash.md", "---\ntype: note\n---\ntheirs\n")
 	must(t, other, "add", ".")
 	must(t, other, "commit", "--quiet", "--message", "theirs")

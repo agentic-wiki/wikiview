@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -134,7 +135,9 @@ func TestDeclareEscapesWhatItAccepts(t *testing.T) {
 }
 
 // The file's permissions are the user's, and a config write is not the place to
-// quietly widen them.
+// quietly widen them. It also writes through a temp file and a rename, and a
+// rename that lands beside its target instead of on top of it is a bug worth
+// catching everywhere.
 func TestDeclareKeepsPermissions(t *testing.T) {
 	dir := declared(t, `spec = "0.1"`)
 	path := filepath.Join(dir, "wiki.toml")
@@ -144,12 +147,20 @@ func TestDeclareKeepsPermissions(t *testing.T) {
 	if err := Declare(dir, Config{}, Board{ID: "notes", Path: "/notes"}); err != nil {
 		t.Fatal(err)
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := fi.Mode().Perm(); got != 0o600 {
-		t.Errorf("perm = %v, want 0600", got)
+	// Windows has no mode bits to preserve. Go maps the whole of chmod onto the
+	// read-only attribute there, so a file set to 0600 reads back as 0666 and
+	// the assertion is about Go's mapping rather than about this package. The
+	// rename below is the half that means something on every platform — and it
+	// means more on Windows, where replacing an open file is a different
+	// operation rather than the same one.
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != 0o600 {
+			t.Errorf("perm = %v, want 0600", got)
+		}
 	}
 	// And nothing is left behind by the temp file the rename came from.
 	names, err := os.ReadDir(dir)
