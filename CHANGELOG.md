@@ -28,6 +28,16 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 
 - The panel a rail icon opens now survives opening something from it. It was scoped to one URL, so the first entry opened from a list took the list away; a panel belongs to the part of the app you are working in rather than to one address, and a rail click that navigates hands the section back to the route.
 
+### Fixed
+
+- **A `blockers` reference or a backlink on a card opens a card.** Following one used to leave for the reader even when it named a task in the next column, while a link in the same card's prose stayed on the board: one view with three link surfaces, and only the body asked where a link should go.
+
+  What counts as "on this board" is now the folder the board covers rather than the set of cards in its columns. A folder's own `index.md` is not a task, so it was never a card, and a backlink to it left the board even though it is the front door of exactly the folder you were looking at. The same went for any task the board's filter excludes. A board over `/` covers the whole bundle, so from one of its cards nothing is outside it.
+
+  In the reader nothing changes: staying on a board is the board's rule, and the reader has none to stay on.
+
+- **A rebuilt binary is actually the one you get.** `index.html` names the hashed JavaScript bundle, so a cached copy of it keeps asking for the previous build's code however many times you recompile — which reads as a fix that did not take. It was served with no cache header at all whenever it came back as a file, which is what a request for `/` does, and every session starts with one. Only the fallback path for client routes was setting `no-cache`; now both do.
+
 ## v0.4.0 — 2026-08-13
 
 ### New

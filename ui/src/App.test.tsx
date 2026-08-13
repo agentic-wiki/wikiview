@@ -62,7 +62,10 @@ const entry: Entry = {
   frontmatter: { title: "A Note", status: "todo", blockers: ["/notes/b.md"] },
   body:
     "# A Note\n\nThe body of the entry. See [b](./b.md) and [readme](../README.md).\n" +
-    "The [contract](./contract.sol) and ![a diagram](./diagram.png).\nAnd [gone](./gone.md).\n",
+    "The [contract](./contract.sol) and ![a diagram](./diagram.png).\nAnd [gone](./gone.md).\n" +
+    // Inside the bundle and outside /notes, which is the only combination that
+    // tells "leaves for the reader" from "opens as a card" on a board over /notes.
+    "Back to the [front door](../index.md).\n",
   links: [
     { raw: "./b.md", to: "/notes/b.md", anchor: "", text: "b", line: 3, exists: true, outside: false },
     { raw: "../README.md", to: "", anchor: "", text: "readme", line: 4, exists: false, outside: true },
@@ -89,9 +92,23 @@ const entry: Entry = {
     },
     // A `.md` nobody has written: not a file to fetch.
     { raw: "./gone.md", to: "/notes/gone.md", anchor: "", text: "gone", line: 7, exists: false, outside: false },
+    {
+      raw: "../index.md",
+      to: "/index.md",
+      anchor: "",
+      text: "front door",
+      line: 8,
+      exists: true,
+      outside: false,
+    },
   ],
   frontmatterRefs: [{ key: "blockers", value: "/notes/b.md", to: "/notes/b.md", label: "B" }],
-  backlinks: [{ from: "/index.md", title: "The Front Door", text: "a note", line: 3 }],
+  backlinks: [
+    { from: "/index.md", title: "The Front Door", text: "a note", line: 3 },
+    // A folder's own index linking to a task in it: the shape that showed the
+    // board rule was testing the wrong thing, since an index is never a card.
+    { from: "/notes/index.md", title: "Notes", text: "the note", line: 2 },
+  ],
   headings: [{ level: 1, text: "A Note", id: "a-note", line: 5, bodyLine: 1 }],
   checkboxes: [],
 };
@@ -945,9 +962,55 @@ test("a card opens over the board, and the board stays", async () => {
   restore();
 });
 
-// The rule that makes an off-board link ordinary rather than something needing
-// special treatment: on this board it opens a card, otherwise it leaves.
-test("a link inside a card stays on the board only when its target is on it", async () => {
+// A card obeyed the board in its prose and left for the reader from a `blockers`
+// chip: one view with three link surfaces, one of which asked. The rule belongs to
+// the view, not to the markdown renderer.
+test("every link in a card obeys the board, not just the ones in the body", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const sheet = () => document.querySelector("[role='dialog']")!;
+
+  // `blockers: /notes/b.md` names a card on this board, so it opens that card.
+  const chip = [...sheet().querySelectorAll("dl a")].find((a) => a.textContent === "B");
+  expect(chip?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
+
+  // A backlink from the folder's own index.md, which is never a card because it
+  // is not a task. It is still this board's folder, so it opens over the board.
+  const inFolder = [...sheet().querySelectorAll("section a")].find((a) =>
+    (a.textContent ?? "").includes("Notes"),
+  );
+  expect(inFolder?.getAttribute("href")).toBe("/kanban/notes/notes/index.md");
+
+  // And one from /index.md, outside the folder, so it leaves — the same rule
+  // reaching the opposite answer.
+  const elsewhere = [...sheet().querySelectorAll("section a")].find((a) =>
+    (a.textContent ?? "").includes("The Front Door"),
+  );
+  expect(elsewhere?.getAttribute("href")).toBe("/wiki/index.md");
+
+  restore();
+});
+
+// Staying on the board is the board's rule. The reader has no board to stay on,
+// so every link there goes to the reader, including the two that now ask.
+test("in the reader, blockers and backlinks stay in the reader", async () => {
+  await mountAt("/wiki/notes/a.md");
+
+  const chip = [...document.querySelectorAll("article dl a")].find((a) => a.textContent === "B");
+  expect(chip?.getAttribute("href")).toBe("/wiki/notes/b.md");
+
+  const backlink = [...document.querySelectorAll("article section a")].find((a) =>
+    (a.textContent ?? "").includes("The Front Door"),
+  );
+  expect(backlink?.getAttribute("href")).toBe("/wiki/index.md");
+});
+
+// The rule that makes a link off the board ordinary rather than something needing
+// special treatment: inside the folder this board covers it opens a card,
+// otherwise it leaves.
+test("a link inside a card stays on the board when its target is in the board's folder", async () => {
   await mountAt("/wiki/index.md");
   const restore = stubBoard();
   await act(async () => navigateTo("/kanban/notes/notes/a.md"));
@@ -955,12 +1018,18 @@ test("a link inside a card stays on the board only when its target is on it", as
 
   const links = [...document.querySelectorAll("[role=\"dialog\"] .markdown a")];
   // /notes/b.md is a card on this board, so following it swaps the sheet.
-  const onBoard = links.find((a) => a.textContent === "b");
-  expect(onBoard?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
+  const card = links.find((a) => a.textContent === "b");
+  expect(card?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
 
-  // /notes/gone.md is not, so it leaves for the reader.
-  const offBoard = links.find((a) => a.textContent === "gone");
-  expect(offBoard?.getAttribute("href")).toBe("/wiki/notes/gone.md");
+  // /notes/gone.md is in the folder and is not a card — it is not even written
+  // yet. Still the board's business, so it opens over the board and says there is
+  // no entry there, rather than throwing the board away to say it.
+  const unwritten = links.find((a) => a.textContent === "gone");
+  expect(unwritten?.getAttribute("href")).toBe("/kanban/notes/notes/gone.md");
+
+  // /index.md is outside the folder, so it leaves for the reader.
+  const elsewhere = links.find((a) => a.textContent === "front door");
+  expect(elsewhere?.getAttribute("href")).toBe("/wiki/index.md");
 
   restore();
 });

@@ -37,10 +37,18 @@ func (s *Server) serveUI(w http.ResponseWriter, r *http.Request) {
 		if st, err := f.Stat(); err == nil && !st.IsDir() {
 			f.Close()
 			// Hashed asset filenames change whenever their content does, so they
-			// are safe to cache hard; index.html must not be, or the app never
+			// are safe to cache hard; anything else must not be, or the app never
 			// picks up a new build.
+			//
+			// "Anything else" is index.html, and it reaches this branch whenever
+			// somebody loads `/` — which the fallback below never sees, and which
+			// used to be served with no cache header at all. A stale index.html
+			// names the previous build's hashed bundle, so the new one is compiled
+			// in, served on request, and never asked for.
 			if strings.HasPrefix(name, "assets/") {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				w.Header().Set("Cache-Control", "no-cache")
 			}
 			http.FileServerFS(s.ui).ServeHTTP(w, r)
 			return

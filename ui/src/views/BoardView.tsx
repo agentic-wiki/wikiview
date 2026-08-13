@@ -123,10 +123,6 @@ export function BoardView({
   // Every lane on the board, in the order the server put them in.
   const axis = board.lanes ?? [];
 
-  // Every path this board holds, which is what decides whether a link inside a
-  // card stays here or leaves for the reader.
-  const onBoard = new Set(board.columns.flatMap((c) => c.cards.map((c) => c.path)));
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* The board's own name, which nothing else on screen says: the breadcrumbs
@@ -182,7 +178,7 @@ export function BoardView({
           version={version}
           refresh={refresh}
           changedAt={changedAt[card]}
-          onBoard={onBoard}
+          folder={board.path}
           queue={queue}
           // Replaced rather than pushed: closing a card should not leave a
           // history entry you have to press back through twice.
@@ -560,7 +556,7 @@ function CardSheet({
   version,
   refresh,
   changedAt,
-  onBoard,
+  folder,
   queue,
   onClose,
 }: {
@@ -569,7 +565,9 @@ function CardSheet({
   version: number;
   refresh: number;
   changedAt?: number;
-  onBoard: Set<string>;
+  /** The folder this board covers, which is what decides whether a link from the
+   *  card stays here or leaves for the reader. */
+  folder: string;
   queue: Queue;
   onClose: () => void;
 }) {
@@ -645,7 +643,7 @@ function CardSheet({
             // A link to something else on this board opens that card and keeps
             // the board. Anything else leaves for the reader, which is what
             // makes an off-board link ordinary rather than decorated.
-            destination={(to) => (onBoard.has(to) ? cardHref(board, to) : "/wiki" + to)}
+            destination={(to) => (within(folder, to) ? cardHref(board, to) : "/wiki" + to)}
             queued={queue.queued.has(path)}
             onQueue={() => queue.toggle(path)}
           />
@@ -664,6 +662,26 @@ function CardSheet({
  * between them alone and escapes anything inside a name that would end the
  * path early.
  */
+/**
+ * Whether a bundle path is inside the folder a board covers.
+ *
+ * This is what "on this board" means for following a link, and being a *card* was
+ * too narrow a test for it. A folder's own `index.md` is not a task, so it is
+ * never a card, and it is the front door of the very folder the board is over:
+ * leaving the board to read it was the bug. A task the board's filter excludes is
+ * the same story — `where` decides which entries get columns, not which entries
+ * belong to the folder.
+ *
+ * A board over `/` covers the whole bundle, so from one of its cards nothing is
+ * outside and every link opens as a sheet. That is the rule holding rather than
+ * failing: the way out is Escape, the rail, or "open in reader", all of which the
+ * sheet already has.
+ */
+function within(folder: string, path: string): boolean {
+  if (folder === "/") return true;
+  return path === folder || path.startsWith(folder + "/");
+}
+
 function cardHref(board: string, path: string): string {
   const segments = path.replace(/^\//, "").split("/").map(encodeURIComponent);
   return "/kanban/" + encodeURIComponent(board) + "/" + segments.join("/");
