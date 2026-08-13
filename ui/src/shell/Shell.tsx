@@ -5,6 +5,7 @@ import { Rail, type RailSection } from "@/shell/Rail";
 import { Breadcrumbs } from "@/shell/Breadcrumbs";
 import { Tree } from "@/shell/Tree";
 import { Omnibar } from "@/shell/Omnibar";
+import { DocumentTitle } from "@/shell/DocumentTitle";
 import { ScrollRestoration } from "@/shell/ScrollRestoration";
 import { ThemeToggle } from "@/shell/Theme";
 import { useBundleState } from "@/state";
@@ -152,20 +153,12 @@ export function Shell({
 
   return (
     <div className="flex h-full flex-col">
+      <DocumentTitle bundle={bundle} tree={tree} />
+      {/* No panel toggle of its own: clicking the rail's active icon is that
+          control, and a hamburger beside it was a second way to do one thing —
+          the vaguer of the two, since it could only ever mean "whichever panel
+          is showing" while the icon names the section it hides. */}
       <header className="border-border bg-surface elev-1 relative z-10 flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <button
-          type="button"
-          data-print="hide"
-          aria-label={panelOpen ? "Hide navigation" : "Show navigation"}
-          aria-expanded={panelOpen}
-          onClick={() => toggle(section, !panelOpen)}
-          className="text-muted hover:text-fg hover:bg-fg/5 grid size-8 shrink-0 place-items-center rounded-md"
-        >
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-          </svg>
-        </button>
-
         {/* Breadcrumbs shrink and ellipsize; the omnibar keeps a workable
             width. The path orients you, the omnibar moves you. */}
         <div className="min-w-0 flex-1">

@@ -564,6 +564,48 @@ test("navigation names the file; the entry names itself", async () => {
   expect(document.querySelector("article")?.textContent).toContain("A Note");
 });
 
+// The tab, the bookmark, the history entry and the printed page header are all
+// this one string, and it moves without a page load, so nothing else keeps it
+// honest.
+test("the document title says what is on screen, and follows navigation", async () => {
+  await mountAt("/wiki/notes/a.md");
+  // What the entry calls itself, not the filename the tree shows: this names a
+  // page rather than a place.
+  expect(document.title).toBe("A Note · My kb");
+
+  // An entry carrying no title falls back to the readable filename.
+  await act(async () => navigateTo("/wiki/notes/b.md"));
+  expect(document.title).toBe("B · My kb");
+
+  // A folder listing names the folder.
+  await act(async () => navigateTo("/wiki/notes/"));
+  expect(document.title).toBe("Notes · My kb");
+
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes"));
+  expect(document.title).toBe("Notes · My kb");
+  // A card is what you are reading; the board behind it is context.
+  await act(async () => navigateTo("/kanban/notes/notes/a.md"));
+  expect(document.title).toBe("A Note · My kb");
+  restore();
+});
+
+test("a route naming no one thing is titled with the bundle alone", async () => {
+  // The root redirects to index.md, so the title follows the redirect rather
+  // than naming the folder that was asked for. The fixture's stub for it carries
+  // no title, so the readable filename is what lands — the tree is what this
+  // reads, not the fetched entry.
+  await mountAt("/wiki/");
+  expect(document.title).toBe("Index · My kb");
+
+  // A path the tree does not list, and a board id that no longer exists: both
+  // have nothing to name, and neither leaves the previous entry's title up.
+  await act(async () => navigateTo("/wiki/notes/gone.md"));
+  expect(document.title).toBe("My kb");
+  await act(async () => navigateTo("/kanban/deleted"));
+  expect(document.title).toBe("My kb");
+});
+
 // The bundle name is a link to the front door, with README.md as the fallback
 // every other tool that opens this folder honours.
 test("the bundle name points at index.md, or README.md, or the listing", async () => {
@@ -1177,7 +1219,7 @@ function openBoardsSection() {
 
 // Picking a board collapsed the panel and nothing reopened it: every rail icon
 // then changed a hidden panel, so clicking any of them did nothing you could
-// see, and the hamburger was the only way back.
+// see. The rail is now the only way back, which is what these two pin down.
 test("one board is opened without spending width on a list of one", async () => {
   await mountAt("/wiki/index.md");
   await act(async () => openBoardsSection());

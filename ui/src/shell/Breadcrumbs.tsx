@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import type { TreeNode } from "@/api";
+import { find } from "@/tree";
 
 /**
  * How many path segments to show before collapsing the middle.
@@ -35,7 +36,11 @@ export function Breadcrumbs({
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
       <Link
         to={rootDestination(root)}
-        className="text-fg hover:text-accent caps shrink-0 font-medium transition-colors"
+        // The accent, because this is the one name on screen that says which
+        // bundle you are in — and the only breadcrumb link that is always there.
+        // Hover dims rather than recolouring: there is no second colour left to
+        // move to that would not read as a different kind of thing.
+        className="text-accent caps shrink-0 font-medium transition-opacity hover:opacity-70"
         title="Go to the bundle's front door"
       >
         {bundleName}
@@ -57,14 +62,14 @@ export function Breadcrumbs({
             // itself belongs on the entry. The raw name stays in the URL and the
             // tooltip, where it is the identity rather than a label.
             <span className="text-fg truncate" title={seg.name}>
-              {labelFor(root, upTo(segments, seg.index)) ?? seg.name}
+              {find(root, upTo(segments, seg.index))?.label ?? seg.name}
             </span>
           ) : (
             <Link
               to={"/wiki" + upTo(segments, seg.index) + "/"}
               className="text-muted hover:text-fg truncate"
             >
-              {labelFor(root, upTo(segments, seg.index)) ?? seg.name}
+              {find(root, upTo(segments, seg.index))?.label ?? seg.name}
             </Link>
           )}
         </span>
@@ -76,26 +81,6 @@ export function Breadcrumbs({
 /** The bundle path formed by the first `index + 1` segments. */
 function upTo(segments: string[], index: number): string {
   return "/" + segments.slice(0, index + 1).join("/");
-}
-
-/**
- * The readable name for a bundle path, whether it names a folder or an entry.
- *
- * One lookup for both because a breadcrumb does not care which it is walking
- * through, and two would be two chances to disagree with the tree.
- */
-function labelFor(root: TreeNode, path: string): string | undefined {
-  const target = path.replace(/\/$/, "") || "/";
-  const find = (node: TreeNode): string | undefined => {
-    if (node.path === target) return node.label;
-    for (const e of node.entries) if (e.path === target) return e.label;
-    for (const c of node.children) {
-      const found = find(c);
-      if (found) return found;
-    }
-    return undefined;
-  };
-  return find(root);
 }
 
 /**
