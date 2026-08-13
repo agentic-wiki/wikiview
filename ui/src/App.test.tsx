@@ -2153,6 +2153,7 @@ function stubGit(status: Partial<GitStatus>, onAction?: (path: string, body: unk
     ahead: 0,
     behind: 0,
     changes: [],
+    outside: 0,
     ...status,
   };
   const seen: { path: string; body: unknown }[] = [];
@@ -2400,4 +2401,96 @@ test("a rescue stays on screen, because the branch name is the point", async () 
   const still = document.querySelector("[role='dialog'][aria-label='Pull']");
   expect(Boolean(still)).toBe(true);
   expect(still?.textContent).toContain("wikiview/2026-08-12-1430");
+});
+
+// Staged work outside the bundle is not going to be committed, which is exactly
+// why it gets said: staging files in a terminal and then pressing a button
+// called "commit and push" looks like it covers both.
+test("staged work outside the bundle is named as work this will not touch", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ changes: [{ path: "bundle/b.md", code: "??" }], outside: 2 });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
+  expect(text).toContain("2 staged files elsewhere in this repository");
+  expect(text).toContain("will not be committed");
+});
+
+// A repository with nothing staged outside it has nothing to say, and a dialog
+// that reassures you about every absent problem is a dialog nobody reads.
+test("a bundle that is the whole repository says nothing about elsewhere", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ changes: [{ path: "b.md", code: "??" }], outside: 0 });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
+  expect(text).not.toContain("elsewhere in this repository");
+});
+
+// The button names what it is doing. "Working…" covers a pull, a push and the
+// fetch that opens a preview, which are three different things to be waiting on.
+test("a busy button names the action it is busy with", async () => {
+  await mountAt("/wiki/index.md");
+  let release: (r: Response) => void = () => {};
+  stubGit({ ahead: 1, changes: [] }, () => {
+    // Never resolves until the test lets it, so the busy state can be read.
+    return new Promise<Response>((r) => (release = r)) as unknown as Response;
+  });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await act(async () =>
+    [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!.click(),
+  );
+  expect(dialog.textContent).toContain("Pushing…");
+  expect(dialog.textContent).not.toContain("Working…");
+  await act(async () => {
+    release(
+      new Response(JSON.stringify({ status: { repo: true, branch: "main", remote: "origin/main", ahead: 0, behind: 0, changes: [], outside: 0 } }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+  });
+});
+
+// The read that opens a pull preview is not a pull, and a button reading
+// "Pulling…" while it fetches names the wrong thing — and invites a click on an
+// action that has not been previewed yet.
+test("the fetch that opens a pull preview is not called pulling", async () => {
+  await mountAt("/wiki/index.md");
+  let release: (r: Response) => void = () => {};
+  stubGit({ behind: 3 }, (path) => {
+    if (path === "/api/git/fetch") return new Promise<Response>((r) => (release = r)) as unknown as Response;
+    return new Response("{}", { headers: { "content-type": "application/json" } });
+  });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Pull']")!.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Pull']")!;
+  expect(dialog.textContent).toContain("Asking the remote what it has");
+  expect(dialog.textContent).not.toContain("Pulling…");
+  const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull")!;
+  expect(confirm.hasAttribute("disabled")).toBe(true);
+
+  await act(async () => {
+    release(
+      new Response(JSON.stringify({ status: { repo: true, branch: "main", remote: "origin/main", ahead: 0, behind: 3, changes: [], outside: 0 } }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  expect(confirm.hasAttribute("disabled")).toBe(false);
 });

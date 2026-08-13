@@ -395,6 +395,10 @@ export interface GitStatus {
   behind: number;
   /** Everything a commit would include, not only what wikiview wrote. */
   changes: GitChange[];
+  /** Files staged elsewhere in the same repository, which a sync will not
+   *  commit. Said out loud because it is not going to happen: staging work in a
+   *  terminal and then pressing "commit and push" looks like it covers both. */
+  outside: number;
 }
 
 export interface GitResult {

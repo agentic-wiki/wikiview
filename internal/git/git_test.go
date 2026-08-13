@@ -379,3 +379,38 @@ func TestSyncRefusedForAMessageStagesNothing(t *testing.T) {
 		t.Errorf("the refused sync left the index staged: %q", staged)
 	}
 }
+
+// Staged work outside the bundle is counted so the preview can say it will be
+// left alone. Not committing it is right; letting somebody assume otherwise is
+// not.
+func TestOutsideCountsStagedWorkTheSyncWillNotTouch(t *testing.T) {
+	clone, _ := repoPair(t)
+	bundle := filepath.Join(clone, "bundle")
+	write(t, clone, "bundle/index.md", "home\n")
+	write(t, clone, "secret.txt", "unrelated\n")
+	write(t, clone, "notes/other.txt", "unrelated\n")
+	must(t, clone, "add", ".")
+	must(t, clone, "commit", "--quiet", "--message", "second")
+
+	if got := Repo(bundle).Outside; got != 0 {
+		t.Errorf("nothing is staged, so nothing is outside: got %d", got)
+	}
+
+	must(t, clone, "add", "secret.txt")
+	write(t, clone, "secret.txt", "one\n")
+	write(t, clone, "notes/other.txt", "two\n")
+	must(t, clone, "add", "secret.txt", "notes/other.txt")
+	// And something staged inside the bundle, which is not "outside" and is the
+	// thing a sync is for.
+	write(t, clone, "bundle/b.md", "b\n")
+	must(t, clone, "add", "bundle/b.md")
+
+	if got := Repo(bundle).Outside; got != 2 {
+		t.Errorf("two files staged outside the bundle: got %d", got)
+	}
+	// Seen from the repository root, the bundle is the whole thing and nothing
+	// can be outside it.
+	if got := Repo(clone).Outside; got != 0 {
+		t.Errorf("a bundle at the repository root has no outside: got %d", got)
+	}
+}

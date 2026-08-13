@@ -49,6 +49,15 @@ type Status struct {
 	// editing alongside is the expected case, and a preview that hid its work
 	// would be lying about what the button does.
 	Changes []Change `json:"changes"`
+	// Outside counts files staged elsewhere in the same repository, which a sync
+	// will not commit.
+	//
+	// Worth saying precisely because it is not going to happen: somebody who
+	// staged work in a terminal and then pressed a button called "commit and
+	// push" has every reason to think both got committed. A count rather than the
+	// paths, since this is a heads-up about somebody else's work in a folder this
+	// program is not showing, and the place to look at it is `git status`.
+	Outside int `json:"outside"`
 }
 
 // Change is one path a commit would carry, and what happened to it.
@@ -96,7 +105,32 @@ func Repo(dir string) Status {
 		s.Ahead, s.Behind = counts(dir)
 	}
 	s.Changes = changes(dir)
+	s.Outside = outside(dir)
 	return s
+}
+
+// outside counts staged files that a sync will leave alone, because they are in
+// the repository but not in the bundle.
+func outside(dir string) int {
+	// The bundle's own path from the repository root. Empty when they are the
+	// same folder, which needs no special case: an empty prefix matches every
+	// path, so nothing is outside a bundle that is the whole repository.
+	prefix, err := run(context.Background(), dir, "rev-parse", "--show-prefix")
+	if err != nil {
+		return 0
+	}
+	// Repo-root-relative, which is what makes the prefix test work.
+	out, err := run(context.Background(), dir, "diff", "--cached", "--name-only")
+	if err != nil || out == "" {
+		return 0
+	}
+	count := 0
+	for _, path := range strings.Split(out, "\n") {
+		if path != "" && !strings.HasPrefix(path, prefix) {
+			count++
+		}
+	}
+	return count
 }
 
 // counts reads how far apart this branch and its upstream are.

@@ -55,6 +55,8 @@ Whether `sync` should refuse when the working tree contains changes the user did
 
 **The commit message is proposed from what changed**: the path when one file moved, a count and their shared folder when several did. Not an empty box, which asks somebody to name work they watched an agent do; and not a date, which git already records — putting the timestamp in the subject line duplicates metadata git owns while still saying nothing about the change. It is a starting point in an editable field.
 
+**Every button names what it is doing.** "Pulling…" and "Pushing…" rather than one "Working…" covering both, and the read that opens a pull preview is a third thing again: it holds its own state, so the confirm button is disabled but never claims to be pulling while it fetches.
+
 **A sync with nothing to commit is a push, and says so.** For a bundle whose commits were made in a terminal there is nothing to say about a commit that is not happening, so no message is asked for, the field is not rendered, and the button reads "Push". A dialog that finished its work closes itself after a moment, since it has nothing left to say. The exception is a rescue: the branch name is the whole point of it, and dismissing would take away the only place it is written down.
 
 **Five bugs the real repositories caught**, none of which a mock would have:
@@ -62,7 +64,7 @@ Whether `sync` should refuse when the working tree contains changes the user did
 - `run` trimmed all whitespace, and `git status --porcelain` puts significant spaces in its first two columns: ` M index.md` became `M index.md` and every path lost its first character.
 - Git collapses an untracked folder to one `?? notes/` line. A preview that says "a directory" is not a preview, so it asks for `--untracked-files=all`.
 - `git push --set-upstream=false` is not valid; the flag takes no value. Dropped entirely, since a rescue branch is a place to put work rather than one to move onto.
-- **`add -- .` scoped the staging, but the commit swept the whole index.** `git commit` with no pathspec commits everything staged, so a bundle sitting inside a larger repository put whatever somebody had staged in their terminal into the wiki's commit. Every step now carries the bundle's pathspec.
+- **`add -- .` scoped the staging, but the commit swept the whole index.** `git commit` with no pathspec commits everything staged, so a bundle sitting inside a larger repository put whatever somebody had staged in their terminal into the wiki's commit. Every step now carries the bundle's pathspec, and the preview says how many staged files it is stepping around: not committing them is right, and letting somebody assume otherwise after pressing "commit and push" is not. A count rather than the paths, since the place to look at somebody else's work is `git status`.
 - A sync refused for want of a message had already staged the bundle, leaving work staged by a button nobody got to press. It asks first and stages after.
 
 **Left as the task decided it.** A sync does not refuse when the worktree holds changes nobody made through wikiview: it is the user's repo, and an agent editing alongside is the expected case. The preview showing everything that would be committed is the honest half of that bargain.

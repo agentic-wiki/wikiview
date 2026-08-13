@@ -137,7 +137,11 @@ function Preview({
   onClose: () => void;
 }) {
   const [message, setMessage] = useState(() => proposeMessage(status.changes));
+  // Acting, as opposed to the read a pull does on opening. Two states because
+  // the button names what it is doing, and "Pulling…" during a fetch would name
+  // the wrong thing.
   const [busy, setBusy] = useState(false);
+  const [fetching, setFetching] = useState(action === "pull");
   const [error, setError] = useState<string | null>(null);
   // The name a rescue would use, offered by the server with the failure that
   // needs it.
@@ -168,12 +172,11 @@ function Preview({
   // is the one network read, and opening this is what asks for it.
   useEffect(() => {
     if (action !== "pull") return;
-    setBusy(true);
     api
       .gitFetch()
       .then((r) => onStatus(r.status))
       .catch((e) => setError(String(e.message ?? e)))
-      .finally(() => setBusy(false));
+      .finally(() => setFetching(false));
     // Once, on opening. Re-running when the status changes would fetch in a loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action]);
@@ -240,7 +243,7 @@ function Preview({
         <div className="min-h-0 grow space-y-3 overflow-y-auto p-4 text-sm">
           {action === "pull" ? (
             <p className="text-muted">
-              {busy && !error
+              {fetching && !error
                 ? "Asking the remote what it has…"
                 : status.behind === 0
                   ? "Nothing to pull: this branch is level with its upstream."
@@ -265,6 +268,20 @@ function Preview({
                     </li>
                   ))}
                 </ul>
+              )}
+              {/* Staged work this sync will step around. Said because it is not
+                  going to happen: somebody who staged files in a terminal and
+                  then pressed a button called "commit and push" has every
+                  reason to think both got committed.
+                  Only alongside a commit, since that is the sentence's subject.
+                  A push has nothing to leave out, and repeating the warning over
+                  a dialog with nothing to commit makes it furniture. */}
+              {status.changes.length > 0 && status.outside > 0 && (
+                <p className="text-warn bg-warn/8 border-warn/25 rounded-md border px-2.5 py-2 text-xs">
+                  {status.outside} staged file{status.outside === 1 ? "" : "s"} elsewhere in this
+                  repository {status.outside === 1 ? "is" : "are"} outside the bundle, and will not
+                  be committed. Handle {status.outside === 1 ? "it" : "them"} in a terminal.
+                </p>
               )}
               {/* Only when something would be committed. A bundle whose commits
                   were made in a terminal has nothing to say about a commit that
@@ -334,13 +351,13 @@ function Preview({
             type="button"
             // Inert when there is nothing to do, rather than offering a button
             // whose only outcome is telling you it did nothing.
-            disabled={busy || done || nothing}
+            disabled={busy || fetching || done || nothing}
             onClick={() =>
               act(() => (action === "pull" ? api.gitPull() : api.gitSync(message)))
             }
             className="bg-accent rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            {busy ? "Working…" : label}
+            {busy ? (action === "pull" ? "Pulling…" : "Pushing…") : label}
           </button>
         </footer>
       </div>
