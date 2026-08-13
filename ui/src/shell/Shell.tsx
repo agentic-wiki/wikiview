@@ -152,7 +152,7 @@ export function Shell({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border bg-surface flex h-12 shrink-0 items-center gap-3 border-b px-3">
+      <header className="border-border bg-surface elev-1 relative z-10 flex h-12 shrink-0 items-center gap-3 border-b px-3">
         <button
           type="button"
           data-print="hide"

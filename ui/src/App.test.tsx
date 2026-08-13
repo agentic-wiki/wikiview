@@ -2494,3 +2494,18 @@ test("the fetch that opens a pull preview is not called pulling", async () => {
   });
   expect(confirm.hasAttribute("disabled")).toBe(false);
 });
+
+// Two conditions, not one. The sentence is about a commit, so a push has
+// nothing to leave out — and a warning that keeps appearing over a dialog with
+// nothing to commit stops being read.
+test("work outside the bundle is only mentioned when a commit is happening", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ ahead: 1, changes: [], outside: 3 });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
+  expect(text).not.toContain("elsewhere in this repository");
+});

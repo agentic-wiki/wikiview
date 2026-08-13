@@ -104,12 +104,12 @@ export function NewBoard({
         </div>
       </Field>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
 
       <button
         type="submit"
         disabled={busy || !id}
-        className="bg-accent w-full rounded-md px-2 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="bg-accent text-accent-fg w-full rounded-md px-2 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
       >
         {busy ? "Writing wiki.toml…" : "Make this a board"}
       </button>

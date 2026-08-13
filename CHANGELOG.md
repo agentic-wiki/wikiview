@@ -2,6 +2,42 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.4.0 — 2026-08-13
+
+### New
+
+- **Refresh, pull and sync, from the header.** The first things wikiview does that reach outside the machine, so pull and sync show what they will do and act on confirmation. Refresh does not: it re-reads the disk, reaches nothing and undoes nothing.
+
+  `GET /api/git` costs no network. It reads the branch, the upstream, ahead and behind as of the last fetch, and everything a commit would carry. The one read that reaches out happens when you open the pull preview, because asking to see what a pull would do is asking.
+
+  **A pull that fails leaves nothing behind.** The rebase is aborted, the tree is restored exactly as it was, and the answer carries the way out with the problem: a proposed branch name to push your local work to, so the conflict gets resolved with a real tool on a real checkout instead of in a browser tab.
+
+  Everything is scoped to the bundle, which can be a subdirectory of a larger repository. If files are staged elsewhere in that repository, the preview says how many and that they will be left alone.
+
+  The commit message is proposed from what changed: the path when one file moved, a count and their shared folder when several did. A sync with nothing to commit asks for no message at all and says "Push", since a bundle whose commits were made in a terminal has nothing to say about a commit that is not happening.
+
+  **Signing is never dropped to make a commit succeed.** Someone who set `commit.gpgsign` decided their commits are signed; quietly producing unsigned ones would put a hole in that record they did not ask for and would not notice. The commit fails, and the message names signing rather than leaving "Couldn't get agent socket" to be interpreted.
+
+  Git is optional throughout. A bundle is a folder first: no repository or no `git` binary means the actions are absent rather than broken.
+
+- **Printing.** A stylesheet rather than a feature, since every browser already makes PDFs and everyone knows ⌘P. What was missing was a page worth printing: the shell is a full-height flex layout whose view area scrolls itself, so a long entry used to print as one page showing whatever happened to be on screen.
+
+  A board prints as what it says rather than what it looks like: a section per column with its cards listed under it, because a board is horizontal and paper is not. A card open over a board prints as the card, and the board behind it stands down. Controls are gone, dark themes print as ink, and external links grow their URL while internal ones do not: the bundle path is recoverable from the text, the URL is not.
+
+  A print button floats at the top right of an entry, over a gradient so it never lands on top of a word.
+
+- **Cards show their tags**, capped at three with the rest counted, so a card stays a glance rather than becoming a tag cloud.
+
+### Changed
+
+- **Light and dark both have depth.** Three surface tones per theme rather than one background with hairlines drawn on it: a ground, a page, and anything raised off it. A board reads as columns on a canvas before any shadow is involved, which is what matters in dark mode where a shadow is nearly invisible.
+
+- **The accent colour does something.** It is indigo, deliberately not amber or red, because those mean warning and failure by a convention nobody is going to unlearn and an identity colour in either family competes with them exactly when something has gone wrong. It marks keyboard focus, links in prose, the active rail section, and the drop target under a dragged card. Warnings and failures have their own colours now, instead of four spellings scattered across four files.
+
+- Capitals are set as capitals. Uppercase letterforms are all one height, so at the tracking that suits lowercase they read as a wall: the bundle name, column headers and lane headers are spaced for it.
+
+- Syntax highlighting has a lightness per theme instead of one mid-tone meant for both.
+
 ## v0.3.0 — 2026-08-12
 
 ### New

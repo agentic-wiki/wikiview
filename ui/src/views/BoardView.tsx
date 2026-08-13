@@ -149,7 +149,7 @@ export function BoardView({
       <div
         data-scroller
         data-print={card ? "hide" : undefined}
-        className="flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4"
+        className="bg-sunken flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4"
       >
         {board.columns.map((column) => (
           <BoardColumn
@@ -280,7 +280,7 @@ function BoardColumn({
       data-drop={column.value || undefined}
       className={[
         "flex w-72 shrink-0 flex-col rounded-lg border",
-        over ? "border-accent bg-accent/5" : "bg-surface/40 border-border",
+        over ? "border-accent bg-accent/8 elev-2" : "bg-surface border-border elev-1",
       ].join(" ")}
     >
       {/* Drag to reorder, except the unnamed column: it is not a status anybody
@@ -295,7 +295,7 @@ function BoardColumn({
             : undefined
         }
         className={[
-          "border-border flex items-baseline gap-2 border-b px-3 py-2",
+          "border-border bg-fg/2 flex items-baseline gap-2 rounded-t-lg border-b px-3 py-2",
           column.value ? "cursor-grab touch-none select-none" : "",
         ].join(" ")}
       >
@@ -386,7 +386,7 @@ function BoardCard({
       draggable={false}
       to={cardHref(board, card.path)}
       className={[
-        "border-border/70 bg-bg hover:border-muted/60 block shrink-0 rounded-md border p-2 transition-colors",
+        "border-border bg-surface elev-1 lift hover:border-accent/50 block shrink-0 rounded-md border p-2",
         // Left in place rather than removed, so the column does not reflow under
         // the pointer while you are deciding where to drop.
         dragging ? "opacity-40" : "",
@@ -421,7 +421,7 @@ function CardFace({ card }: { card: Card }) {
           {blockedBy > 0 && (
             <Badge
               count={blockedBy}
-              className="text-amber-600 dark:text-amber-500"
+              className="text-warn"
               title={`Waiting on ${blockedBy} ${blockedBy === 1 ? "entry" : "entries"}`}
             >
               {/* A barred circle: the universal "blocked" mark. */}
@@ -443,7 +443,7 @@ function CardFace({ card }: { card: Card }) {
           {shown.map((tag) => (
             <span
               key={tag}
-              className="bg-fg/5 text-muted rounded px-1.5 py-0.5 text-xs"
+              className="border-border text-muted rounded border px-1.5 py-0.5 text-xs"
             >
               {tag}
             </span>
@@ -506,7 +506,7 @@ function Ghost({ card, drag }: { card: Card; drag: DragState<Card> }) {
       // a corner the moment it lifts.
       style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
       data-print="hide"
-      className="border-accent bg-bg pointer-events-none fixed z-50 rotate-1 rounded-md border p-2 shadow-lg"
+      className="border-accent bg-surface elev-3 pointer-events-none fixed z-50 rotate-2 rounded-md border p-2"
     >
       <CardFace card={card} />
     </div>
@@ -605,7 +605,7 @@ function CardSheet({
         // arrives a moment after the dialog does, and a dialog sized by its
         // contents is a header alone until it lands, then a jump. It would also
         // resize under you when a link inside one card opens another.
-        className="border-border bg-bg flex h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl"
+        className="border-border bg-surface elev-3 flex h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border"
       >
         <header className="border-border flex shrink-0 items-center gap-2 border-b px-3 py-2">
           <span className="text-muted truncate font-mono text-xs">{path}</span>

@@ -70,7 +70,7 @@ export function BoardSettings({
         aria-label="Board settings"
         onClick={(e) => e.stopPropagation()}
         onSubmit={save}
-        className="border-border bg-bg flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border shadow-2xl"
+        className="border-border bg-surface elev-3 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border"
       >
         {/* The path was here and is now under the name, where it says which
             board this is rather than sitting where a dialog's close is. */}
@@ -181,7 +181,7 @@ export function BoardSettings({
             )}
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
         </div>
 
         <footer className="border-border flex shrink-0 items-center gap-2 border-t px-4 py-3">
@@ -196,7 +196,7 @@ export function BoardSettings({
           <button
             type="submit"
             disabled={busy}
-            className="bg-accent rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="bg-accent text-accent-fg rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save"}
           </button>

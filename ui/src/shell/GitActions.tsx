@@ -219,7 +219,7 @@ function Preview({
         aria-modal="true"
         aria-label={action === "pull" ? "Pull" : "Sync"}
         onClick={(e) => e.stopPropagation()}
-        className="border-border bg-bg flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border shadow-2xl"
+        className="border-border bg-surface elev-3 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border"
       >
         <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
           <div className="min-w-0">
@@ -301,7 +301,7 @@ function Preview({
             </>
           )}
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
 
           {/* The way out of a failed pull. The local work is intact and still
               local; this puts it somewhere else so the conflict can be resolved
@@ -355,7 +355,7 @@ function Preview({
             onClick={() =>
               act(() => (action === "pull" ? api.gitPull() : api.gitSync(message)))
             }
-            className="bg-accent rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="bg-accent text-accent-fg rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
           >
             {busy ? (action === "pull" ? "Pulling…" : "Pushing…") : label}
           </button>

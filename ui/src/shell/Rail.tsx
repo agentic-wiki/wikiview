@@ -31,7 +31,7 @@ export function Rail({
     <nav
       data-print="hide"
       aria-label="Sections"
-      className="border-border bg-surface absolute inset-y-0 left-0 z-20 flex w-14 flex-col gap-1 border-r p-2"
+      className="border-border bg-surface elev-1 absolute inset-y-0 left-0 z-20 flex w-14 flex-col gap-1 border-r p-2"
     >
       {SECTIONS.map((s) => (
         <button
@@ -41,9 +41,18 @@ export function Rail({
           aria-label={s.label}
           aria-current={active === s.id ? "page" : undefined}
           onClick={() => onSelect(s.id)}
+          // The bar at the rail's edge is what says "you are here"; the tint and
+          // the accent icon only say "this one is different from the others".
+          // A tint alone has to be read against its neighbours to mean anything,
+          // and at a glance across a narrow column there is nothing to read it
+          // against.
           className={[
-            "grid h-10 shrink-0 place-items-center rounded-md",
-            active === s.id ? "bg-accent/12 text-accent" : "text-muted hover:text-fg hover:bg-fg/5",
+            "relative grid h-10 shrink-0 place-items-center rounded-md",
+            "before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-[3px]",
+            "before:-translate-y-1/2 before:rounded-r-full before:bg-accent before:transition-opacity",
+            active === s.id
+              ? "bg-accent/12 text-accent before:opacity-100"
+              : "text-muted hover:text-fg hover:bg-fg/5 before:opacity-0",
           ].join(" ")}
         >
           <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.6">

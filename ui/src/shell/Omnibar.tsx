@@ -114,7 +114,7 @@ function Palette({
         aria-modal="true"
         aria-label="Search"
         onClick={(e) => e.stopPropagation()}
-        className="border-border bg-surface w-full max-w-xl overflow-hidden rounded-xl border shadow-2xl"
+        className="border-border bg-surface elev-3 w-full max-w-xl overflow-hidden rounded-xl border"
       >
         <input
           ref={inputRef}

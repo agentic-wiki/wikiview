@@ -1,46 +1,88 @@
 @import "tailwindcss";
 
 /* Both themes from the start: a reading tool gets used at night, and
-   retrofitting dark mode means revisiting every surface. */
+   retrofitting dark mode means revisiting every surface.
+ *
+ * THREE GREYS, NOT ONE. `sunken` is the ground, `bg` is the page, `surface` is
+ * anything raised off it — the header, the rail, a column, a card, a dialog. A
+ * single background with hairline borders is what makes an interface read as a
+ * wireframe: everything is technically visible and nothing has a position. The
+ * shadows below carry the rest of that; the three greys do the work when the
+ * shadow is too subtle to see, which in dark mode is always.
+ *
+ * ONE ACCENT, AND IT IS NOT A STATE COLOUR. Warnings are amber and failures are
+ * red by convention nobody is going to unlearn, so the identity colour has to
+ * live somewhere else or it competes with them every time something goes wrong.
+ * Indigo, which is also far enough from the greens and oranges in a code block
+ * to stay legible over content.
+ *
+ * The neutrals carry a little of the accent's hue rather than being flat grey.
+ * It is not visible as colour at these chromas — it is what stops a light theme
+ * reading as paper-white and a dark one as switched-off. */
+/*
+ * EVERY TOKEN IS DEFINED ONCE, as `light-dark(light, dark)`.
+ *
+ * The alternative is the palette written three times — a `prefers-color-scheme`
+ * block for the system's choice and an attribute block for each explicit one —
+ * and a palette written three times is a palette where one of the three is
+ * wrong. `light-dark()` reads whichever `color-scheme` is in force, so the three
+ * cases become three lines of `color-scheme` at the bottom and the colours are
+ * stated once, side by side, where they can be compared.
+ */
 @theme {
-  --color-bg: oklch(99% 0 0);
-  --color-surface: oklch(97% 0 0);
-  --color-border: oklch(90% 0 0);
-  --color-fg: oklch(25% 0 0);
-  --color-muted: oklch(55% 0 0);
-  --color-accent: oklch(55% 0.14 250);
+  --color-sunken: light-dark(oklch(95.5% 0.006 275), oklch(14.5% 0.008 275));
+  --color-bg: light-dark(oklch(97.8% 0.004 275), oklch(17.5% 0.008 275));
+  --color-surface: light-dark(oklch(100% 0 0), oklch(21.5% 0.01 275));
+  --color-border: light-dark(oklch(90.5% 0.008 275), oklch(29% 0.014 275));
+  --color-fg: light-dark(oklch(24% 0.015 275), oklch(93% 0.006 275));
+  --color-muted: light-dark(oklch(52% 0.014 275), oklch(66% 0.014 275));
+
+  --color-accent: light-dark(oklch(52% 0.19 282), oklch(74% 0.16 285));
+  /* Text on an accent fill. Its own token because the accent flips from dark to
+     light between themes, and `text-white` on a pale indigo is unreadable. */
+  --color-accent-fg: light-dark(oklch(100% 0 0), oklch(18% 0.04 285));
+  --color-warn: light-dark(oklch(56% 0.14 70), oklch(80% 0.13 78));
+  --color-danger: light-dark(oklch(54% 0.2 25), oklch(70% 0.17 25));
+
+  /* The ink a shadow is drawn in, which is the only part of one that changes
+     with the theme. A shadow is light that did not arrive, and on a near-black
+     page there is none left to withhold: dark gets the same geometry in a much
+     blacker, more opaque ink, and leans on `surface` being lighter than `bg` for
+     the rest of the height.
+     Only the colour goes through `light-dark()`. A whole shadow cannot: it holds
+     commas of its own, and `light-dark()` takes exactly two arguments. */
+  --ink-near: light-dark(oklch(30% 0.03 275 / 0.1), oklch(0% 0 0 / 0.36));
+  --ink-far: light-dark(oklch(30% 0.03 275 / 0.14), oklch(0% 0 0 / 0.5));
 }
 
-/* Dark applies two ways, and both are needed.
-   The media query is the "auto" case: no attribute is set, so the system
-   decides, and it keeps deciding if the system changes while the tab is open.
-   The attribute is an explicit choice, and it wins in both directions — which is
-   why light has to be spelled out too rather than relying on the default. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-bg: oklch(19% 0.005 260);
-    --color-surface: oklch(23% 0.005 260);
-    --color-border: oklch(31% 0.008 260);
-    --color-fg: oklch(93% 0.004 260);
-    --color-muted: oklch(65% 0.01 260);
-    --color-accent: oklch(72% 0.13 250);
-  }
+/* Elevation, in three steps: resting chrome, a lifted card, a dialog over the
+   page. Two layers each — a tight contact shadow and a wide soft one — because
+   a single blurred layer reads as fog rather than as height.
+   Written by hand rather than as theme values, so an elevation is one name in
+   the markup and one definition here, the way `.caps` already works. */
+:root {
+  --shadow-e1: 0 1px 2px -1px var(--ink-near), 0 1px 3px var(--ink-near);
+  --shadow-e2: 0 1px 2px -1px var(--ink-near), 0 4px 12px -4px var(--ink-far);
+  --shadow-e3: 0 2px 4px -2px var(--ink-near), 0 16px 40px -12px var(--ink-far);
 }
+.elev-1 { box-shadow: var(--shadow-e1); }
+.elev-2 { box-shadow: var(--shadow-e2); }
+.elev-3 { box-shadow: var(--shadow-e3); }
 
-/* color-scheme follows the explicit choice, so scrollbars, form controls and the
-   canvas the browser paints before CSS all match. Without it, forcing light on a
-   dark system leaves dark scrollbars around a light page. */
-:root[data-theme="dark"] { color-scheme: dark; }
+/* Something that rises to meet the pointer. Only for things you can pick up: a
+   card lifting says it is loose on the board, and saying that about a row you
+   can only click is a promise the interface does not keep. */
+.lift { transition: box-shadow 120ms ease, transform 120ms ease; }
+.lift:hover { box-shadow: var(--shadow-e2); transform: translateY(-1px); }
+
+/* The three cases `light-dark()` reads, and the only place the theme branches.
+   `color-scheme` also decides what the browser paints for scrollbars, form
+   controls and the canvas behind the page, so these have to be right anyway:
+   without them, forcing light on a dark system leaves dark scrollbars around a
+   light page. */
+:root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
-
-:root[data-theme="dark"] {
-  --color-bg: oklch(19% 0.005 260);
-  --color-surface: oklch(23% 0.005 260);
-  --color-border: oklch(31% 0.008 260);
-  --color-fg: oklch(93% 0.004 260);
-  --color-muted: oklch(65% 0.01 260);
-  --color-accent: oklch(72% 0.13 250);
-}
+:root[data-theme="dark"] { color-scheme: dark; }
 
 /* Tailwind v4 dropped the preflight cursor on buttons to match the bare browser
    default. Restored here rather than per-component: a control that does not look
@@ -53,6 +95,29 @@
     cursor: pointer;
   }
   button:disabled { cursor: default; }
+
+  /* The accent's day job. Keyboard focus is the one state that must never be
+     guessed at, and giving it the identity colour means the colour earns its
+     place by doing something rather than by decorating a logo.
+     `:focus-visible` rather than `:focus`, so a mouse click does not leave a
+     ring behind on everything it touches. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Controls answer immediately and settle over a beat. Instant is what makes an
+     interface feel like a diagram of itself: nothing acknowledges the pointer,
+     it is simply in a different state now. 120ms is under the threshold where a
+     transition starts to feel like a wait. */
+  a, button, [role="button"], input, select, textarea, summary {
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease,
+      box-shadow 120ms ease;
+  }
 }
 
 html, body, #root { height: 100%; }
@@ -127,13 +192,26 @@ body { background: var(--color-bg); color: var(--color-fg); }
 .markdown img { max-width: 100%; height: auto; border-radius: 0.5rem; }
 
 /* Syntax highlighting, driven by the theme tokens rather than a shipped theme,
-   so code follows light and dark with everything else. */
+   so code follows light and dark with everything else. One lightness for paper
+   and one for a dark page: a single mid-tone that reads on both is a compromise
+   that reads well on neither.
+   Keywords sit at 330 rather than the 305 they used to, because titles are drawn
+   in the accent and an indigo title beside a violet keyword was two colours
+   doing one job. */
 .markdown .hljs-comment, .markdown .hljs-quote { color: var(--color-muted); font-style: italic; }
-.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-literal { color: oklch(60% 0.17 305); }
-.markdown .hljs-string, .markdown .hljs-attr { color: oklch(58% 0.13 150); }
-.markdown .hljs-number, .markdown .hljs-symbol { color: oklch(62% 0.15 45); }
+.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-literal {
+  color: light-dark(oklch(52% 0.19 330), oklch(76% 0.15 330));
+}
+.markdown .hljs-string, .markdown .hljs-attr {
+  color: light-dark(oklch(48% 0.13 150), oklch(76% 0.14 155));
+}
+.markdown .hljs-number, .markdown .hljs-symbol {
+  color: light-dark(oklch(52% 0.15 45), oklch(78% 0.13 55));
+}
 .markdown .hljs-title, .markdown .hljs-name, .markdown .hljs-section { color: var(--color-accent); }
-.markdown .hljs-type, .markdown .hljs-built_in { color: oklch(60% 0.12 220); }
+.markdown .hljs-type, .markdown .hljs-built_in {
+  color: light-dark(oklch(50% 0.12 220), oklch(76% 0.11 220));
+}
 
 /* Print.
  *
@@ -151,12 +229,19 @@ body { background: var(--color-bg); color: var(--color-fg); }
   :root, :root[data-theme="dark"], :root[data-theme="light"] {
     --color-bg: #fff;
     --color-surface: #fff;
+    --color-sunken: #fff;
     --color-fg: #000;
     --color-muted: #444;
     --color-border: #bbb;
     --color-accent: #000;
+    --color-accent-fg: #fff;
+    --color-warn: #000;
+    --color-danger: #000;
     color-scheme: light;
   }
+  /* Elevation is a screen idea. On paper a shadow is a grey smudge under a box
+     that is already delimited by its border. */
+  .elev-1, .elev-2, .elev-3 { box-shadow: none !important; }
 
   html, body, #root { height: auto; overflow: visible; }
   /* Every scroll container in the shell, released. A box that scrolls on screen
