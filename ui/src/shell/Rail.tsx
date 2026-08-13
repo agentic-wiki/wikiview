@@ -1,9 +1,31 @@
-export type RailSection = "entries" | "boards" | "search";
+export type RailSection = "entries" | "boards" | "changed" | "later";
 
+/**
+ * The sections, and what each icon is.
+ *
+ * Named for what they are for rather than for the state they hold: "Read later"
+ * says why you would click it, where "Queued" describes the list's condition and
+ * leaves you to infer the rest. The code underneath still calls it a queue,
+ * because that is what the structure is — added to at one end, worked from the
+ * other.
+ *
+ * No Search. It sat here as permanent chrome answering a click with an apology,
+ * and beside three icons that work a gap is better than a promise nothing keeps.
+ * It comes back when the feature does.
+ *
+ * Recently changed is a clock: what happened while you were elsewhere. Read later
+ * is a bookmark, the same glyph the tree marks a saved entry with, so one shape
+ * means one thing wherever it appears.
+ */
 const SECTIONS: { id: RailSection; label: string; icon: string }[] = [
   { id: "entries", label: "Entries", icon: "M4 4h10l4 4v12H4z M14 4v4h4" },
   { id: "boards", label: "Boards", icon: "M4 5h4v14H4z M10 5h4v9h-4z M16 5h4v6h-4z" },
-  { id: "search", label: "Search", icon: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4.2-4.2" },
+  {
+    id: "changed",
+    label: "Recently changed",
+    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3.5 2",
+  },
+  { id: "later", label: "Read later", icon: "M7 4h10v16l-5-4-5 4z" },
 ];
 
 /**

@@ -25,6 +25,7 @@ export function Shell({
   bundle,
   tree,
   unseen,
+  saved,
   refresh,
   children,
 }: {
@@ -35,29 +36,42 @@ export function Shell({
   refresh: number;
   /** Entries changed since they were last opened, marked wherever they appear. */
   unseen: Set<string>;
+  /** The entries you saved to read later, marked in the tree so the list is not
+   *  the only place they exist. */
+  saved: Set<string>;
   children: ReactNode;
 }) {
   const location = useLocation();
   /**
-   * The last thing the rail was told, and where it was told.
+   * The section you picked, and the part of the app you picked it in.
    *
-   * The section is the route's, derived rather than stored, so it changes in the
-   * *same commit* the view does. Stored, it changed a frame earlier: the router
-   * defers navigation into a transition while a `setState` here is urgent, so
-   * clicking Boards collapsed the panel, reflowed the entry you were still
-   * looking at, and only then swapped in the board.
+   * Normally the section is the route's, derived rather than stored, so it
+   * changes in the *same commit* the view does. Stored, it changed a frame
+   * earlier: the router defers navigation into a transition while a `setState`
+   * here is urgent, so clicking Boards collapsed the panel, reflowed the entry
+   * you were still looking at, and only then swapped in the board.
    *
-   * What is kept is only what the route cannot say: which section you picked
-   * when there was nowhere to navigate, and whether the width change was a
-   * toggle. Both are scoped to the location they happened at, so moving anywhere
-   * forgets them without an effect having to run.
+   * What has to be kept is the one thing a route cannot say: which section you
+   * picked when there was nowhere to navigate. Boards in a bundle that declares
+   * none is that case — the panel is where the first one gets written.
+   *
+   * Kept per *family* of routes rather than per URL, so it survives moving around
+   * inside the part of the app you picked it in. Scoped to the pathname, as it
+   * was, the panel went away on the first entry you opened from it.
+   *
+   * A pick that navigates clears it, so arriving somewhere hands the section back
+   * to the route: clicking Entries means the tree, not whatever panel you last
+   * had over the reader.
    */
-  const [told, setTold] = useState<{ at: string; section?: RailSection; toggled?: boolean } | null>(
-    null,
-  );
-  const here = told?.at === location.pathname ? told : null;
-  const section = here?.section ?? sectionFor(location.pathname);
-  const animate = here?.toggled ?? false;
+  const [picked, setPicked] = useState<{ family: RailSection; section: RailSection } | null>(null);
+  const family = sectionFor(location.pathname);
+  const section = picked?.family === family ? picked.section : family;
+
+  /** Whether a width change animates: it does when you caused it, and not when
+   *  arriving somewhere whose panel is a different size. Scoped to the URL it
+   *  happened at, so nothing has to clear it. */
+  const [toggledAt, setToggledAt] = useState<string | null>(null);
+  const animate = toggledAt === location.pathname;
 
   // What the panel is doing, per section, and only where it has been said. Each
   // section's list is a different thing to want beside your work — the tree
@@ -85,11 +99,11 @@ export function Shell({
    */
   const openByDefault = (s: RailSection) =>
     s === "boards" ? (bundle.boards?.length ?? 0) > 1 : wideEnough;
-  const panelOpen = openFor[section] ?? openByDefault(section);
+  const panelOpen = hasPanel(section) && (openFor[section] ?? openByDefault(section));
 
   /** Opening or closing a panel, which is a thing you did and so animates. */
   const toggle = (s: RailSection, open: boolean) => {
-    setTold({ at: location.pathname, section, toggled: true });
+    setToggledAt(location.pathname);
     setOpenFor((was) => ({ ...was, [s]: open }));
   };
 
@@ -109,41 +123,43 @@ export function Shell({
    */
   const pick = (next: RailSection) => {
     // Whether the route is already showing this section's kind of thing. The
-    // section and the route can disagree — picking Search leaves the route on
-    // an entry — so this asks the route rather than trusting which icon looks
-    // active.
-    const showing =
-      next === "entries"
-        ? location.pathname.startsWith("/wiki")
-        : next === "boards"
-          ? location.pathname.startsWith("/kanban")
-          : true;
+    // section and the route can disagree — a bundle with no boards picks Boards
+    // while the route stays on an entry — so this asks the route rather than
+    // trusting which icon looks active.
+    const prefix = PREFIX[next];
+    const showing = prefix === undefined || location.pathname.startsWith(prefix);
 
     if (next === section && showing) {
-      toggle(next, !panelOpen);
+      // A section with no panel has nothing left for a second click to do: you
+      // are already looking at the page it names.
+      if (hasPanel(next)) toggle(next, !panelOpen);
       return;
     }
 
     if (!showing) {
       const boards = bundle.boards ?? [];
       const target = boards.find((b) => b.id === lastBoard) ?? boards[0];
-      if (next === "entries") {
-        navigate(frontDoor(tree));
-        return;
-      }
-      if (next === "boards" && target) {
-        navigate(boardHref(target));
+      const to =
+        next === "entries"
+          ? frontDoor(tree) // the bundle's own front door, not the prefix
+          : next === "boards"
+            ? target && boardHref(target)
+            : PREFIX[next];
+      if (to) {
+        // Going somewhere hands the section back to the route, so a panel picked
+        // over the last view does not follow you into this one.
+        setPicked(null);
+        navigate(to);
         return;
       }
     }
 
     // Nowhere to go, so the section is something this view shows rather than a
-    // place: Search, which has no route, and Boards in a bundle that declares
-    // none. There the panel is the whole of what the click can do — and an icon
-    // that does nothing is the bug this rail has already had. It is also where
-    // the first board gets declared, so it is where somebody with none needs to
-    // end up.
-    setTold({ at: location.pathname, section: next });
+    // place: Boards in a bundle that declares none of them. There the panel is
+    // the whole of what the click can do — and an icon that does nothing is the
+    // bug this rail has already had. It is also where the first board gets
+    // declared, so it is where somebody with none needs to end up.
+    setPicked({ family, section: next });
     setOpenFor((was) => ({ ...was, [next]: true }));
   };
 
@@ -191,7 +207,7 @@ export function Shell({
         >
           {panelOpen && section === "entries" && (
             <div className="py-2">
-              <Tree node={tree} bundleId={bundle.id} unseen={unseen} />
+              <Tree node={tree} bundleId={bundle.id} unseen={unseen} saved={saved} />
             </div>
           )}
           {panelOpen && section === "boards" && (
@@ -207,9 +223,6 @@ export function Shell({
                 toggle("boards", false);
               }}
             />
-          )}
-          {panelOpen && section === "search" && (
-            <p className="text-muted p-3 text-sm">Search is not built yet.</p>
           )}
         </aside>
 
@@ -230,9 +243,40 @@ export function Shell({
  */
 const wideEnough = window.innerWidth >= 768;
 
-/** Which section a route belongs to. Search has no route, so it is never one. */
+/**
+ * The route prefix each section owns.
+ *
+ * Every section is a place, so every icon takes you somewhere. One table rather
+ * than a chain of `startsWith` in two functions, which is how a section ends up
+ * navigable from the rail and unrecognised by the route.
+ */
+const PREFIX: Partial<Record<RailSection, string>> = {
+  entries: "/wiki",
+  boards: "/kanban",
+  changed: "/changed",
+  later: "/read-later",
+};
+
+/** Which section a route belongs to; the reader for anything unclaimed. */
 function sectionFor(pathname: string): RailSection {
-  return pathname.startsWith("/kanban") ? "boards" : "entries";
+  for (const [id, prefix] of Object.entries(PREFIX)) {
+    if (pathname.startsWith(prefix)) return id as RailSection;
+  }
+  return "entries";
+}
+
+/**
+ * Whether a section has anything to put beside the view.
+ *
+ * The tree and the list of boards are structures you steer with *while* reading,
+ * so they earn a column. The two lists are pages: you go to them when you are
+ * choosing what to read next, and one of them could not be a panel at all —
+ * opening a changed entry marks it seen, so the row leaves the list, and beside
+ * your work that is a handle vanishing from under the cursor with the next click
+ * landing on something you did not aim at.
+ */
+function hasPanel(section: RailSection): boolean {
+  return section === "entries" || section === "boards";
 }
 
 /**

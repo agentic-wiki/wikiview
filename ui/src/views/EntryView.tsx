@@ -12,10 +12,16 @@ export function EntryView({
   refresh,
   changedAt,
   destination,
+  queued,
+  onQueue,
 }: {
   path: string;
   version: number;
   refresh: number;
+  /** Whether this entry is in the read-later queue. */
+  queued: boolean;
+  /** Puts it in, or takes it out. */
+  onQueue: () => void;
   /** The version this entry's content last moved at, from the tree. Undefined
    *  for a path the tree does not list, which is a reason to fetch rather than
    *  to trust a copy. */
@@ -119,7 +125,12 @@ export function EntryView({
 
   return (
     <article className="mx-auto max-w-3xl px-6 py-8">
+      {/* Both floats, in source order right to left: printing is the older
+          affordance and keeps the corner. Each floats on its own rather than
+          sharing a wrapper, for the reason the print button was floated in the
+          first place — see below. */}
       <Print />
+      <QueueButton queued={queued} onQueue={onQueue} />
       <Frontmatter entry={entry} />
       {/* Below the frontmatter strip, where the body's own opening heading would
           sit — so an entry that has one and an entry that borrows one look the
@@ -301,6 +312,47 @@ function Print() {
         <path d="M6 9V3h12v6" />
         <path d="M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2" />
         <path d="M6 14h12v7H6z" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Save this entry to read later.
+ *
+ * Here, on the entry, because this is the moment the thought happens: you are
+ * reading something that matters and cannot read it now. It rides along into the
+ * card sheet for free, since a card is this view inside a dialog — and a board
+ * you could save nothing from would be a hole in the feature rather than a
+ * decision.
+ *
+ * The bookmark filled when it is saved, hollow when it is not: the same glyph the
+ * rail and the tree use, in the two states there are.
+ */
+function QueueButton({ queued, onQueue }: { queued: boolean; onQueue: () => void }) {
+  return (
+    <button
+      type="button"
+      data-print="hide"
+      onClick={onQueue}
+      aria-pressed={queued}
+      aria-label={queued ? "Remove from read later" : "Save to read later"}
+      title={queued ? "Saved to read later — click to remove" : "Read later"}
+      className={[
+        "hover:bg-fg/5 float-right ml-3 rounded-md p-1.5",
+        queued ? "text-accent" : "text-muted hover:text-fg",
+      ].join(" ")}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="size-4"
+        fill={queued ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M7 4h10v16l-5-4-5 4z" />
       </svg>
     </button>
   );

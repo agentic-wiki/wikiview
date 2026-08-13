@@ -2,6 +2,32 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.5.0 — unreleased
+
+### New
+
+- **Recently changed.** An agent edits the bundle while it is open, and until now the only sign was a dot in the tree — an answer where you were already looking, since after a change across thirty files a folder dot means opening folders until you find them. `/changed` lists them, most recent first, each naming what the entry calls itself and the folder it lives in.
+
+  Opening an entry takes it off the list, which is why this is a page and not a column beside your work: there, the row you clicked disappears from under the cursor and the rows below jump up. Keeping the row and dimming it instead — the way a mail client does — would need a second, session-scoped notion of "you have looked at this" beside the versioned one the bundle already has, and two definitions of that is a bug waiting for a reason. So the list stores nothing: the marks in the tree and this page are one state, read twice.
+
+- **Read later.** Save what you are reading with the bookmark button, from the reader or from a card, and it waits at `/read-later` in the order you saved it. Opening one leaves it there; taking it off is a control on the row, because nothing else ever will. Saved entries are marked in the tree with a bookmark, a different shape from the changed dot rather than a different colour, so an entry that is both reads as two facts.
+
+  Kept per bundle in the browser, alongside what you have seen: what one person owes themselves is not a property of the bundle, and writing it into the files would put one reader's intentions into everybody's repository and into git.
+
+  Favourites were considered and dropped. A queue is emptied, so what is in it is what you still owe yourself; favourites only grow, and a shelf that only grows stops being read — and "somewhere I go back to often" is already answered by the tree, the breadcrumb and ⌘K. An entry saved and then deleted is said rather than dropped: a list that quietly loses things is a list you stop trusting.
+
+### Changed
+
+- **The rail carries four working sections and no dead one.** Entries, Boards, Recently changed, Read later — named for what they are for rather than for the state they hold. Search is gone until the feature exists: it was permanent chrome that answered a click with an apology, and beside three icons that work, a gap is better than a promise nothing keeps.
+
+- A list of things to read names them the way a page does: what the entry calls itself, with its folder underneath, spelled the way the tree spells it. The tree, the breadcrumb and a folder listing still name files, because you are moving around a folder there and a row that renames itself is a row you cannot navigate back through.
+
+  An `index.md` in one of these lists is named by its folder — `Notes (index)` — because "Index" names every folder's front door and so names none of them. The tree still calls it Index, where the folder is drawn around it. This is the rule a backlink has always used, for the same reason.
+
+- **The browser tab of the bundle's front door is the bundle's name**, rather than "Index".
+
+- The panel a rail icon opens now survives opening something from it. It was scoped to one URL, so the first entry opened from a list took the list away; a panel belongs to the part of the app you are working in rather than to one address, and a rail click that navigates hands the section back to the route.
+
 ## v0.4.0 — 2026-08-13
 
 ### New
@@ -29,6 +55,10 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 - **Cards show their tags**, capped at three with the rest counted, so a card stays a glance rather than becoming a tag cloud.
 
 ### Changed
+
+- **The browser tab says what is on screen**: the entry's own title, the folder, the board, or the card you have open, then the bundle's name. It was "wikiview" for every entry in every bundle, which is one answer to five questions — the tab, the window, a bookmark's name, a history entry, and the header a browser prints at the top of the page.
+
+- **The bundle name is in the accent**, and the hamburger is gone. Clicking the rail's active icon already opened and closed the panel, so the two were one control twice, and the hamburger was the vaguer of them: its label changed meaning with the section and it could never say which panel it meant.
 
 - **Light and dark both have depth.** Three surface tones per theme rather than one background with hairlines drawn on it: a ground, a page, and anything raised off it. A board reads as columns on a canvas before any shadow is involved, which is what matters in dark mode where a shadow is nearly invisible.
 

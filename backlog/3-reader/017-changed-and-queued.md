@@ -1,7 +1,7 @@
 ---
 type: task
 title: "two lists: what changed, and what you queued"
-status: todo
+status: done
 priority: medium
 tags: [feature, reader, ui]
 blockers: [/3-reader/004-ui-shell.md, /3-reader/008-unseen-changes.md]
@@ -36,7 +36,9 @@ Ordering is free; wall-clock is not. `changedAt` is a bundle version, not a time
 
 **The alternative considered and rejected:** keep it in the panel and stop consuming rows — the mail-client model, where a read row stays and only loses its emphasis. That needs a second notion of seen, session-scoped and unversioned, sitting beside the versioned one the bundle actually has. Two definitions of "you have looked at this" is a bug waiting for a reason to happen. The page needs no new state at all.
 
-## What you queued: a panel list
+## What you queued
+
+*(Planned as a panel. It shipped as a page: see [what building it settled](#what-building-it-settled).)*
 
 A queue, not favourites. A queue is consumed and emptied, so what is in it is what you still owe yourself; favourites only grow, and a shelf that only grows stops being read. Only one of the two is missing here: a wiki already answers "somewhere I go back to often" with the tree, links, breadcrumbs and ⌘K, while "this matters, but not now" is answered by nothing.
 
@@ -71,4 +73,34 @@ The browser already has it. A bookmark is read-later, it survives a cache clear,
 
 What a bookmark cannot do is sit next to the entry in the tree, follow a bundle that moves, or know that what you queued has changed since you queued it — and that last is free here, since `changedAt` is on every entry. If the built queue does not do those three things, the bookmark is better and it should not exist. None of this applies to the changed list, which has no equivalent anywhere.
 
-**Acceptance:** a route lists what changed since you last looked, newest first, using the same row model as a folder listing, with an empty state that says so; opening one entry from it does not reflow a list under the cursor; an entry can be queued and unqueued from the reader and from a card, the queue survives a reload without leaking into another bundle, opening a queued entry leaves it in the list, and each row can be removed from the row; a queued entry and an unseen one are distinguishable in the tree at a glance, including on the same row; the rail carries four working sections and no dead one.
+**Acceptance:** two routes, each listing entries in the row model a folder listing uses, each with a heading and a line saying what the list is and an empty state that is an answer. Recently changed is newest first and loses a row when you open it, without reflowing a list under the cursor. Read later keeps its rows until you take them off, from the row; it survives a reload, does not leak into another bundle, can be added to from the reader and from a card, and says so rather than dropping an entry that has gone. Rows name what the entry calls itself and the folder it lives in, readably. A saved entry and a changed one are distinguishable in the tree at a glance, including on the same row. The rail carries four working sections and no dead one.
+
+## What building it settled
+
+**Both lists are pages, and the rule above is half wrong.** Rows that survive being clicked make a panel *possible*; they do not make one necessary. The read-later list shipped as a panel first and read as thin: 256 pixels truncates a title at about four words, and the rail icon behaved unlike every other one because clicking it changed nothing in the view area. The deciding question turned out to be how often you consult a list, not what happens to its rows. The tree is a panel because steering a hierarchy is constant while reading; both lists are consulted when you finish something and pick the next thing, which is a place you go.
+
+Two homes were tried and dropped. With a page *and* a panel, the rail icon can only do one of them, and the second needs its own affordance — so removal ends up in one home and not the other, and the same list has two shapes to keep in step. One home, one row shape, one place that can take something off the list.
+
+**Names say what a section is for.** "Recently changed" and "Read later" rather than "Changed" and "Queued": the first pair says why you would click, the second describes the condition of a list and leaves you to infer the rest. The store is still a queue in the code, because that is what the structure is.
+
+**A list of things to read names them the way a page does.** The tree, the breadcrumb and a folder listing name *files* — you are moving around a folder and a row that renames itself is a row you cannot navigate back through. Both lists name what the entry calls itself, with the folder underneath, readable, as the tree spells it. That second rule already existed for the browser tab; it now lives in `tree.ts` as `nameOf` and is used by all three.
+
+**And an `index.md` is named by its folder.** "Index" names every folder's front door, so in a list of rows it names none of them — which is what shipped first and was wrong. The tree can call it Index because the folder is drawn around it on screen; a list has no folder around it, so the folder becomes the name: `Notes (index)`, and `Backlog (index)` for the bundle's own front door. The folder is then not repeated underneath, since the name already says it.
+
+Not a new rule. The server names a backlink exactly this way, in these words, and its comment gives this reason (`backlinkName`, `internal/server/entry.go`) — a backlinks footer has no folder around it either. What is new is only that the client now needs the same rule, and has everything to compute it: the tree carries folder labels.
+
+What is *not* done, and is a live option rather than a decision: an entry with no frontmatter title at all still falls back to its filename made readable. A first heading or a truncated opening line would be better for entries whose filenames are dates or ids. The cheap way is the server adding the first heading to the tree's entry stubs, since the index has already parsed every heading — that is wikiview's own server, not the engine, and it is a few lines. The expensive way is the client fetching bodies for rows it is listing. Nobody should be reverse-engineering titles from `body` in the browser.
+
+**The panel a rail icon opens was scoped to one URL, which is a bug the panel version found and the page version does not depend on.** `Shell` kept the picked section against `location.pathname`, so the first entry opened from a panel list took that list away and left the tree in its place — the same disappearing-handle problem as the changed list, one level up. It is fixed rather than sidestepped, because the case survives the redesign: Boards in a bundle that declares none is still picked with nowhere to navigate, and search will be too. The section is kept per *family* of routes, and a pick that navigates hands it back to the route, so clicking Entries means the tree rather than whatever was last beside the reader.
+
+The route prefixes each section owns are one table now, read by both `sectionFor` and the rail's click handler. They were two chains of `startsWith` in two functions, which is how a section ends up navigable from the rail and unrecognised by the route.
+
+**Nothing was stored for "changed since you queued it".** Queueing happens on the entry or on a card, which are the two places you can only be while looking at the thing — so the moment you queue is the moment you last saw it, and `unseen` already answers the question exactly. One definition of "you have looked at this", not two. What would break that is queueing from somewhere you cannot see the entry: the palette, or a row on the changed page. Either of those arrives with a stamp on each queued path, or it silently starts meaning something else.
+
+**The card sheet needed no work.** A card is `EntryView` inside a dialog, so the bookmark button, its state and its tooltip arrived there for free. That is the second time that shape has paid off, after the checkbox.
+
+**The changed page shares `Row` with folder listings**, extracted to `views/listing.tsx` with the two icons and the counter. No synthesized `TreeNode`: a folder that does not exist would have put a fabricated path into every link on the page.
+
+**Both marks live in one group on a tree row**, bookmark then dot, so an entry that is queued *and* changed reads as two facts rather than a crowded row. The bookmark is muted on purpose: the accent belongs to the dot, which is the mark that is news.
+
+Left undone, deliberately: queueing from the palette, ordering the queue by anything other than when things went in, and any answer to a deleted entry beyond the queue's own "no longer in this bundle" row. The [blind spot](#the-blind-spot-both-lists-inherit) is unchanged — a deleted entry is still invisible to the changed list, because `seen` collects paths from the tree and a path that is gone is absent rather than reported.

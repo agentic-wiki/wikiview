@@ -7,6 +7,7 @@ import { EntryView } from "@/views/EntryView";
 import { Loading } from "@/views/Loading";
 import { NewBoard } from "@/views/NewBoard";
 import { NotFound } from "@/views/NotFound";
+import type { Queue } from "@/queue";
 
 /**
  * One folder as columns of cards.
@@ -23,6 +24,7 @@ export function BoardView({
   rootLabel,
   version,
   refresh,
+  queue,
 }: {
   /** The board's id, which is the first segment of the address. */
   id: string;
@@ -35,6 +37,8 @@ export function BoardView({
   rootLabel: string;
   version: number;
   refresh: number;
+  /** The read-later queue, for the card opened over the board. */
+  queue: Queue;
 }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +183,7 @@ export function BoardView({
           refresh={refresh}
           changedAt={changedAt[card]}
           onBoard={onBoard}
+          queue={queue}
           // Replaced rather than pushed: closing a card should not leave a
           // history entry you have to press back through twice.
           onClose={() => navigate("/kanban/" + board.id, { replace: true })}
@@ -556,6 +561,7 @@ function CardSheet({
   refresh,
   changedAt,
   onBoard,
+  queue,
   onClose,
 }: {
   board: string;
@@ -564,6 +570,7 @@ function CardSheet({
   refresh: number;
   changedAt?: number;
   onBoard: Set<string>;
+  queue: Queue;
   onClose: () => void;
 }) {
   // Escape closes, because a panel that only closes by finding its button is a
@@ -639,6 +646,8 @@ function CardSheet({
             // the board. Anything else leaves for the reader, which is what
             // makes an off-board link ordinary rather than decorated.
             destination={(to) => (onBoard.has(to) ? cardHref(board, to) : "/wiki" + to)}
+            queued={queue.queued.has(path)}
+            onQueue={() => queue.toggle(path)}
           />
         </div>
       </div>

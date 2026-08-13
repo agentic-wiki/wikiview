@@ -581,6 +581,10 @@ test("the document title says what is on screen, and follows navigation", async 
   await act(async () => navigateTo("/wiki/notes/"));
   expect(document.title).toBe("Notes · My kb");
 
+  // A page of the app, not of the bundle, and still named.
+  await act(async () => navigateTo("/changed"));
+  expect(document.title).toBe("Recently changed · My kb");
+
   const restore = stubBoard();
   await act(async () => navigateTo("/kanban/notes"));
   expect(document.title).toBe("Notes · My kb");
@@ -591,12 +595,10 @@ test("the document title says what is on screen, and follows navigation", async 
 });
 
 test("a route naming no one thing is titled with the bundle alone", async () => {
-  // The root redirects to index.md, so the title follows the redirect rather
-  // than naming the folder that was asked for. The fixture's stub for it carries
-  // no title, so the readable filename is what lands — the tree is what this
-  // reads, not the fetched entry.
+  // The bundle's front door is the bundle: naming it would give "My kb (index) ·
+  // My kb", which is the same words twice and a parenthesis.
   await mountAt("/wiki/");
-  expect(document.title).toBe("Index · My kb");
+  expect(document.title).toBe("My kb");
 
   // A path the tree does not list, and a board id that no longer exists: both
   // have nothing to name, and neither leaves the previous entry's title up.
@@ -1267,6 +1269,277 @@ test("returning to entries from a board opens the front door", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   expect(document.querySelector("article")?.textContent).toContain("Where the bundle starts.");
+});
+
+// ─── Recently changed, and read later ───────────────────────────────────────
+
+/**
+ * Serves a tree in which something moved, and tells the app so over the stream.
+ *
+ * The greeting first, which is what the server sends on connect and the client
+ * swallows, then the version that actually reports the change.
+ */
+async function reportTree(next: TreeNode, version: number): Promise<() => void> {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).endsWith("/api/tree")
+      ? Promise.resolve(
+          new Response(JSON.stringify(next), { headers: { "content-type": "application/json" } }),
+        )
+      : realFetch(input, init)) as typeof fetch;
+  await act(async () => emitVersion(1));
+  await act(async () => emitVersion(version));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  return () => {
+    globalThis.fetch = realFetch;
+  };
+}
+
+/** The rows of a listing in the view area, as text. */
+function pageRows(): string[] {
+  return [...document.querySelectorAll("main li a")].map((a) => a.textContent ?? "");
+}
+
+function queueButton(within = "article"): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`${within} [aria-label='Save to read later']`);
+}
+
+// A folder dot says "something in here moved", which after a change across
+// thirty files means opening folders until you find them. The list says it.
+test("what changed is a page, newest first, naming where each entry lives", async () => {
+  await mountAt("/wiki/index.md");
+  // Two entries move in one rebuild each, checks.md after b.md.
+  const restore = await reportTree(
+    withChangedAt(withChange("/notes/b.md", 2), "/notes/checks.md", 3),
+    3,
+  );
+
+  await act(async () => openSection("Recently changed"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(here).toBe("/changed");
+
+  const rows = pageRows();
+  expect(rows.length).toBe(2);
+  // Most recent first. `changedAt` counts rebuilds, not seconds, so this is the
+  // only ordering there is to state — and it is exact.
+  expect(rows[0]).toContain("Checks");
+  expect(rows[1]).toContain("B");
+  // Where it lives, named the way the tree names it rather than as a raw path.
+  expect(rows[1]).toContain("Notes");
+  expect(rows[1]).not.toContain("/notes");
+  // And the heading says what the page is, since a list of filenames does not.
+  expect(document.querySelector("main h1")?.textContent).toBe("Recently changed");
+  expect(document.querySelector("main")?.textContent).toContain("takes it off this list");
+
+  restore();
+});
+
+// The whole reason this is a page and not a panel: the row leaves the list when
+// you open it, and a handle that deletes itself under the cursor sends the next
+// click somewhere you did not aim at.
+test("reading an entry takes it off the changed page, which then says so", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = await reportTree(withChange("/notes/b.md", 2), 2);
+
+  await act(async () => navigateTo("/changed"));
+  expect(pageRows().length).toBe(1);
+
+  await act(async () => navigateTo("/wiki/notes/b.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => navigateTo("/changed"));
+
+  expect(pageRows()).toEqual([]);
+  // An empty state that is an answer rather than an apology.
+  expect(document.querySelector("main")?.textContent).toContain("Nothing has changed");
+
+  restore();
+});
+
+// "Index" names every folder's front door and so names none of them. In the tree
+// the folder it sits in is right there on screen; in a list of rows it is not, so
+// the folder is the name — the rule the server already applies to a backlink.
+test("an index entry is named by its folder in both lists", async () => {
+  const withIndexes: TreeNode = {
+    ...tree,
+    children: tree.children.map((c) =>
+      c.path === "/notes"
+        ? {
+            ...c,
+            index: "/notes/index.md",
+            entries: [
+              ...c.entries,
+              { path: "/notes/index.md", name: "index.md", type: "", label: "Index", changedAt: 2 },
+            ],
+          }
+        : c,
+    ),
+  };
+
+  // Saved from a list is not a thing you can do, so seed what saving would have
+  // written and read the page back.
+  localStorage.setItem(
+    `wiki:${bundle.id}:queue`,
+    JSON.stringify(["/notes/index.md", "/index.md"]),
+  );
+  await mountAt("/wiki/notes/a.md");
+  const restore = await reportTree(withIndexes, 2);
+
+  await act(async () => navigateTo("/read-later"));
+  const saved = pageRows();
+  expect(saved[0]).toContain("Notes (index)");
+  expect(saved[0]).not.toBe("Index");
+  // The bundle root's own front door is named by the bundle, since that is the
+  // folder it is the front door of.
+  expect(saved[1]).toContain("My kb (index)");
+  // And the folder is not repeated underneath a name that already says it.
+  expect(saved[0]).not.toContain("Notes (index)Notes");
+
+  // The same name on the changed page, which is where it was noticed.
+  await act(async () => navigateTo("/changed"));
+  expect(pageRows().join()).toContain("Notes (index)");
+
+  // The tree still calls it Index: the folder is drawn around it there.
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const inTree = [...document.querySelectorAll("aside a")].map((a) => a.textContent ?? "");
+  expect(inTree.some((row) => row.includes("Index"))).toBe(true);
+  expect(inTree.some((row) => row.includes("(index)"))).toBe(false);
+
+  restore();
+});
+
+test("the rail names four working sections, and the two lists open no panel", async () => {
+  await mountAt("/wiki/index.md");
+
+  const labels = [...document.querySelectorAll("nav[aria-label='Sections'] button")].map((b) =>
+    b.getAttribute("aria-label"),
+  );
+  // Named for what they are for, not for the state they hold.
+  expect(labels).toEqual(["Entries", "Boards", "Recently changed", "Read later"]);
+  // The section that answered a click with an apology is gone until it can keep
+  // the promise.
+  expect(labels).not.toContain("Search");
+
+  for (const label of ["Recently changed", "Read later"]) {
+    await act(async () => openSection(label));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(activeSection()).toBe(label);
+    expect(document.querySelector("aside")?.className).toContain("w-0");
+
+    // A second click has nothing to toggle. Opening an empty panel is the bug.
+    await act(async () => openSection(label));
+    expect(document.querySelector("aside")?.className).toContain("w-0");
+  }
+});
+
+// The difference from the changed list: opening a saved entry does not consume
+// it, so the list is still there when you come back for the next one.
+test("a saved entry names itself, keeps its place, and comes off when you say", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => queueButton()!.click());
+  // The control now says what it would do next.
+  expect(Boolean(document.querySelector("article [aria-label='Remove from read later']"))).toBe(
+    true,
+  );
+
+  await act(async () => openSection("Read later"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(here).toBe("/read-later");
+
+  // What the entry calls itself, not the filename the tree names it by: this is
+  // a list of things to read.
+  expect(pageRows()[0]).toContain("A Note");
+  // And where it lives, readable.
+  expect(pageRows()[0]).toContain("Notes");
+  expect(document.querySelector("main li a")?.getAttribute("href")).toBe("/wiki/notes/a.md");
+
+  // Reading it leaves it on the list, which is the whole difference from the
+  // other one.
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => navigateTo("/read-later"));
+  expect(pageRows().length).toBe(1);
+
+  // Taken off explicitly, from the row, because opening it never will.
+  await act(async () =>
+    document.querySelector<HTMLElement>("main li [aria-label^='Remove']")!.click(),
+  );
+  expect(pageRows()).toEqual([]);
+  expect(document.querySelector("main")?.textContent).toContain("Nothing saved yet");
+});
+
+test("the read-later list survives a reload and does not leak into another bundle", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => queueButton()!.click());
+
+  // A reload: same browser, same bundle, fresh mount.
+  await mountAt("/read-later");
+  expect(pageRows()[0]).toContain("A Note");
+
+  // Another bundle's list is not this one's: these are paths, and a path from one
+  // bundle may name nothing in another.
+  localStorage.clear();
+  localStorage.setItem("wiki:another-bundle:queue", JSON.stringify(["/notes/a.md"]));
+  await mountAt("/read-later");
+  expect(pageRows()).toEqual([]);
+  expect(document.querySelector("main")?.textContent).toContain("Nothing saved yet");
+});
+
+// A list that quietly loses things is a list you stop trusting, and the only
+// useful thing left to do with a path that has gone is take it off yourself.
+test("a saved entry that no longer exists is said, not dropped", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/vanished.md"]));
+  await mountAt("/read-later");
+
+  const page = document.querySelector("main")!;
+  expect(pageRows()[0]).toContain("vanished.md");
+  expect(page.textContent).toContain("missing");
+  expect(Boolean(page.querySelector("[aria-label^='Remove']"))).toBe(true);
+});
+
+// Two marks on one row is the case to design for, not the exception. Different
+// shapes rather than different colours: two coloured dots side by side have to
+// be read against each other, which is not reading at this size.
+test("a saved entry and a changed one are told apart on the same tree row", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => queueButton()!.click());
+  // Look away, so what happens to it next is news: the entry you are reading is
+  // never marked, whoever changed it.
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const restore = await reportTree(withChange("/notes/a.md", 2), 2);
+
+  const row = [...document.querySelectorAll("aside a")].find(
+    (a) => a.getAttribute("href") === "/wiki/notes/a.md",
+  )!;
+  const saved = row.querySelector('[aria-label="read later"]')!;
+  const changed = row.querySelector('[aria-label="changed"]')!;
+  expect(Boolean(saved)).toBe(true);
+  expect(Boolean(changed)).toBe(true);
+  // A glyph and a dot, not two dots: the marks differ in shape, so neither has
+  // to be read against the other.
+  expect(Boolean(saved.querySelector("svg"))).toBe(true);
+  expect(changed.querySelector("svg")).toBeNull();
+
+  restore();
+});
+
+// A board you cannot queue anything from would be a hole in the feature rather
+// than a decision. The card is the reader in a dialog, so it comes for free.
+test("a card can be saved to read later from the sheet", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const button = queueButton("[role='dialog']");
+  expect(Boolean(button)).toBe(true);
+  await act(async () => button!.click());
+  expect(
+    Boolean(document.querySelector("[role='dialog'] [aria-label='Remove from read later']")),
+  ).toBe(true);
+
+  restore();
 });
 
 /** Clicks a rail icon by its label. */

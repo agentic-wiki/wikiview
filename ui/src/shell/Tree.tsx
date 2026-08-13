@@ -23,10 +23,38 @@ import { folderHasUnseen } from "@/seen";
 function Unseen() {
   return (
     <span
-      className="bg-accent ml-auto size-1.5 shrink-0 rounded-full"
+      className="bg-accent size-1.5 shrink-0 rounded-full"
       title="Changed since you last opened it"
       aria-label="changed"
     />
+  );
+}
+
+/**
+ * A bookmark saying this entry is saved to read later.
+ *
+ * A different *shape* from the changed dot rather than a different colour. Both
+ * can sit on one row, and two coloured dots side by side have to be read against
+ * each other to mean anything — which is not reading, at this size. Muted, too:
+ * the accent is spoken for by the dot, which is the mark that is news.
+ */
+function SavedMark() {
+  // Labelled on the wrapper, exactly as the dot is: the mark is one thing to
+  // announce, and a <title> inside the glyph would also put its words into the
+  // row's text.
+  return (
+    <span className="text-muted shrink-0" title="Saved to read later" aria-label="read later">
+      <svg
+        viewBox="0 0 24 24"
+        className="size-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        aria-hidden
+      >
+        <path d="M7 4h10v16l-5-4-5 4z" strokeLinejoin="round" />
+      </svg>
+    </span>
   );
 }
 
@@ -34,10 +62,12 @@ export function Tree({
   node,
   bundleId,
   unseen,
+  saved,
 }: {
   node: TreeNode;
   bundleId: string;
   unseen: Set<string>;
+  saved: Set<string>;
 }) {
   const location = useLocation();
   const current = decodeURIComponent(location.pathname).replace(/^\/wiki/, "");
@@ -70,7 +100,15 @@ export function Tree({
     );
 
   return (
-    <Level node={node} depth={0} open={open} toggle={toggle} current={current} unseen={unseen} />
+    <Level
+      node={node}
+      depth={0}
+      open={open}
+      toggle={toggle}
+      current={current}
+      unseen={unseen}
+      saved={saved}
+    />
   );
 }
 
@@ -81,6 +119,7 @@ function Level({
   toggle,
   current,
   unseen,
+  saved,
 }: {
   node: TreeNode;
   depth: number;
@@ -88,6 +127,7 @@ function Level({
   toggle: (path: string) => void;
   current: string;
   unseen: Set<string>;
+  saved: Set<string>;
 }) {
   return (
     <ul className="text-sm">
@@ -119,7 +159,11 @@ function Level({
               {/* Only while shut. Once it is open the marks inside say it
                   better, and a folder wearing its children's dot as well is
                   the same fact twice. */}
-              {!isOpen && folderHasUnseen(child, unseen) && <Unseen />}
+              {!isOpen && folderHasUnseen(child, unseen) && (
+                <span className="ml-auto flex shrink-0 items-center">
+                  <Unseen />
+                </span>
+              )}
             </button>
             {isOpen && (
               <Level
@@ -129,6 +173,7 @@ function Level({
                 toggle={toggle}
                 current={current}
                 unseen={unseen}
+                saved={saved}
               />
             )}
           </li>
@@ -149,7 +194,15 @@ function Level({
             title={e.name}
           >
             <span className="truncate">{e.label}</span>
-            {unseen.has(e.path) && <Unseen />}
+            {/* Both marks, in one group, so an entry that is saved *and* changed
+                reads as two facts rather than as a crowded row. The bookmark
+                first: it is the standing state, and the dot is the news. */}
+            {(saved.has(e.path) || unseen.has(e.path)) && (
+              <span className="ml-auto flex shrink-0 items-center gap-1">
+                {saved.has(e.path) && <SavedMark />}
+                {unseen.has(e.path) && <Unseen />}
+              </span>
+            )}
           </NavLink>
         </li>
       ))}

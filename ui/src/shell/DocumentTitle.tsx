@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router";
 import type { BundleInfo, TreeNode } from "@/api";
-import { find } from "@/tree";
+import { nameOf } from "@/tree";
 
 /**
  * Keeps the browser's title saying what is on screen.
@@ -53,24 +53,20 @@ function subject(bundle: BundleInfo, tree: TreeNode, pathname: string): string |
     const board = bundle.boards?.find((b) => b.id === (cut < 0 ? rest : rest.slice(0, cut)));
     // The card when one is open: it is what you are reading, and the board is
     // context. Three names would not survive the width a tab has anyway.
-    return (card ? nameOf(tree, card) : undefined) ?? board?.name;
+    return (card ? nameOf(tree, card, bundle.label) : undefined) ?? board?.name;
   }
   if (pathname.startsWith("/wiki")) {
-    return nameOf(tree, "/" + pathname.replace(/^\/wiki\/?/, ""));
+    const path = "/" + pathname.replace(/^\/wiki\/?/, "");
+    // The bundle's own front door is titled with the bundle and nothing else.
+    // Its name here would be "My notes (index)", which is the bundle's name with
+    // a parenthesis, followed by the bundle's name.
+    if (path === tree.index) return undefined;
+    return nameOf(tree, path, bundle.label);
   }
+  // Pages of the app rather than pages of the bundle, named the same as their
+  // own headings. A route this cannot name reads as the tab losing track of where
+  // you are.
+  if (pathname.startsWith("/changed")) return "Recently changed";
+  if (pathname.startsWith("/read-later")) return "Read later";
   return undefined;
-}
-
-/**
- * What to call the thing at a bundle path.
- *
- * An entry's own title first, because this names a page rather than a place —
- * the same reason the entry's page shows its title while the tree beside it
- * shows the filename. Failing that, the readable filename, which every entry
- * and folder has.
- */
-function nameOf(tree: TreeNode, path: string): string | undefined {
-  const node = find(tree, path);
-  if (!node) return undefined;
-  return ("title" in node ? node.title : undefined) || node.label;
 }

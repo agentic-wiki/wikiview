@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { api, onVersion, type BundleInfo, type TreeNode } from "@/api";
 import { useSeen } from "@/seen";
+import { useQueue, type Queue } from "@/queue";
 import { Shell } from "@/shell/Shell";
 import { ClearSelection } from "@/shell/ClearSelection";
 import { EntryView } from "@/views/EntryView";
 import { FolderView } from "@/views/FolderView";
+import { ChangedView } from "@/views/ChangedView";
+import { ReadLaterView } from "@/views/ReadLaterView";
 import { BoardView } from "@/views/BoardView";
 import { NotFound } from "@/views/NotFound";
 
@@ -102,9 +105,13 @@ function Reader({
   refresh: number;
 }) {
   const { unseen, markSeen, changedAt } = useSeen(bundle.id, tree, entryPath(useLocation().pathname));
+  // Called here for the same reason `useSeen` is: it is one list in one storage
+  // key, and two copies of the hook would be two React states over it, agreeing
+  // only after a reload.
+  const queue = useQueue(bundle.id);
 
   return (
-    <Shell bundle={bundle} tree={tree} unseen={unseen} refresh={refresh}>
+    <Shell bundle={bundle} tree={tree} unseen={unseen} saved={queue.queued} refresh={refresh}>
       <ClearSelection />
       <MarkSeen onSeen={markSeen} />
       <Routes>
@@ -118,8 +125,21 @@ function Reader({
               changedAt={changedAt}
               version={bundle.version}
               refresh={refresh}
+              queue={queue}
             />
           }
+        />
+        {/* The two lists, both pages. What moved while you were reading
+            something else — whose rows leave the list when you open them, which
+            is only comfortable to watch from somewhere you have already left —
+            and what you saved to come back to. */}
+        <Route
+          path="/changed"
+          element={<ChangedView tree={tree} unseen={unseen} rootLabel={bundle.label} />}
+        />
+        <Route
+          path="/read-later"
+          element={<ReadLaterView queue={queue} tree={tree} rootLabel={bundle.label} />}
         />
         {/* A board is addressed by its id, and `root` is the one every bundle
             has without declaring anything. */}
@@ -132,6 +152,7 @@ function Reader({
               rootLabel={bundle.label}
               version={bundle.version}
               refresh={refresh}
+              queue={queue}
             />
           }
         />
@@ -156,6 +177,7 @@ function Router({
   changedAt,
   version,
   refresh,
+  queue,
 }: {
   tree: TreeNode;
   /** When each entry's content last moved, so a copy already read can be known
@@ -165,6 +187,7 @@ function Router({
   version: number;
   /** Changes when the server reports new content; forces a refetch. */
   refresh: number;
+  queue: Queue;
 }) {
   // useLocation, not window.location: the latter is not reactive, so a
   // navigation that keeps this component mounted would render the previous
@@ -179,7 +202,14 @@ function Router({
     return <FolderView folder={folder} />;
   }
   return (
-    <EntryView path={path} version={version} refresh={refresh} changedAt={changedAt[path]} />
+    <EntryView
+      path={path}
+      version={version}
+      refresh={refresh}
+      changedAt={changedAt[path]}
+      queued={queue.queued.has(path)}
+      onQueue={() => queue.toggle(path)}
+    />
   );
 }
 
@@ -218,12 +248,14 @@ function BoardRoute({
   rootLabel,
   version,
   refresh,
+  queue,
 }: {
   tree: TreeNode;
   changedAt: Record<string, number>;
   rootLabel: string;
   version: number;
   refresh: number;
+  queue: Queue;
 }) {
   const { pathname } = useLocation();
   const rest = decodeURIComponent(pathname).replace(/^\/kanban\/?/, "");
@@ -239,6 +271,7 @@ function BoardRoute({
       rootLabel={rootLabel}
       version={version}
       refresh={refresh}
+      queue={queue}
     />
   );
 }
