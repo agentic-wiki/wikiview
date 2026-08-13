@@ -77,7 +77,7 @@ Images display inline. A link to a contract or a spreadsheet sitting beside the 
 
 Light, dark and system themes, applied before the first paint.
 
-Boards are built: columns, lanes, drag by both at once, and a card sheet. Dataset tables and git actions are not, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
+Boards are built: columns, lanes, drag by both at once, and a card sheet. Git is there too: refresh, pull and sync, each showing what it will do before it does it, and a failed pull undoing itself and offering your work as a named branch. Dataset tables are not built yet, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
 
 ## Configuration
 
@@ -136,12 +136,19 @@ GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and reso
                               and heading-id tables
 GET  /api/board/{id}          one board as columns of cards, in the config's order,
                               with the frontmatter keys its folder uses
+GET  /api/git                 the bundle's repository: branch, upstream, ahead/behind,
+                              and everything a commit would carry
 GET  /api/events              server-sent events carrying the current version
 GET  /raw/{path...}           a file as it is on disk, frontmatter and all
 PUT  /api/checkbox/{path...}  toggle a checkbox, guarded by the version you read
 PUT  /api/card/{id}/{path...} move a card to another column and lane, same guard
 POST /api/board               declare a board, appending it to the bundle's wiki.toml
 PUT  /api/board/{id}          change a board's settings in place
+POST /api/refresh             re-read the files
+POST /api/git/fetch           ask the remote what it has
+POST /api/git/pull            rebase onto the upstream, undoing the attempt if it fails
+POST /api/git/sync            commit what is in the bundle, and push
+POST /api/git/branch          push the current work to a new branch
 ```
 
 A write carries the `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the values a drop landed on, `{"value": "done", "lane": "high", "version": 7}`, and the board decides which frontmatter keys those stand for. Both are written in one pass, and an empty `lane` leaves that field alone rather than clearing it.

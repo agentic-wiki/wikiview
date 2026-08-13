@@ -400,6 +400,10 @@ function BoardCard({
 function CardFace({ card }: { card: Card }) {
   const blockedBy = card.blockedBy ?? 0;
   const blocks = card.blocks ?? 0;
+  // Capped, because a card is a glance and a tag cloud is not one. The rest are
+  // counted rather than dropped, so a card never understates what it carries.
+  const tags = card.tags ?? [];
+  const shown = tags.slice(0, 3);
   return (
     <>
       <span className="text-fg block truncate text-sm">{card.label}</span>
@@ -412,8 +416,8 @@ function CardFace({ card }: { card: Card }) {
           start and blocking others is a reason to, and one mark would say
           neither. Absent at zero, since a card with no edges has nothing to
           report and a row of noughts on every card says nothing. */}
-      {(blockedBy > 0 || blocks > 0) && (
-        <span className="mt-1.5 flex items-center gap-1.5">
+      {(blockedBy > 0 || blocks > 0 || tags.length > 0) && (
+        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {blockedBy > 0 && (
             <Badge
               count={blockedBy}
@@ -435,6 +439,17 @@ function CardFace({ card }: { card: Card }) {
                   two read as opposites at a glance. */}
               <path d="M2.75 8h6.5m0 0L6.5 5.25M9.25 8 6.5 10.75M12.5 3.25v9.5" />
             </Badge>
+          )}
+          {shown.map((tag) => (
+            <span
+              key={tag}
+              className="bg-fg/5 text-muted rounded px-1.5 py-0.5 text-xs"
+            >
+              {tag}
+            </span>
+          ))}
+          {tags.length > shown.length && (
+            <span className="text-muted text-xs">+{tags.length - shown.length}</span>
           )}
         </span>
       )}

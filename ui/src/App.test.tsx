@@ -3,7 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { StrictMode, act } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { App } from "@/App";
-import type { BundleInfo, Entry, TreeNode } from "@/api";
+import { proposeMessage } from "@/shell/GitActions";
+import type { BundleInfo, Entry, GitStatus, TreeNode } from "@/api";
 import { forget } from "@/cache";
 
 /**
@@ -815,7 +816,16 @@ const boardFixture = {
       value: "todo",
       pinned: true,
       cards: [
-        { path: "/notes/a.md", label: "A", title: "A Note", type: "task", lane: "high", blockedBy: 2, blocks: 1 },
+        {
+          path: "/notes/a.md",
+          label: "A",
+          title: "A Note",
+          type: "task",
+          lane: "high",
+          blockedBy: 2,
+          blocks: 1,
+          tags: ["ui", "api", "reader", "boards"],
+        },
         { path: "/notes/checks.md", label: "Checks", type: "task" },
       ],
     },
@@ -2111,4 +2121,283 @@ test("capitals are set by one shared rule", async () => {
   // Uppercasing is presentation: the text itself is still the value, which is
   // what the section is labelled with and what gets written to wiki.toml.
   expect(columnEl("in-progress").querySelector("h2")?.textContent).toBe("in progress");
+});
+
+// Tags are what a card is about, and nearly every bundle has them. Shown without
+// a setting: a bundle that carries none shows none, which costs it nothing.
+test("a card shows its tags, and counts the ones it cannot fit", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const card = cardIn("todo", "A")!;
+  const text = card.textContent ?? "";
+  expect(text).toContain("ui");
+  expect(text).toContain("api");
+  expect(text).toContain("reader");
+  // A card is a glance, not a tag cloud, so the rest are counted rather than
+  // dropped — the card never understates what it carries.
+  expect(text).not.toContain("boards");
+  expect(text).toContain("+1");
+
+  // A card with none says nothing about them.
+  expect(cardIn("blocked", "B")!.textContent).not.toContain("+");
+});
+
+/** Serves a git status, and records what the actions ask for. */
+function stubGit(status: Partial<GitStatus>, onAction?: (path: string, body: unknown) => Response) {
+  const real = globalThis.fetch;
+  const full: GitStatus = {
+    repo: true,
+    branch: "main",
+    remote: "origin/main",
+    ahead: 0,
+    behind: 0,
+    changes: [],
+    ...status,
+  };
+  const seen: { path: string; body: unknown }[] = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith("/api/git") || url === "/api/refresh") {
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (init?.method === "POST") {
+        seen.push({ path: url, body });
+        if (onAction) return Promise.resolve(onAction(url, body));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ status: full }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  return seen;
+}
+
+// A bundle is a folder first, and most folders are not repositories. The actions
+// that need one are absent rather than broken.
+test("the git actions are absent when the bundle is not a repository", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ repo: false, remote: "" });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(Boolean(document.querySelector("[aria-label='Pull']"))).toBe(false);
+  expect(Boolean(document.querySelector("[aria-label='Sync']"))).toBe(false);
+  // Refresh re-reads the disk and has nothing to do with git, so it stays.
+  expect(Boolean(document.querySelector("[aria-label='Refresh the index']"))).toBe(true);
+});
+
+// Refresh reaches nothing and undoes nothing, so it acts on the click. The rule
+// it would otherwise obey exists for the two that can strand somebody.
+test("refresh acts without a preview", async () => {
+  await mountAt("/wiki/index.md");
+  const asked = stubGit({});
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Refresh the index']")!.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(asked.map((a) => a.path)).toEqual(["/api/refresh"]);
+  expect(Boolean(document.querySelector("[role='dialog']"))).toBe(false);
+});
+
+// A sync previews everything it would commit, including work somebody else did:
+// an agent editing alongside is the expected case, and hiding its files would
+// misdescribe the button.
+test("sync previews every file it would commit, then acts on confirmation", async () => {
+  await mountAt("/wiki/index.md");
+  const asked = stubGit({
+    ahead: 1,
+    changes: [
+      { path: "notes/mine.md", code: " M" },
+      { path: "notes/by-an-agent.md", code: "??" },
+    ],
+  });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  expect(dialog.textContent).toContain("notes/mine.md");
+  expect(dialog.textContent).toContain("notes/by-an-agent.md");
+  expect(dialog.textContent).toContain("2 files to commit, 1 commit to push");
+  // Nothing has happened yet.
+  expect(asked.length).toBe(0);
+
+  const confirm = [...dialog.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes("Commit and push"),
+  )!;
+  await act(async () => confirm.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // The message names what changed rather than asking for one or stamping a date
+  // that git already records.
+  expect(asked).toEqual([
+    { path: "/api/git/sync", body: { message: "Update 2 entries in notes" } },
+  ]);
+});
+
+// The rule the task turns on, from the outside: a refused pull says what
+// happened and offers the way out in the same breath.
+test("a refused pull offers to push the work to a branch", async () => {
+  await mountAt("/wiki/index.md");
+  const asked = stubGit({ behind: 2, ahead: 1 }, (path) => {
+    if (path !== "/api/git/pull") {
+      return new Response(
+        JSON.stringify({
+          status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [] },
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [] },
+        error: "the pull was undone and nothing changed: CONFLICT in notes/a.md",
+        proposed: "wikiview/2026-08-12-1430",
+      }),
+      { status: 409, headers: { "content-type": "application/json" } },
+    );
+  });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Pull']")!.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Pull']")!;
+  // Opening the preview is what asks the remote; nothing fetches on its own.
+  expect(asked.some((a) => a.path === "/api/git/fetch")).toBe(true);
+
+  const pull = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull")!;
+  await act(async () => pull.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(dialog.textContent).toContain("was undone and nothing changed");
+  const branch = dialog.querySelector<HTMLInputElement>("[aria-label='Branch name']")!;
+  expect(branch.value).toBe("wikiview/2026-08-12-1430");
+
+  const push = [...dialog.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes("Push to this branch"),
+  )!;
+  await act(async () => push.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(asked.some((a) => a.path === "/api/git/branch")).toBe(true);
+});
+
+// A message you did not have to write, that still says something. The date is
+// deliberately not in it: git records when, and repeating that in the subject
+// line duplicates metadata git owns while saying nothing about the change.
+test("the commit message is proposed from what changed", async () => {
+  expect(proposeMessage([])).toBe("Update notes");
+  expect(proposeMessage([{ path: "notes/design.md" }])).toBe("Update notes/design.md");
+  expect(proposeMessage([{ path: "notes/a.md" }, { path: "notes/b.md" }])).toBe(
+    "Update 2 entries in notes",
+  );
+  // Nothing shared, so nothing claimed about where.
+  expect(proposeMessage([{ path: "a/x.md" }, { path: "b/y.md" }])).toBe("Update 2 entries");
+});
+
+// A bundle whose commits were made in a terminal has nothing to commit and
+// something to push. Asking for a message would be a box to dismiss on the way.
+test("a sync with nothing to commit is a push, and asks nothing", async () => {
+  await mountAt("/wiki/index.md");
+  const asked = stubGit({ ahead: 2, changes: [] });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  expect(Boolean(dialog.querySelector("[aria-label='Commit message']"))).toBe(false);
+
+  const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
+  await act(async () => confirm.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(asked).toEqual([{ path: "/api/git/sync", body: { message: "Update notes" } }]);
+});
+
+// Nothing to do is not a button. Offering one whose only outcome is telling you
+// it did nothing wastes the click and the reading.
+test("an action with nothing to do cannot be confirmed", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ ahead: 0, behind: 0, changes: [] });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
+  expect(confirm.hasAttribute("disabled")).toBe(true);
+  expect(dialog.textContent).toContain("Nothing to sync");
+});
+
+// A dialog whose work is finished has nothing left to say, so it says it and
+// goes — rather than waiting to be dismissed by somebody who has already moved
+// on.
+test("a finished action closes itself", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ ahead: 1, changes: [] });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await act(async () =>
+    [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!.click(),
+  );
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // It says so first, and is still there to be read.
+  expect(document.querySelector("[role='dialog'][aria-label='Sync']")?.textContent).toContain("Done");
+
+  await act(async () => new Promise((r) => setTimeout(r, 1400)));
+  expect(Boolean(document.querySelector("[role='dialog'][aria-label='Sync']"))).toBe(false);
+});
+
+// The one success worth staying open for: the branch name is the whole point of
+// a rescue, and dismissing would take away the only place it is written down.
+test("a rescue stays on screen, because the branch name is the point", async () => {
+  await mountAt("/wiki/index.md");
+  stubGit({ behind: 1, ahead: 1 }, (path) => {
+    if (path === "/api/git/pull") {
+      return new Response(
+        JSON.stringify({
+          status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [] },
+          error: "the pull was undone and nothing changed",
+          proposed: "wikiview/2026-08-12-1430",
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [] },
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  });
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Pull']")!.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Pull']")!;
+  await act(async () =>
+    [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull")!.click(),
+  );
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () =>
+    [...dialog.querySelectorAll("button")]
+      .find((b) => b.textContent?.includes("Push to this branch"))!
+      .click(),
+  );
+  await act(async () => new Promise((r) => setTimeout(r, 1400)));
+
+  const still = document.querySelector("[role='dialog'][aria-label='Pull']");
+  expect(Boolean(still)).toBe(true);
+  expect(still?.textContent).toContain("wikiview/2026-08-12-1430");
 });

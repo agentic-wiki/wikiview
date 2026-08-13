@@ -8,6 +8,7 @@ import { Omnibar } from "@/shell/Omnibar";
 import { ScrollRestoration } from "@/shell/ScrollRestoration";
 import { ThemeToggle } from "@/shell/Theme";
 import { useBundleState } from "@/state";
+import { GitActions } from "@/shell/GitActions";
 import { NewBoard } from "@/views/NewBoard";
 
 /**
@@ -23,10 +24,14 @@ export function Shell({
   bundle,
   tree,
   unseen,
+  refresh,
   children,
 }: {
   bundle: BundleInfo;
   tree: TreeNode;
+  /** Moves when the server reports new content, so the git status re-reads: a
+   *  commit somebody else made changes what a sync would carry. */
+  refresh: number;
   /** Entries changed since they were last opened, marked wherever they appear. */
   unseen: Set<string>;
   children: ReactNode;
@@ -170,6 +175,8 @@ export function Shell({
         <div data-print="hide" className="hidden w-full max-w-sm shrink justify-center sm:flex">
           <Omnibar tree={tree} unseen={unseen} />
         </div>
+
+        <GitActions refresh={refresh} />
 
         <span data-print="hide">
           <ThemeToggle />

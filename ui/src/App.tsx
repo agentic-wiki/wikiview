@@ -104,7 +104,7 @@ function Reader({
   const { unseen, markSeen, changedAt } = useSeen(bundle.id, tree, entryPath(useLocation().pathname));
 
   return (
-    <Shell bundle={bundle} tree={tree} unseen={unseen}>
+    <Shell bundle={bundle} tree={tree} unseen={unseen} refresh={refresh}>
       <ClearSelection />
       <MarkSeen onSeen={markSeen} />
       <Routes>

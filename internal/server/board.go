@@ -105,6 +105,12 @@ type Card struct {
 	// values mean finished, so it reports the edges and leaves the judgement.
 	BlockedBy int `json:"blockedBy,omitempty"`
 	Blocks    int `json:"blocks,omitempty"`
+	// Tags are the entry's own, and the key is not configurable the way the
+	// status, lane and blocker fields are. `tags` is not a workflow's word for
+	// something, it is the conventional name — the engine uses it as its example
+	// of a list-valued key — and a bundle that spells it otherwise simply shows
+	// none, which costs it nothing.
+	Tags []string `json:"tags,omitempty"`
 }
 
 func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +210,7 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 			Lane:      laneOf(e, board.Lane),
 			BlockedBy: waiting[e.Path],
 			Blocks:    blocking[e.Path],
+			Tags:      e.FieldList("tags"),
 		})
 	}
 

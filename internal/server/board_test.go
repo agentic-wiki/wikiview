@@ -513,3 +513,33 @@ lanes = ["low", "high"]
 		t.Errorf("lanes = %v", b.Lanes)
 	}
 }
+
+// Tags are shown on cards without being configurable, unlike the status, lane
+// and blocker fields: `tags` is the conventional name rather than one workflow's
+// word for something, and a bundle spelling it otherwise simply shows none.
+func TestCardsCarryTheirTags(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	dir := srv.store.View().Index.Bundle.Dir
+	if err := os.WriteFile(filepath.Join(dir, "backlog", "a.md"),
+		[]byte("---\ntype: task\nstatus: todo\ntags: [ui, api]\n---\nA\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range board(t, srv, "/api/board/backlog").Columns {
+		for _, card := range c.Cards {
+			switch card.Path {
+			case "/backlog/a.md":
+				if strings.Join(card.Tags, ",") != "ui,api" {
+					t.Errorf("a.md tags = %v", card.Tags)
+				}
+			case "/backlog/b.md":
+				if len(card.Tags) != 0 {
+					t.Errorf("b.md has no tags but reports %v", card.Tags)
+				}
+			}
+		}
+	}
+}

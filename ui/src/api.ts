@@ -173,6 +173,9 @@ export interface Card {
    *  zero: two opposite facts, and a card with no edges reports neither. */
   blockedBy?: number;
   blocks?: number;
+  /** The entry's own tags. Not a configurable key: `tags` is the conventional
+   *  name rather than one workflow's word for something. */
+  tags?: string[];
 }
 
 export interface Column {
@@ -247,6 +250,10 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The whole answer, for endpoints that say more than what went wrong: a
+     *  refused pull reports the repository it left behind and the branch its
+     *  work could go to. */
+    readonly body?: unknown,
   ) {
     super(message);
   }
@@ -274,7 +281,7 @@ async function write<T>(method: string, path: string, body: unknown): Promise<T>
   });
   if (!res.ok) {
     const b = await res.json().catch(() => null);
-    throw new ApiError(res.status, b?.error ?? res.statusText);
+    throw new ApiError(res.status, b?.error ?? res.statusText, b);
   }
   return res.json() as Promise<T>;
 }
@@ -335,6 +342,15 @@ export const api = {
    */
   boardSettings: (id: string, settings: BoardSettings) =>
     put<{ version: number }>("/api/board/" + encodeURIComponent(id), settings),
+
+  // Git. Every one of these is asked for: nothing fetches on load, nothing
+  // pushes on a timer, and the bundle belongs to whoever else is editing it.
+  git: (signal?: AbortSignal) => get<GitResult>("/api/git", signal),
+  gitFetch: () => post<GitResult>("/api/git/fetch", {}),
+  gitPull: () => post<GitResult>("/api/git/pull", {}),
+  gitSync: (message: string) => post<GitResult>("/api/git/sync", { message }),
+  gitBranch: (name: string) => post<GitResult>("/api/git/branch", { name }),
+  refresh: () => post<{ version: number }>("/api/refresh", {}),
 };
 
 /**
@@ -355,4 +371,36 @@ export function onVersion(handler: (version: number) => void): () => void {
     source.removeEventListener("version", listener);
     source.close();
   };
+}
+
+/** One path a commit would carry, with git's own two-letter status: `??` is
+ *  untracked, ` M` modified, `A ` added, ` D` deleted. */
+export interface GitChange {
+  path: string;
+  code: string;
+}
+
+/** What the bundle's repository looks like, and what an action would do to it. */
+export interface GitStatus {
+  /** False when the bundle is not in a repository, or git is not installed. The
+   *  actions are then absent rather than broken. */
+  repo: boolean;
+  branch: string;
+  /** The upstream this branch tracks, empty when it tracks none: without one
+   *  there is nothing to pull from or push to. */
+  remote: string;
+  /** Counted against the upstream as of the last fetch. `behind` is stale until
+   *  something fetches, which only happens when a preview is opened. */
+  ahead: number;
+  behind: number;
+  /** Everything a commit would include, not only what wikiview wrote. */
+  changes: GitChange[];
+}
+
+export interface GitResult {
+  status: GitStatus;
+  error?: string;
+  /** The branch offered when a pull had to be abandoned, so the way out arrives
+   *  with the problem. */
+  proposed?: string;
 }

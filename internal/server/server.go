@@ -26,6 +26,9 @@ type Server struct {
 	// announcing keeps rebuilding and announcing together, so overlapping
 	// rebuilds are reported in order and each version exactly once.
 	announcing sync.Mutex
+	// acting serialises the git actions. They mutate one worktree, and two of
+	// them at once is a rebase running under a commit.
+	acting sync.Mutex
 }
 
 // New builds the server. ui is the built frontend, or nil to serve the API only
@@ -48,6 +51,14 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("PUT /api/checkbox/{path...}", srv.handleCheckbox)
 	srv.mux.HandleFunc("PUT /api/card/{id}/{path...}", srv.handleCard)
 	srv.mux.HandleFunc("POST /api/board", srv.handleDeclareBoard)
+	srv.mux.HandleFunc("POST /api/refresh", srv.handleRefresh)
+	// Git, which is optional: a bundle is a folder and need not be a repository.
+	// The status says so, and the actions are absent rather than broken.
+	srv.mux.HandleFunc("GET /api/git", srv.handleGitStatus)
+	srv.mux.HandleFunc("POST /api/git/fetch", srv.handleGitFetch)
+	srv.mux.HandleFunc("POST /api/git/pull", srv.handleGitPull)
+	srv.mux.HandleFunc("POST /api/git/sync", srv.handleGitSync)
+	srv.mux.HandleFunc("POST /api/git/branch", srv.handleGitBranch)
 	srv.mux.HandleFunc("PUT /api/board/{id}", srv.handleBoardSettings)
 	// Files the bundle links to but does not index. Outside /api because it is
 	// not JSON: an <img src> and a new tab both want the file itself.
