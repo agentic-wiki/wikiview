@@ -31,4 +31,10 @@ Delete the icon and the section. The omnibar covers finding a known entry, which
 
 This is the cheaper answer and it is not obviously the wrong one. What it costs is the one thing the omnibar cannot do: finding the entry whose name you do not know.
 
-**Acceptance:** either a query returns entries matching their body text with the matching line shown, opening one lands on that line, and the results survive the bundle changing underneath them — or the Search section and its rail icon are gone and no dead affordance is left in the chrome.
+## Half of it is being taken
+
+The icon and the empty section go now, ahead of any decision about the feature. [017](./017-changed-and-queued.md) puts two sections in the rail that do something, and an apology sitting beside three icons that work is worse than a gap where a fourth would be. The feature stays wanted and stays here.
+
+When it returns it returns to the panel, not to a page: results survive being clicked, and by the rule 017 sets down, a list whose rows survive a click belongs beside your work rather than in the view area. So this task's own reasoning about the panel is unchanged — only the promise in the chrome is being withdrawn until it can be kept.
+
+**Acceptance:** a query returns entries matching their body text with the matching line shown, opening one lands on that line, and the results survive the bundle changing underneath them. (The other half of the old acceptance — the dead icon and section gone from the chrome — is settled in 017 and no longer an alternative to building this.)
