@@ -1424,6 +1424,78 @@ test("reading an entry takes it off the changed page, which then says so", async
   restore();
 });
 
+// Not everything that changed is worth opening: a title tweak you can judge from
+// the row clears with an X, which is the same mark opening would set, so the tree
+// agrees and read-later is untouched.
+test("a changed entry can be dismissed from the list without opening it", async () => {
+  // Save /notes/b.md, so we can prove dismissing it from *changed* leaves it in
+  // read-later: two lists, two questions.
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/b.md"]));
+  await mountAt("/wiki/index.md");
+  const restore = await reportTree(
+    withChangedAt(withChange("/notes/b.md", 2), "/notes/checks.md", 2),
+    2,
+  );
+
+  await act(async () => navigateTo("/changed"));
+  expect(pageRows().length).toBe(2);
+
+  // Dismiss b.md where it stands.
+  const x = [...document.querySelectorAll("main li")]
+    .find((li) => (li.textContent ?? "").includes("B"))!
+    .querySelector<HTMLElement>("[aria-label^='Mark']")!;
+  await act(async () => x.click());
+
+  const rows = pageRows();
+  expect(rows.length).toBe(1);
+  expect(rows.join()).not.toContain("B");
+  // Still saved: the X touched seen, not the queue.
+  await act(async () => navigateTo("/read-later"));
+  expect(pageRows().join()).toContain("B");
+
+  restore();
+});
+
+test("mark-all clears the whole changed list at once", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = await reportTree(
+    withChangedAt(withChange("/notes/b.md", 2), "/notes/checks.md", 2),
+    2,
+  );
+
+  await act(async () => navigateTo("/changed"));
+  expect(pageRows().length).toBe(2);
+
+  const all = [...document.querySelectorAll("main button")].find((b) =>
+    (b.textContent ?? "").startsWith("Mark all"),
+  )!;
+  expect(all.textContent).toContain("2"); // the count is the warning
+  await act(async () => (all as HTMLElement).click());
+  expect(pageRows()).toEqual([]);
+
+  restore();
+});
+
+// A long frontmatter value used to overflow its chip and slide under the print
+// and read-later buttons, covering them. No layout engine here to measure the
+// overlap, so this pins the structural fix: the value can shrink and truncate,
+// and the buttons are still in the document.
+test("a long frontmatter value is capped so it cannot cover the buttons", async () => {
+  await mountAt("/wiki/notes/a.md");
+
+  // `status: todo` is a plain value; find its chip's value span.
+  const value = [...document.querySelectorAll("article dl dd span")].find(
+    (s) => s.textContent === "todo",
+  )!;
+  expect(value.className).toContain("truncate");
+  expect(value.className).toContain("max-w-");
+  expect(value.getAttribute("title")).toBe("todo"); // full text on hover
+
+  // The floats it used to sit under are present and marked as controls.
+  expect(Boolean(document.querySelector("article [aria-label='Print this entry']"))).toBe(true);
+  expect(Boolean(document.querySelector("article [aria-label='Save to read later']"))).toBe(true);
+});
+
 // "Index" names every folder's front door and so names none of them. In the tree
 // the folder it sits in is right there on screen; in a list of rows it is not, so
 // the folder is the name — the rule the server already applies to a backlink.
@@ -1562,7 +1634,9 @@ test("a saved entry that no longer exists is said, not dropped", async () => {
 
   const page = document.querySelector("main")!;
   expect(pageRows()[0]).toContain("vanished.md");
-  expect(page.textContent).toContain("missing");
+  // Said on a second line, not with a bare tag, and not with a folder it no
+  // longer lives in.
+  expect(page.textContent).toContain("Entry not found in this bundle");
   expect(Boolean(page.querySelector("[aria-label^='Remove']"))).toBe(true);
 });
 
@@ -1590,7 +1664,74 @@ test("a saved entry and a changed one are told apart on the same tree row", asyn
   expect(Boolean(saved.querySelector("svg"))).toBe(true);
   expect(changed.querySelector("svg")).toBeNull();
 
+  // Both marks live in fixed-width slots, in a stable order, so a row with one
+  // mark lands it in the same column as a row with both. The group holds two
+  // slot cells whatever a row carries.
+  const group = saved.closest("span.flex")!;
+  const slots = [...group.children];
+  expect(slots.length).toBe(2);
+  expect(slots[0]!.contains(saved)).toBe(true); // bookmark first
+  expect(slots[1]!.contains(changed)).toBe(true); // dot outermost
+
   restore();
+});
+
+// The order is the reader's, and the arrows on the handle are the keyboard half
+// of the drag: a reorder that only a mouse can do is one some people cannot.
+test("read-later can be reordered from the keyboard, and it persists", async () => {
+  localStorage.setItem(
+    `wiki:${bundle.id}:queue`,
+    JSON.stringify(["/notes/a.md", "/notes/b.md", "/notes/checks.md"]),
+  );
+  await mountAt("/read-later");
+  expect(pageRows().map((r) => r.replace(/\s+/g, " ").trim())[0]).toContain("A Note");
+
+  // Move the first row down one with the arrow key on its handle.
+  const handle = document.querySelector<HTMLElement>("main li [aria-label^='Reorder']")!;
+  await act(async () => {
+    handle.focus();
+    handle.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+  });
+
+  // A Note is now second; B first.
+  expect(pageRows()[0]).toContain("B");
+  expect(pageRows()[1]).toContain("A Note");
+
+  // And it survives a reload, because the order is what is stored.
+  await mountAt("/read-later");
+  expect(pageRows()[0]).toContain("B");
+  expect(pageRows()[1]).toContain("A Note");
+});
+
+// Reorder may only permute what is stored: a stale order cannot add a path the
+// queue does not have or drop one it does, or "set the order" becomes a way to
+// edit the list behind its own back.
+test("reordering cannot add or lose entries", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/a.md", "/notes/b.md"]));
+  await mountAt("/read-later");
+
+  // The last row cannot move further down: the nudge clamps rather than growing
+  // the list or wrapping.
+  const handles = [...document.querySelectorAll<HTMLElement>("main li [aria-label^='Reorder']")];
+  await act(async () => {
+    handles[1]!.focus();
+    handles[1]!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+  });
+  expect(pageRows().length).toBe(2);
+  expect(pageRows()[1]).toContain("B");
+});
+
+// One entry has nothing to reorder, so its handle would be an affordance that
+// does nothing. The remove control stays.
+test("a single saved entry offers no reorder handle", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/a.md"]));
+  await mountAt("/read-later");
+  expect(Boolean(document.querySelector("main li [aria-label^='Reorder']"))).toBe(false);
+  expect(Boolean(document.querySelector("main li [aria-label^='Remove']"))).toBe(true);
 });
 
 // A board you cannot queue anything from would be a hole in the feature rather

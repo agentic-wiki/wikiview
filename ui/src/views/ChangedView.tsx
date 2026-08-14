@@ -22,17 +22,39 @@ export function ChangedView({
   tree,
   unseen,
   rootLabel,
+  onDismiss,
+  onDismissAll,
 }: {
   tree: TreeNode;
   unseen: Set<string>;
   /** What to call the bundle root, for an entry that lives in it. */
   rootLabel: string;
+  /** Mark one entry seen where it stands, the way opening it would. */
+  onDismiss: (path: string) => void;
+  /** The same, for every entry currently on the list. */
+  onDismissAll: (paths: string[]) => void;
 }) {
   const rows = useMemo(() => changed(tree, unseen), [tree, unseen]);
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-fg text-2xl font-semibold tracking-tight">Recently changed</h1>
+      <div className="flex items-baseline gap-3">
+        <h1 className="text-fg text-2xl font-semibold tracking-tight">Recently changed</h1>
+        {/* Clears the lot at once, which after a `tidy --all` is thirty rows you
+            have accounted for by other means. Counted in its own label rather
+            than a bare "clear", because it dismisses things you have not opened
+            and the number is the warning. Only when there is more than one: with
+            a single row the per-row control already does it. */}
+        {rows.length > 1 && (
+          <button
+            type="button"
+            onClick={() => onDismissAll(rows.map((r) => r.entry.path))}
+            className="text-muted hover:text-fg ml-auto shrink-0 text-sm"
+          >
+            Mark all {rows.length} as seen
+          </button>
+        )}
+      </div>
       {/* What the page is, not just how many rows are on it: this list exists
           because something else writes to these files while you read them, and
           that is not obvious from a heading. */}
@@ -58,6 +80,25 @@ export function ChangedView({
               title={name}
               subtitle={where}
               meta={entry.type}
+              // Marks it seen without opening it: a title tweak you can judge
+              // from the row does not need a visit to clear. It touches seen and
+              // nothing else, so an entry also in read-later stays there.
+              //
+              // A tick rather than an X: this is "I have accounted for it," which
+              // is the same act as reading it, not the deletion an X would imply.
+              action={
+                <button
+                  type="button"
+                  onClick={() => onDismiss(entry.path)}
+                  aria-label={`Mark ${name} as seen`}
+                  title="Mark as seen"
+                  className="text-muted hover:text-fg hover:bg-fg/5 grid size-8 shrink-0 place-items-center rounded-md"
+                >
+                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+              }
             />
           );
         })}

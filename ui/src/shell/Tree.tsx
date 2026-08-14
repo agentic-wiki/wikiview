@@ -43,7 +43,7 @@ function SavedMark() {
   // announce, and a <title> inside the glyph would also put its words into the
   // row's text.
   return (
-    <span className="text-muted shrink-0" title="Saved to read later" aria-label="read later">
+    <span className="text-muted" title="Saved to read later" aria-label="read later">
       <svg
         viewBox="0 0 24 24"
         className="size-3"
@@ -54,6 +54,30 @@ function SavedMark() {
       >
         <path d="M7 4h10v16l-5-4-5 4z" strokeLinejoin="round" />
       </svg>
+    </span>
+  );
+}
+
+/**
+ * The two marks a row can carry, in a fixed two-slot column.
+ *
+ * Each glyph sits centred in a slot of its own rather than shoved against the
+ * row's edge. Flush-right by box they painted a jagged edge: the dot fills its
+ * box and the bookmark's shape stops short of its, so their painted edges landed
+ * a few pixels apart and did not line up down the tree. Slots the width of each
+ * glyph, always in the same order, put every dot in one column and every bookmark
+ * in another whether or not the row carries the other mark.
+ *
+ * The bookmark first, the dot outermost: the dot is the news, so it is the one
+ * the edge of the tree is scanned for. An empty slot still holds its width, which
+ * is what keeps a dot-only row and a both-marked row sharing the same dot column.
+ */
+function Marks({ saved, changed }: { saved: boolean; changed: boolean }) {
+  if (!saved && !changed) return null;
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-1">
+      <span className="grid w-3 place-items-center">{saved && <SavedMark />}</span>
+      <span className="grid w-1.5 place-items-center">{changed && <Unseen />}</span>
     </span>
   );
 }
@@ -158,12 +182,9 @@ function Level({
               <span className="truncate">{child.label ?? child.name}</span>
               {/* Only while shut. Once it is open the marks inside say it
                   better, and a folder wearing its children's dot as well is
-                  the same fact twice. */}
-              {!isOpen && folderHasUnseen(child, unseen) && (
-                <span className="ml-auto flex shrink-0 items-center">
-                  <Unseen />
-                </span>
-              )}
+                  the same fact twice. In the same column as an entry's dot,
+                  since a folder never carries a bookmark. */}
+              {!isOpen && <Marks saved={false} changed={folderHasUnseen(child, unseen)} />}
             </button>
             {isOpen && (
               <Level
@@ -194,15 +215,7 @@ function Level({
             title={e.name}
           >
             <span className="truncate">{e.label}</span>
-            {/* Both marks, in one group, so an entry that is saved *and* changed
-                reads as two facts rather than as a crowded row. The bookmark
-                first: it is the standing state, and the dot is the news. */}
-            {(saved.has(e.path) || unseen.has(e.path)) && (
-              <span className="ml-auto flex shrink-0 items-center gap-1">
-                {saved.has(e.path) && <SavedMark />}
-                {unseen.has(e.path) && <Unseen />}
-              </span>
-            )}
+            <Marks saved={saved.has(e.path)} changed={unseen.has(e.path)} />
           </NavLink>
         </li>
       ))}

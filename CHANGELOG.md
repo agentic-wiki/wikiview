@@ -2,7 +2,33 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
-## v0.5.0 — unreleased
+## v0.6.0 — 2026-08-14
+
+### New
+
+- **Dismiss what changed without opening it.** Each row on the recently-changed page has a tick that marks it seen where it stands — the same "I have accounted for it" opening it does — and a "mark all as seen", with the count in its label, clears a whole `tidy --all` at once. Both set the seen a reopen would, so the tree agrees, and neither touches an entry's read-later state.
+
+- **Read-later is orderable.** New saves land at the end, and dragging a row by its handle — or pressing the arrow keys while the handle has focus — moves it to where you mean to read it. It reuses the drag the board reorders columns with, and the keyboard half means the reorder is not pointer-only.
+
+### Changed
+
+- On the read-later page, taking an item off is a tick now: the happy path is coming back and reading it, and taking it off is how that is done (the tooltip still says "Remove from read later", since it also drops one you decided not to read). A saved entry that has since been deleted stays on the list with a second line, "Entry not found in this bundle", rather than being dropped or labelled with a folder it no longer lives in.
+
+### Fixed
+
+- **A `blockers` reference or a backlink on a card opens a card.** Following one used to leave for the reader even when it named a task in the next column, while a link in the same card's prose stayed on the board: one view with three link surfaces, and only the body asked where a link should go.
+
+  What counts as "on this board" is now the folder the board covers rather than the set of cards in its columns. A folder's own `index.md` is not a task, so it was never a card, and a backlink to it left the board even though it is the front door of exactly the folder you were looking at. The same went for any task the board's filter excludes. A board over `/` covers the whole bundle, so from one of its cards nothing is outside it.
+
+  In the reader nothing changes: staying on a board is the board's rule, and the reader has none to stay on.
+
+- **A rebuilt binary is actually the one you get.** `index.html` names the hashed JavaScript bundle, so a cached copy of it keeps asking for the previous build's code however many times you recompile — which reads as a fix that did not take. It was served with no cache header at all whenever it came back as a file, which is what a request for `/` does, and every session starts with one. Only the fallback path for client routes was setting `no-cache`; now both do.
+
+- **A long frontmatter value no longer covers the entry's buttons.** A value with no break in it rendered as one wide chip that slid under the print and read-later buttons in the corner, painting over controls that were still there. Values are now capped and truncated, with the whole text on hover, so the chip can shrink and the buttons stay reachable; a field with several short values still shows them in full.
+
+- **The tree's two marks line up.** The changed dot and the read-later bookmark sit in fixed slots now, so a row with one lands it in the same column as a row with both, and folders' dots share that column. They used to be shoved against the row edge, where the dot's filled circle and the bookmark's inset shape painted a jagged edge a few pixels apart.
+
+## v0.5.0 — 2026-08-13
 
 ### New
 
@@ -27,16 +53,6 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 - **The browser tab of the bundle's front door is the bundle's name**, rather than "Index".
 
 - The panel a rail icon opens now survives opening something from it. It was scoped to one URL, so the first entry opened from a list took the list away; a panel belongs to the part of the app you are working in rather than to one address, and a rail click that navigates hands the section back to the route.
-
-### Fixed
-
-- **A `blockers` reference or a backlink on a card opens a card.** Following one used to leave for the reader even when it named a task in the next column, while a link in the same card's prose stayed on the board: one view with three link surfaces, and only the body asked where a link should go.
-
-  What counts as "on this board" is now the folder the board covers rather than the set of cards in its columns. A folder's own `index.md` is not a task, so it was never a card, and a backlink to it left the board even though it is the front door of exactly the folder you were looking at. The same went for any task the board's filter excludes. A board over `/` covers the whole bundle, so from one of its cards nothing is outside it.
-
-  In the reader nothing changes: staying on a board is the board's rule, and the reader has none to stay on.
-
-- **A rebuilt binary is actually the one you get.** `index.html` names the hashed JavaScript bundle, so a cached copy of it keeps asking for the previous build's code however many times you recompile — which reads as a fix that did not take. It was served with no cache header at all whenever it came back as a file, which is what a request for `/` does, and every session starts with one. Only the fallback path for client routes was setting `no-cache`; now both do.
 
 ## v0.4.0 — 2026-08-13
 

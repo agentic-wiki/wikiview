@@ -242,6 +242,21 @@ export function useDrag<T>(onDrop: (item: T, target: Target) => void) {
   return { drag, handlers };
 }
 
+/**
+ * `move` taken out of a list and put back before `onto`.
+ *
+ * The array operation a reorder-by-drop is, shared by the board's columns and
+ * the read-later list so "drop onto a row lands before it" means one thing in
+ * both. Returns the list unchanged when `onto` is not in it, so a drop over
+ * nothing is a no-op rather than a loss.
+ */
+export function reordered<T>(values: T[], move: T, onto: T): T[] {
+  const rest = values.filter((v) => v !== move);
+  const at = rest.indexOf(onto);
+  if (at < 0) return values;
+  return [...rest.slice(0, at), move, ...rest.slice(at)];
+}
+
 function elementAt(x: number, y: number): Element | null {
   return document.elementFromPoint(x, y);
 }

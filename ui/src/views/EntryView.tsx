@@ -227,27 +227,38 @@ function Frontmatter({
         // words it was only asked to display.
         <div
           key={key}
-          className="border-border/70 bg-surface/60 flex items-baseline gap-1.5 rounded-md border px-2 py-0.5"
+          // `min-w-0` so the chip can shrink, and a ceiling so a long value does
+          // not render at full width: an unbreakable value with no ceiling
+          // overflowed its flex line and slid under the print and read-later
+          // buttons floated in the corner. Capped, each value truncates instead,
+          // the line steps aside from the float the way a flex container should,
+          // and the buttons stay reachable.
+          className="border-border/70 bg-surface/60 flex min-w-0 max-w-full items-baseline gap-1.5 rounded-md border px-2 py-0.5"
         >
           {/* The key is muted rather than accented. Accent now means "this is
               interactive" — a resolving value is a link — and one colour cannot
               also mean "this is a key" without the two becoming unreadable
               together. Hierarchy comes from tone, interactivity from hue. */}
-          <dt className="text-muted font-medium">{key}</dt>
-          <dd className="text-fg flex items-baseline gap-1.5">
+          <dt className="text-muted shrink-0 font-medium">{key}</dt>
+          <dd className="text-fg flex min-w-0 items-baseline gap-1.5">
             {values(value).map((v, i) => {
               const ref = refs.get(key + "\u0000" + v);
               return ref ? (
+                // Truncated with the whole value on hover, so nothing is lost,
+                // only shortened. A ceiling as well, so one long value does not
+                // eat the line and push its siblings off it.
                 <Link
                   key={i}
                   to={destination(ref.to)}
-                  className="text-accent underline decoration-1 underline-offset-2"
+                  className="min-w-0 max-w-[20rem] truncate text-accent underline decoration-1 underline-offset-2"
                   title={ref.value}
                 >
                   {ref.label}
                 </Link>
               ) : (
-                <span key={i}>{v}</span>
+                <span key={i} className="min-w-0 max-w-[20rem] truncate" title={v}>
+                  {v}
+                </span>
               );
             })}
           </dd>

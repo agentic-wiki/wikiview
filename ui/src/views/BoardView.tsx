@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, type Board, type Card, type Column, type TreeNode } from "@/api";
 import { BoardSettings } from "@/views/BoardSettings";
-import { useDrag, type Drag as DragState } from "@/views/drag";
+import { reordered, useDrag, type Drag as DragState } from "@/views/drag";
 import { EntryView } from "@/views/EntryView";
 import { Loading } from "@/views/Loading";
 import { NewBoard } from "@/views/NewBoard";
@@ -688,12 +688,6 @@ function cardHref(board: string, path: string): string {
 }
 
 /** A list with one item moved to where another sits. */
-function reordered(values: string[], move: string, onto: string): string[] {
-  const rest = values.filter((v) => v !== move);
-  const at = rest.indexOf(onto);
-  if (at < 0) return values;
-  return [...rest.slice(0, at), move, ...rest.slice(at)];
-}
 
 /** A board's column by its value, for rebuilding the board in a new order
  *  without refetching what is in each one. */
