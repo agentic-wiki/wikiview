@@ -61,10 +61,32 @@ export function useSeen(bundleId: string, tree: TreeNode, current: string) {
     [changedAt, setSeen],
   );
 
+  // The same mark, applied to many at once, in one write rather than a loop of
+  // them. What the recently-changed list dismisses from is exactly this: a set of
+  // entries accounted for without opening each. One update, so the list does not
+  // re-render per entry as a per-path loop would.
+  const markManySeen = useCallback(
+    (paths: string[]) => {
+      setSeen((prev) => {
+        const next = { ...(prev ?? {}) };
+        let moved = false;
+        for (const path of paths) {
+          const at = changedAt[path];
+          if (at !== undefined && next[path] !== at) {
+            next[path] = at;
+            moved = true;
+          }
+        }
+        return moved ? next : (prev ?? next);
+      });
+    },
+    [changedAt, setSeen],
+  );
+
   // Handed back as well as used here, because "when did this entry's content
   // last move" answers two questions with one table: whether to mark it as
   // changed, and whether a copy of it already read is still the file.
-  return { unseen, markSeen, changedAt };
+  return { unseen, markSeen, markManySeen, changedAt };
 }
 
 /** Whether anything below this folder is unseen, so the mark leads to it. */

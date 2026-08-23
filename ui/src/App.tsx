@@ -104,7 +104,11 @@ function Reader({
   tree: TreeNode;
   refresh: number;
 }) {
-  const { unseen, markSeen, changedAt } = useSeen(bundle.id, tree, entryPath(useLocation().pathname));
+  const { unseen, markSeen, markManySeen, changedAt } = useSeen(
+    bundle.id,
+    tree,
+    entryPath(useLocation().pathname),
+  );
   // Called here for the same reason `useSeen` is: it is one list in one storage
   // key, and two copies of the hook would be two React states over it, agreeing
   // only after a reload.
@@ -135,7 +139,15 @@ function Reader({
             and what you saved to come back to. */}
         <Route
           path="/changed"
-          element={<ChangedView tree={tree} unseen={unseen} rootLabel={bundle.label} />}
+          element={
+            <ChangedView
+              tree={tree}
+              unseen={unseen}
+              rootLabel={bundle.label}
+              onDismiss={markSeen}
+              onDismissAll={markManySeen}
+            />
+          }
         />
         <Route
           path="/read-later"

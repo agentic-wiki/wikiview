@@ -11,7 +11,7 @@ export function EntryView({
   version,
   refresh,
   changedAt,
-  destination,
+  destination = (bundlePath) => "/wiki" + bundlePath,
   queued,
   onQueue,
 }: {
@@ -26,8 +26,20 @@ export function EntryView({
    *  for a path the tree does not list, which is a reason to fetch rather than
    *  to trust a copy. */
   changedAt?: number;
-  /** Where links in the body should go. The board overrides it so a link to a
-   *  card stays on the board; the reader leaves it alone. */
+  /**
+   * Where a link to a bundle path should go, for *every* link this view draws:
+   * the body, the frontmatter references, the backlinks.
+   *
+   * A board overrides it, so following something that is already on the board
+   * opens that card instead of throwing away the board you were reading it on.
+   * The reader leaves it alone and stays in the reader — which is why this is the
+   * caller's rule rather than this view's: only the caller knows what is on
+   * screen behind the entry.
+   *
+   * It used to reach the body alone, so one card obeyed the board in its prose
+   * and left for the reader from a `blockers` chip: three link surfaces in one
+   * view, one of which asked.
+   */
   destination?: (bundlePath: string) => string;
 }) {
   // What is on screen, and which path it is. The two travel together because
@@ -131,7 +143,7 @@ export function EntryView({
           first place — see below. */}
       <Print />
       <QueueButton queued={queued} onQueue={onQueue} />
-      <Frontmatter entry={entry} />
+      <Frontmatter entry={entry} destination={destination} />
       {/* Below the frontmatter strip, where the body's own opening heading would
           sit — so an entry that has one and an entry that borrows one look the
           same, and the strip stays metadata above the content rather than
@@ -144,7 +156,7 @@ export function EntryView({
         <h1 className="text-fg mb-4 text-2xl font-semibold tracking-tight">{entry.title}</h1>
       )}
       <Markdown entry={entry} onToggleCheckbox={toggle} destination={destination} />
-      <Backlinks entry={entry} />
+      <Backlinks entry={entry} destination={destination} />
     </article>
   );
 }
@@ -180,7 +192,13 @@ function alreadyNamed(entry: Entry): boolean {
  * Frontmatter as a compact strip rather than a raw YAML block. It is metadata,
  * and the raw form is only interesting when editing — which this is not, yet.
  */
-function Frontmatter({ entry }: { entry: Entry }) {
+function Frontmatter({
+  entry,
+  destination,
+}: {
+  entry: Entry;
+  destination: (bundlePath: string) => string;
+}) {
   // title is already the heading; okf_version is the format's bookkeeping and
   // says nothing about the entry.
   const fields = Object.entries(entry.frontmatter).filter(
@@ -209,27 +227,38 @@ function Frontmatter({ entry }: { entry: Entry }) {
         // words it was only asked to display.
         <div
           key={key}
-          className="border-border/70 bg-surface/60 flex items-baseline gap-1.5 rounded-md border px-2 py-0.5"
+          // `min-w-0` so the chip can shrink, and a ceiling so a long value does
+          // not render at full width: an unbreakable value with no ceiling
+          // overflowed its flex line and slid under the print and read-later
+          // buttons floated in the corner. Capped, each value truncates instead,
+          // the line steps aside from the float the way a flex container should,
+          // and the buttons stay reachable.
+          className="border-border/70 bg-surface/60 flex min-w-0 max-w-full items-baseline gap-1.5 rounded-md border px-2 py-0.5"
         >
           {/* The key is muted rather than accented. Accent now means "this is
               interactive" — a resolving value is a link — and one colour cannot
               also mean "this is a key" without the two becoming unreadable
               together. Hierarchy comes from tone, interactivity from hue. */}
-          <dt className="text-muted font-medium">{key}</dt>
-          <dd className="text-fg flex items-baseline gap-1.5">
+          <dt className="text-muted shrink-0 font-medium">{key}</dt>
+          <dd className="text-fg flex min-w-0 items-baseline gap-1.5">
             {values(value).map((v, i) => {
               const ref = refs.get(key + "\u0000" + v);
               return ref ? (
+                // Truncated with the whole value on hover, so nothing is lost,
+                // only shortened. A ceiling as well, so one long value does not
+                // eat the line and push its siblings off it.
                 <Link
                   key={i}
-                  to={"/wiki" + ref.to}
-                  className="text-accent underline decoration-1 underline-offset-2"
+                  to={destination(ref.to)}
+                  className="min-w-0 max-w-[20rem] truncate text-accent underline decoration-1 underline-offset-2"
                   title={ref.value}
                 >
                   {ref.label}
                 </Link>
               ) : (
-                <span key={i}>{v}</span>
+                <span key={i} className="min-w-0 max-w-[20rem] truncate" title={v}>
+                  {v}
+                </span>
               );
             })}
           </dd>
@@ -250,7 +279,13 @@ function values(value: unknown): string[] {
 /** Named for what the engine calls it. `wiki backlinks` is the command, so the UI
  *  using a different word for the same thing would be one more translation to
  *  hold in your head. */
-function Backlinks({ entry }: { entry: Entry }) {
+function Backlinks({
+  entry,
+  destination,
+}: {
+  entry: Entry;
+  destination: (bundlePath: string) => string;
+}) {
   if (entry.backlinks.length === 0) return null;
   return (
     <section className="border-border mt-12 border-t pt-6">
@@ -261,7 +296,7 @@ function Backlinks({ entry }: { entry: Entry }) {
         {entry.backlinks.map((b, i) => (
           <li key={`${b.from}:${b.line}:${i}`}>
             <Link
-              to={"/wiki" + b.from}
+              to={destination(b.from)}
               className="hover:bg-fg/[0.04] flex items-baseline gap-3 rounded-md px-2 py-1.5 text-sm"
             >
               <span className="text-fg truncate">{b.title || b.from}</span>

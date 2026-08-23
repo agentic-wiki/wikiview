@@ -1,13 +1,15 @@
 import { useCallback, useMemo } from "react";
 import { useBundleState } from "@/state";
 
-/** The entries you meant to come back to, and the one thing you can do to them. */
+/** The entries you meant to come back to, and what you can do to them. */
 export interface Queue {
-  /** In the order they were added, oldest first: a queue is worked from the front. */
+  /** The order to read them in: what you added first, until you say otherwise. */
   paths: string[];
   /** The same list, for asking about one path while rendering a tree of them. */
   queued: Set<string>;
   toggle: (path: string) => void;
+  /** Set the whole order at once, which is what a reorder produces. */
+  reorder: (paths: string[]) => void;
 }
 
 /**
@@ -33,14 +35,28 @@ export function useQueue(bundleId: string): Queue {
   const [paths, setPaths] = useBundleState<string[]>(bundleId, "queue", []);
   const queued = useMemo(() => new Set(paths), [paths]);
 
-  // Appended, never sorted: the order you added things in is the only order this
-  // list knows, and any other would need a second decision from whoever added
-  // them.
+  // New things land at the end: added-order is the default until you drag it
+  // into another. That order is now yours to change, which is why this appends
+  // rather than sorting — a sort would be the thing undoing every drag.
   const toggle = useCallback(
     (path: string) =>
       setPaths((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path])),
     [setPaths],
   );
 
-  return { paths, queued, toggle };
+  // Kept honest against what is actually stored: a reorder can only permute the
+  // list it was handed, so anything not already queued is dropped and anything
+  // queued but missing is kept. Otherwise a stale caller could add or lose paths
+  // through the back door of "just set the order".
+  const reorder = useCallback(
+    (next: string[]) =>
+      setPaths((prev) => {
+        const set = new Set(prev);
+        const kept = next.filter((p) => set.has(p));
+        return kept.length === prev.length ? kept : prev;
+      }),
+    [setPaths],
+  );
+
+  return { paths, queued, toggle, reorder };
 }

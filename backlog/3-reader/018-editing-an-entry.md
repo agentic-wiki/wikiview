@@ -4,7 +4,7 @@ title: "editing an entry: a lock, a window, and a write"
 status: todo
 priority: high
 tags: [feature, reader, write]
-blockers: []
+blockers: [/2-server/004-write-lock.md]
 ---
 
 The tool's stated goal is to "never become a markdown editor", and this task is the first deliberate step past that line: a way to edit an entry from the UI. Not a full editor — an affordance. An edit icon that takes a lock on the file, gives a bounded window to work in, and writes the result back to the server when the user stops. The shape below is the user's, and it is good, because every part of it exists to make the edit safe rather than to make it comfortable.

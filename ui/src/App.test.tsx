@@ -62,7 +62,10 @@ const entry: Entry = {
   frontmatter: { title: "A Note", status: "todo", blockers: ["/notes/b.md"] },
   body:
     "# A Note\n\nThe body of the entry. See [b](./b.md) and [readme](../README.md).\n" +
-    "The [contract](./contract.sol) and ![a diagram](./diagram.png).\nAnd [gone](./gone.md).\n",
+    "The [contract](./contract.sol) and ![a diagram](./diagram.png).\nAnd [gone](./gone.md).\n" +
+    // Inside the bundle and outside /notes, which is the only combination that
+    // tells "leaves for the reader" from "opens as a card" on a board over /notes.
+    "Back to the [front door](../index.md).\n",
   links: [
     { raw: "./b.md", to: "/notes/b.md", anchor: "", text: "b", line: 3, exists: true, outside: false },
     { raw: "../README.md", to: "", anchor: "", text: "readme", line: 4, exists: false, outside: true },
@@ -89,9 +92,23 @@ const entry: Entry = {
     },
     // A `.md` nobody has written: not a file to fetch.
     { raw: "./gone.md", to: "/notes/gone.md", anchor: "", text: "gone", line: 7, exists: false, outside: false },
+    {
+      raw: "../index.md",
+      to: "/index.md",
+      anchor: "",
+      text: "front door",
+      line: 8,
+      exists: true,
+      outside: false,
+    },
   ],
   frontmatterRefs: [{ key: "blockers", value: "/notes/b.md", to: "/notes/b.md", label: "B" }],
-  backlinks: [{ from: "/index.md", title: "The Front Door", text: "a note", line: 3 }],
+  backlinks: [
+    { from: "/index.md", title: "The Front Door", text: "a note", line: 3 },
+    // A folder's own index linking to a task in it: the shape that showed the
+    // board rule was testing the wrong thing, since an index is never a card.
+    { from: "/notes/index.md", title: "Notes", text: "the note", line: 2 },
+  ],
   headings: [{ level: 1, text: "A Note", id: "a-note", line: 5, bodyLine: 1 }],
   checkboxes: [],
 };
@@ -945,9 +962,55 @@ test("a card opens over the board, and the board stays", async () => {
   restore();
 });
 
-// The rule that makes an off-board link ordinary rather than something needing
-// special treatment: on this board it opens a card, otherwise it leaves.
-test("a link inside a card stays on the board only when its target is on it", async () => {
+// A card obeyed the board in its prose and left for the reader from a `blockers`
+// chip: one view with three link surfaces, one of which asked. The rule belongs to
+// the view, not to the markdown renderer.
+test("every link in a card obeys the board, not just the ones in the body", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = stubBoard();
+  await act(async () => navigateTo("/kanban/notes/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const sheet = () => document.querySelector("[role='dialog']")!;
+
+  // `blockers: /notes/b.md` names a card on this board, so it opens that card.
+  const chip = [...sheet().querySelectorAll("dl a")].find((a) => a.textContent === "B");
+  expect(chip?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
+
+  // A backlink from the folder's own index.md, which is never a card because it
+  // is not a task. It is still this board's folder, so it opens over the board.
+  const inFolder = [...sheet().querySelectorAll("section a")].find((a) =>
+    (a.textContent ?? "").includes("Notes"),
+  );
+  expect(inFolder?.getAttribute("href")).toBe("/kanban/notes/notes/index.md");
+
+  // And one from /index.md, outside the folder, so it leaves — the same rule
+  // reaching the opposite answer.
+  const elsewhere = [...sheet().querySelectorAll("section a")].find((a) =>
+    (a.textContent ?? "").includes("The Front Door"),
+  );
+  expect(elsewhere?.getAttribute("href")).toBe("/wiki/index.md");
+
+  restore();
+});
+
+// Staying on the board is the board's rule. The reader has no board to stay on,
+// so every link there goes to the reader, including the two that now ask.
+test("in the reader, blockers and backlinks stay in the reader", async () => {
+  await mountAt("/wiki/notes/a.md");
+
+  const chip = [...document.querySelectorAll("article dl a")].find((a) => a.textContent === "B");
+  expect(chip?.getAttribute("href")).toBe("/wiki/notes/b.md");
+
+  const backlink = [...document.querySelectorAll("article section a")].find((a) =>
+    (a.textContent ?? "").includes("The Front Door"),
+  );
+  expect(backlink?.getAttribute("href")).toBe("/wiki/index.md");
+});
+
+// The rule that makes a link off the board ordinary rather than something needing
+// special treatment: inside the folder this board covers it opens a card,
+// otherwise it leaves.
+test("a link inside a card stays on the board when its target is in the board's folder", async () => {
   await mountAt("/wiki/index.md");
   const restore = stubBoard();
   await act(async () => navigateTo("/kanban/notes/notes/a.md"));
@@ -955,12 +1018,18 @@ test("a link inside a card stays on the board only when its target is on it", as
 
   const links = [...document.querySelectorAll("[role=\"dialog\"] .markdown a")];
   // /notes/b.md is a card on this board, so following it swaps the sheet.
-  const onBoard = links.find((a) => a.textContent === "b");
-  expect(onBoard?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
+  const card = links.find((a) => a.textContent === "b");
+  expect(card?.getAttribute("href")).toBe("/kanban/notes/notes/b.md");
 
-  // /notes/gone.md is not, so it leaves for the reader.
-  const offBoard = links.find((a) => a.textContent === "gone");
-  expect(offBoard?.getAttribute("href")).toBe("/wiki/notes/gone.md");
+  // /notes/gone.md is in the folder and is not a card — it is not even written
+  // yet. Still the board's business, so it opens over the board and says there is
+  // no entry there, rather than throwing the board away to say it.
+  const unwritten = links.find((a) => a.textContent === "gone");
+  expect(unwritten?.getAttribute("href")).toBe("/kanban/notes/notes/gone.md");
+
+  // /index.md is outside the folder, so it leaves for the reader.
+  const elsewhere = links.find((a) => a.textContent === "front door");
+  expect(elsewhere?.getAttribute("href")).toBe("/wiki/index.md");
 
   restore();
 });
@@ -1355,6 +1424,78 @@ test("reading an entry takes it off the changed page, which then says so", async
   restore();
 });
 
+// Not everything that changed is worth opening: a title tweak you can judge from
+// the row clears with an X, which is the same mark opening would set, so the tree
+// agrees and read-later is untouched.
+test("a changed entry can be dismissed from the list without opening it", async () => {
+  // Save /notes/b.md, so we can prove dismissing it from *changed* leaves it in
+  // read-later: two lists, two questions.
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/b.md"]));
+  await mountAt("/wiki/index.md");
+  const restore = await reportTree(
+    withChangedAt(withChange("/notes/b.md", 2), "/notes/checks.md", 2),
+    2,
+  );
+
+  await act(async () => navigateTo("/changed"));
+  expect(pageRows().length).toBe(2);
+
+  // Dismiss b.md where it stands.
+  const x = [...document.querySelectorAll("main li")]
+    .find((li) => (li.textContent ?? "").includes("B"))!
+    .querySelector<HTMLElement>("[aria-label^='Mark']")!;
+  await act(async () => x.click());
+
+  const rows = pageRows();
+  expect(rows.length).toBe(1);
+  expect(rows.join()).not.toContain("B");
+  // Still saved: the X touched seen, not the queue.
+  await act(async () => navigateTo("/read-later"));
+  expect(pageRows().join()).toContain("B");
+
+  restore();
+});
+
+test("mark-all clears the whole changed list at once", async () => {
+  await mountAt("/wiki/index.md");
+  const restore = await reportTree(
+    withChangedAt(withChange("/notes/b.md", 2), "/notes/checks.md", 2),
+    2,
+  );
+
+  await act(async () => navigateTo("/changed"));
+  expect(pageRows().length).toBe(2);
+
+  const all = [...document.querySelectorAll("main button")].find((b) =>
+    (b.textContent ?? "").startsWith("Mark all"),
+  )!;
+  expect(all.textContent).toContain("2"); // the count is the warning
+  await act(async () => (all as HTMLElement).click());
+  expect(pageRows()).toEqual([]);
+
+  restore();
+});
+
+// A long frontmatter value used to overflow its chip and slide under the print
+// and read-later buttons, covering them. No layout engine here to measure the
+// overlap, so this pins the structural fix: the value can shrink and truncate,
+// and the buttons are still in the document.
+test("a long frontmatter value is capped so it cannot cover the buttons", async () => {
+  await mountAt("/wiki/notes/a.md");
+
+  // `status: todo` is a plain value; find its chip's value span.
+  const value = [...document.querySelectorAll("article dl dd span")].find(
+    (s) => s.textContent === "todo",
+  )!;
+  expect(value.className).toContain("truncate");
+  expect(value.className).toContain("max-w-");
+  expect(value.getAttribute("title")).toBe("todo"); // full text on hover
+
+  // The floats it used to sit under are present and marked as controls.
+  expect(Boolean(document.querySelector("article [aria-label='Print this entry']"))).toBe(true);
+  expect(Boolean(document.querySelector("article [aria-label='Save to read later']"))).toBe(true);
+});
+
 // "Index" names every folder's front door and so names none of them. In the tree
 // the folder it sits in is right there on screen; in a list of rows it is not, so
 // the folder is the name — the rule the server already applies to a backlink.
@@ -1493,7 +1634,9 @@ test("a saved entry that no longer exists is said, not dropped", async () => {
 
   const page = document.querySelector("main")!;
   expect(pageRows()[0]).toContain("vanished.md");
-  expect(page.textContent).toContain("missing");
+  // Said on a second line, not with a bare tag, and not with a folder it no
+  // longer lives in.
+  expect(page.textContent).toContain("Entry not found in this bundle");
   expect(Boolean(page.querySelector("[aria-label^='Remove']"))).toBe(true);
 });
 
@@ -1521,7 +1664,74 @@ test("a saved entry and a changed one are told apart on the same tree row", asyn
   expect(Boolean(saved.querySelector("svg"))).toBe(true);
   expect(changed.querySelector("svg")).toBeNull();
 
+  // Both marks live in fixed-width slots, in a stable order, so a row with one
+  // mark lands it in the same column as a row with both. The group holds two
+  // slot cells whatever a row carries.
+  const group = saved.closest("span.flex")!;
+  const slots = [...group.children];
+  expect(slots.length).toBe(2);
+  expect(slots[0]!.contains(saved)).toBe(true); // bookmark first
+  expect(slots[1]!.contains(changed)).toBe(true); // dot outermost
+
   restore();
+});
+
+// The order is the reader's, and the arrows on the handle are the keyboard half
+// of the drag: a reorder that only a mouse can do is one some people cannot.
+test("read-later can be reordered from the keyboard, and it persists", async () => {
+  localStorage.setItem(
+    `wiki:${bundle.id}:queue`,
+    JSON.stringify(["/notes/a.md", "/notes/b.md", "/notes/checks.md"]),
+  );
+  await mountAt("/read-later");
+  expect(pageRows().map((r) => r.replace(/\s+/g, " ").trim())[0]).toContain("A Note");
+
+  // Move the first row down one with the arrow key on its handle.
+  const handle = document.querySelector<HTMLElement>("main li [aria-label^='Reorder']")!;
+  await act(async () => {
+    handle.focus();
+    handle.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+  });
+
+  // A Note is now second; B first.
+  expect(pageRows()[0]).toContain("B");
+  expect(pageRows()[1]).toContain("A Note");
+
+  // And it survives a reload, because the order is what is stored.
+  await mountAt("/read-later");
+  expect(pageRows()[0]).toContain("B");
+  expect(pageRows()[1]).toContain("A Note");
+});
+
+// Reorder may only permute what is stored: a stale order cannot add a path the
+// queue does not have or drop one it does, or "set the order" becomes a way to
+// edit the list behind its own back.
+test("reordering cannot add or lose entries", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/a.md", "/notes/b.md"]));
+  await mountAt("/read-later");
+
+  // The last row cannot move further down: the nudge clamps rather than growing
+  // the list or wrapping.
+  const handles = [...document.querySelectorAll<HTMLElement>("main li [aria-label^='Reorder']")];
+  await act(async () => {
+    handles[1]!.focus();
+    handles[1]!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+  });
+  expect(pageRows().length).toBe(2);
+  expect(pageRows()[1]).toContain("B");
+});
+
+// One entry has nothing to reorder, so its handle would be an affordance that
+// does nothing. The remove control stays.
+test("a single saved entry offers no reorder handle", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/a.md"]));
+  await mountAt("/read-later");
+  expect(Boolean(document.querySelector("main li [aria-label^='Reorder']"))).toBe(false);
+  expect(Boolean(document.querySelector("main li [aria-label^='Remove']"))).toBe(true);
 });
 
 // A board you cannot queue anything from would be a hole in the feature rather

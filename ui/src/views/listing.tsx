@@ -19,6 +19,8 @@ export function Row({
   subtitle,
   meta,
   action,
+  lead,
+  dropId,
 }: {
   to: string;
   icon: React.ReactNode;
@@ -28,9 +30,15 @@ export function Row({
   /** A control belonging to this row, beside the link rather than inside it: a
    *  button within an anchor is neither valid nor clickable as itself. */
   action?: React.ReactNode;
+  /** A control before the link, for the same reason: a drag handle. */
+  lead?: React.ReactNode;
+  /** Marks the row a drop target under this id, for reordering. Absent on lists
+   *  that do not reorder, so nothing registers a target it will not use. */
+  dropId?: string;
 }) {
   return (
-    <li className="flex items-center gap-1">
+    <li className="flex items-center gap-1" data-drop={dropId}>
+      {lead}
       <Link
         to={to}
         className="hover:bg-fg/[0.04] active:bg-fg/[0.08] group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
