@@ -15,9 +15,11 @@ That is the worst of both: a control that looks like every other control, sits i
 
 **Not the omnibar.** The omnibar already finds an entry by its name and takes you to it, and a second thing that does the same in a wider box is one problem with two solutions. Search is the other question: which entries *say* this, and where in them.
 
-So: full text over entry bodies, results as a list beside your work rather than a jump target. A result is a path and the line the match is on, and clicking one opens the entry at it. The panel is where results live because they are something to work through, and a palette that closes when you pick from it cannot be worked through.
+So: full text over entry bodies, filename, title, and frontmatter fields. Results as a list beside your work rather than a jump target. A result is a path and the line the match is on, and clicking one opens the entry at it. The panel is where results live because they are something to work through, and a palette that closes when you pick from it cannot be worked through.
 
-Frontmatter is searched with the body, since `blockers: /3-reader/004-ui-shell.md` is exactly the kind of thing worth finding by typing part of it.
+The search surface should behave like `wiki search` and `wiki list --where`: it searches across the same dimensions the CLI does. The query is not just body text — it is filename, `title` from frontmatter, first heading, and every frontmatter field and value. If someone types "blocking" they find entries whose body says it, whose title says it, whose `tags` contain it, and whose filename contains it. One query, all surfaces.
+
+**Filter combinations are the roadmap.** After the basic search works, the panel supports the same filter syntax as `--where`: `status=todo`, `tags=feature`, `priority=high`. These combine with the text query — "review" AND `status=in-progress` — and the result set narrows accordingly. The filter bar is a second row below the search input, using the same parsing as `index.ParseFilter` so there is one filter language everywhere.
 
 ## What to decide before writing any of it
 
@@ -37,4 +39,4 @@ The icon and the empty section go now, ahead of any decision about the feature. 
 
 When it returns it returns to the panel, not to a page: results survive being clicked, and by the rule 017 sets down, a list whose rows survive a click belongs beside your work rather than in the view area. So this task's own reasoning about the panel is unchanged — only the promise in the chrome is being withdrawn until it can be kept.
 
-**Acceptance:** a query returns entries matching their body text with the matching line shown, opening one lands on that line, and the results survive the bundle changing underneath them. (The other half of the old acceptance — the dead icon and section gone from the chrome — is settled in 017 and no longer an alternative to building this.)
+**Acceptance:** a query returns entries matching their body text, filename, title, and frontmatter fields with the matching line shown, opening one lands on that line, and the results survive the bundle changing underneath them. Filter expressions (`--where` syntax) combine with text queries to narrow results. (The other half of the old acceptance — the dead icon and section gone from the chrome — is settled in 017 and no longer an alternative to building this.)
