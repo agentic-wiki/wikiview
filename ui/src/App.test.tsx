@@ -179,6 +179,26 @@ const headingDiffers: Entry = {
   checkboxes: [],
 };
 
+/** An entry with a seven-column table: the shape the scroller wrapper is for. */
+const tableEntry: Entry = {
+  path: "/notes/wide.md",
+  title: "Counts",
+  type: "dataset",
+  frontmatter: { status: "todo" },
+  body:
+    "# Counts\n\n" +
+    "What shipped, counted by quarter.\n\n" +
+    "| Area | Q1 | Q2 | Q3 | Q4 | Owner | Notes |\n" +
+    "| --- | --- | --- | --- | --- | --- | --- |\n" +
+    "| Reader | 12 | 18 | 21 | 30 | ada | up and to the right |\n" +
+    "| Boards | 4 | 6 | 9 | 11 | grace | slower than the reader |\n",
+  links: [],
+  frontmatterRefs: [],
+  backlinks: [],
+  headings: [{ level: 1, text: "Counts", id: "counts", line: 4, bodyLine: 1 }],
+  checkboxes: [],
+};
+
 let listeners: Record<string, (e: MessageEvent) => void> = {};
 
 /** Delivers a version on the stream the app is subscribed to. */
@@ -206,6 +226,7 @@ function stubFetch() {
     if (url.includes("/api/entry/notes/checks.md")) return body(checksEntry);
     if (url.includes("/api/entry/notes/named.md")) return body(namedInProse);
     if (url.includes("/api/entry/notes/differs.md")) return body(headingDiffers);
+    if (url.includes("/api/entry/notes/wide.md")) return body(tableEntry);
     // Only the entries the fixture actually declares. A catch-all here would
     // mean a "missing" entry still returned content, and the not-found path
     // would never be exercised.
@@ -3033,4 +3054,47 @@ test("work outside the bundle is only mentioned when a commit is happening", asy
   await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
   const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
   expect(text).not.toContain("elsewhere in this repository");
+});
+
+// Seven columns at 48rem is seven strips of wrapping text. The wrapper takes
+// the scrollbar so the table stays a table (see `.markdown-table` in index.css).
+test("a wide table sits in a scrolling wrapper and the table stays a table", async () => {
+  await mountAt("/wiki/notes/wide.md");
+
+  const scroller = document.querySelector<HTMLElement>(".markdown-table");
+  const table = scroller?.querySelector("table");
+  expect(table?.parentElement).toBe(scroller);
+  expect(table?.querySelectorAll("thead th").length).toBe(7);
+  expect(table?.querySelectorAll("tbody tr").length).toBe(2);
+  // Prose around the table is undisturbed.
+  expect(document.querySelector(".markdown p")?.textContent).toContain("counted by quarter");
+});
+
+// The reading column is a class rather than a literal width in the markup, so
+// the width becomes a preference in one place instead of four.
+test("reading pages sit in the .reading-column class", async () => {
+  await mountAt("/wiki/notes/wide.md");
+  expect(document.querySelector("article")?.className).toContain("reading-column");
+});
+
+test("wide is one click, applies to the page, and is remembered", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const toggle = () => document.querySelector<HTMLElement>("[aria-label^='Page width']")!;
+
+  expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  expect(document.documentElement.hasAttribute("data-width")).toBe(false);
+
+  await act(async () => toggle().click());
+  expect(document.documentElement.getAttribute("data-width")).toBe("wide");
+  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+  // Same key `index.html` reads before the first paint, so a reload opens wide.
+  expect(localStorage.getItem("wiki:width")).toBe("wide");
+
+  await mountAt("/wiki/notes/a.md");
+  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+
+  // Reading width is the absence of a stamp, not a value of its own.
+  await act(async () => toggle().click());
+  expect(document.documentElement.hasAttribute("data-width")).toBe(false);
+  expect(localStorage.getItem("wiki:width")).toBeNull();
 });

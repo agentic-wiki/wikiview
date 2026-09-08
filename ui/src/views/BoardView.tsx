@@ -646,6 +646,7 @@ function CardSheet({
             destination={(to) => (within(folder, to) ? cardHref(board, to) : "/wiki" + to)}
             queued={queue.queued.has(path)}
             onQueue={() => queue.toggle(path)}
+            inCard
           />
         </div>
       </div>
