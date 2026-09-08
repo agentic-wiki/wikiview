@@ -160,6 +160,18 @@ export function Markdown({
       );
     },
 
+    // The scroller lives on a wrapper, not on the <table> — see `.markdown-table`
+    // in `index.css` for what `display: block` on a table costs.
+    table({ node: _node, className, children, ...rest }) {
+      return (
+        <div className="markdown-table">
+          <table className={className} {...rest}>
+            {children}
+          </table>
+        </div>
+      );
+    },
+
     // The checkbox is matched through its list item, because remark-gfm gives
     // the <input> no position of its own.
     li({ children, ...props }) {

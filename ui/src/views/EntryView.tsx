@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { api, type Entry } from "@/api";
 import { isCurrent, recall, remember } from "@/cache";
 import { Markdown } from "@/markdown/Markdown";
+import { WidthToggle } from "@/shell/Width";
 import { NotFound } from "@/views/NotFound";
 import { Loading } from "@/views/Loading";
 
@@ -14,6 +15,7 @@ export function EntryView({
   destination = (bundlePath) => "/wiki" + bundlePath,
   queued,
   onQueue,
+  inCard = false,
 }: {
   path: string;
   version: number;
@@ -26,6 +28,9 @@ export function EntryView({
    *  for a path the tree does not list, which is a reason to fetch rather than
    *  to trust a copy. */
   changedAt?: number;
+  /** True when rendered inside a card sheet. The sheet has a fixed width so the
+   *  page-width toggle would be a no-op there, and it is hidden accordingly. */
+  inCard?: boolean;
   /**
    * Where a link to a bundle path should go, for *every* link this view draws:
    * the body, the frontmatter references, the backlinks.
@@ -136,13 +141,15 @@ export function EntryView({
   if (!entry) return <Loading />;
 
   return (
-    <article className="mx-auto max-w-3xl px-6 py-8">
-      {/* Both floats, in source order right to left: printing is the older
-          affordance and keeps the corner. Each floats on its own rather than
-          sharing a wrapper, for the reason the print button was floated in the
-          first place — see below. */}
+    <article className="reading-column px-6 py-8">
+      {/* Floats, in source order right to left. Each floats on its own rather
+          than sharing a wrapper, for the reason the print button was floated in
+          the first place — see below. The width toggle is only in the page
+          reader: inside a card the sheet caps everything below it, so wide
+          would be a no-op there. */}
       <Print />
       <QueueButton queued={queued} onQueue={onQueue} />
+      {!inCard && <WidthToggle />}
       <Frontmatter entry={entry} destination={destination} />
       {/* Below the frontmatter strip, where the body's own opening heading would
           sit — so an entry that has one and an entry that borrows one look the

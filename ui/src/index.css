@@ -184,12 +184,40 @@ body { background: var(--color-bg); color: var(--color-fg); }
 }
 .markdown pre code { background: none; padding: 0; font-size: inherit; }
 
-.markdown table { width: 100%; border-collapse: collapse; font-size: 0.875rem; display: block; overflow-x: auto; }
+/* The scroller lives on a wrapping <div>, not on the table itself. `display:
+   block` on a <table> gives the same scrollbar but loses `width: 100%` and the
+   a11y tree — a screen reader hears prose with no rows and no cells in it. */
+.markdown-table { overflow-x: auto; }
+.markdown table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 .markdown th, .markdown td { border: 1px solid var(--color-border); padding: 0.5rem 0.75rem; text-align: left; }
 .markdown th { background: var(--color-surface); font-weight: 600; }
 
 .markdown hr { border: 0; border-top: 1px solid var(--color-border); margin: 2rem 0; }
 .markdown img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+
+/* Width, a preference.
+ *
+ * Wide releases the column but not the line: paragraphs hold at `--measure`
+ * (48rem less the page's 1.5rem padding each side) so turning wide moves the
+ * tables, code and images — not the text you were already reading. Stamped on
+ * the root by `shell/Width.tsx`; restored before the first paint by the inline
+ * script in `index.html`. */
+:root {
+  --column-width: 48rem;
+  --measure: 45rem;
+}
+:root[data-width="wide"] { --column-width: none; }
+
+/* The entry's article. Only the reader participates in the width toggle —
+   folder listings, changed and read-later hold their own reading width. */
+.reading-column {
+  margin-inline: auto;
+  max-width: var(--column-width);
+}
+
+:root[data-width="wide"] .markdown > :is(p, blockquote, ul, ol, h1, h2, h3, h4, h5, h6) {
+  max-width: var(--measure);
+}
 
 /* Syntax highlighting, driven by the theme tokens rather than a shipped theme,
    so code follows light and dark with everything else. One lightness for paper
@@ -245,8 +273,15 @@ body { background: var(--color-bg); color: var(--color-fg); }
 
   html, body, #root { height: auto; overflow: visible; }
   /* Every scroll container in the shell, released. A box that scrolls on screen
-     prints only what is inside it. */
-  main, aside, section, [data-scroller] { overflow: visible !important; height: auto !important; }
+     prints only what is inside it — which is why a table's scroller is in this
+     list too: a wide table prints across as many pages as it needs. */
+  main, aside, section, [data-scroller], .markdown-table {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* The reading column is a screen idea. Paper is whatever width the paper is. */
+  :root, :root[data-width="wide"] { --column-width: none; }
 
   /* Controls. They exist to reach somewhere else, and paper goes nowhere. */
   [data-print="hide"] { display: none !important; }
