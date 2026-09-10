@@ -43,6 +43,9 @@
   --color-accent-fg: light-dark(oklch(100% 0 0), oklch(18% 0.04 285));
   --color-warn: light-dark(oklch(56% 0.14 70), oklch(80% 0.13 78));
   --color-danger: light-dark(oklch(54% 0.2 25), oklch(70% 0.17 25));
+  /* The third state colour, for a callout that reports something went right.
+     Same hues as a string in a code block, so the page holds one green. */
+  --color-ok: light-dark(oklch(48% 0.13 150), oklch(74% 0.13 155));
 
   /* The ink a shadow is drawn in, which is the only part of one that changes
      with the theme. A shadow is light that did not arrive, and on a near-black
@@ -166,6 +169,52 @@ body { background: var(--color-bg); color: var(--color-fg); }
   padding-left: 1rem;
   color: var(--color-muted);
 }
+/* `.markdown > * + *` is direct-child only, so blocks nested in a quote had no
+   separation at all: a two-paragraph quote read as a wall. */
+.markdown blockquote > * + * { margin-top: 0.75rem; }
+
+/* Callouts — `> [!warning]`, `> [!success] Shipped`. A blockquote the author
+   labelled, so it stays a blockquote and gains a colour and a heading.
+ *
+ * The type words are not enumerated. `remarkCallout` accepts any of them and
+ * the ones below claim a colour; everything else reads in the accent under its
+ * own word, which is what an unknown marker means anyway. A list here would put
+ * `> [!tldr]` on a waiting list for an edit to this file.
+ *
+ * Only the families are listed, not every synonym in the two dialects, because
+ * a synonym with no rule still renders correctly — it just does not get the
+ * colour. That is a much cheaper miss than the reverse. */
+.markdown [data-callout] {
+  --callout: var(--color-accent);
+  border-left-color: var(--callout);
+  background: color-mix(in oklch, var(--callout) 7%, transparent);
+  border-radius: 0 0.375rem 0.375rem 0;
+  padding: 0.75rem 1rem;
+  /* Not the muted grey of a plain quote: a callout is the passage being pointed
+     at, and pointing at it in a fainter ink says the opposite. */
+  color: inherit;
+}
+.markdown [data-callout="success"],
+.markdown [data-callout="check"],
+.markdown [data-callout="done"] { --callout: var(--color-ok); }
+.markdown [data-callout="warning"],
+.markdown [data-callout="caution"],
+.markdown [data-callout="attention"] { --callout: var(--color-warn); }
+.markdown [data-callout="danger"],
+.markdown [data-callout="error"],
+.markdown [data-callout="failure"],
+.markdown [data-callout="bug"] { --callout: var(--color-danger); }
+.markdown [data-callout="quote"],
+.markdown [data-callout="cite"],
+.markdown [data-callout="example"],
+.markdown [data-callout="note"] { --callout: var(--color-muted); }
+
+.markdown .callout-label {
+  color: var(--callout);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
 
 .markdown code {
   font-size: 0.875em;
@@ -265,8 +314,13 @@ body { background: var(--color-bg); color: var(--color-fg); }
     --color-accent-fg: #fff;
     --color-warn: #000;
     --color-danger: #000;
+    --color-ok: #000;
     color-scheme: light;
   }
+  /* A callout's tint is a screen idea twice over: printed with background
+     graphics on it is a grey slab, and printed with them off it is nothing. The
+     rule down its left side and its label carry it on paper. */
+  .markdown [data-callout] { background: none; }
   /* Elevation is a screen idea. On paper a shadow is a grey smudge under a box
      that is already delimited by its border. */
   .elev-1, .elev-2, .elev-3 { box-shadow: none !important; }

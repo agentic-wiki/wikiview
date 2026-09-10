@@ -3,6 +3,7 @@ import { Link as RouterLink } from "react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { remarkCallout } from "./callout";
 import type { Entry } from "@/api";
 
 /** The source position react-markdown attaches to every node it renders. */
@@ -172,6 +173,21 @@ export function Markdown({
       );
     },
 
+    // A callout is a blockquote the author labelled; `remarkCallout` has already
+    // stripped the marker and left the type and label behind. The label is a
+    // real element rather than a `::before`, because "Warning" that a screen
+    // reader never hears is the half of a callout that carries the meaning.
+    blockquote({ node: _node, children, ...props }) {
+      const callout = calloutOf(props);
+      if (!callout) return <blockquote {...props}>{children}</blockquote>;
+      return (
+        <blockquote {...callout.rest}>
+          <p className="callout-label">{callout.label}</p>
+          {children}
+        </blockquote>
+      );
+    },
+
     // The checkbox is matched through its list item, because remark-gfm gives
     // the <input> no position of its own.
     li({ children, ...props }) {
@@ -205,7 +221,7 @@ export function Markdown({
   return (
     <div className="markdown">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkCallout]}
         // lowlight ships 37 curated common grammars, which is the subset worth
         // having; passing more only adds to it. Anything unrecognized renders as
         // plain code rather than failing, so an omission costs colour, not a
@@ -222,6 +238,17 @@ export function Markdown({
       </ReactMarkdown>
     </div>
   );
+}
+
+/**
+ * The two data attributes `remarkCallout` leaves on a blockquote, which arrive
+ * as props react-markdown has no type for. `data-callout` stays on the element,
+ * since that is what `index.css` colours by; the label is rendered instead, so
+ * it is taken back off.
+ */
+function calloutOf(props: object): { label: string; rest: object } | undefined {
+  const { "data-callout-label": label, ...rest } = props as { "data-callout-label"?: string };
+  return "data-callout" in props ? { label: label ?? "", rest } : undefined;
 }
 
 /**
