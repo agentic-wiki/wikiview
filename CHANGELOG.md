@@ -2,6 +2,22 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.8.0 — 2026-09-10
+
+### New
+
+- **Callouts are set apart instead of showing their syntax.** `> [!warning]`, `> [!success] Shipped`, `> [!tldr]`: GitHub's five uppercase words and Obsidian's longer lowercase list both render as a labelled aside with a colour, carrying the title where one is written. No list of types is kept anywhere, so a marker nobody thought of is still a callout under its own word rather than a quote with `[!` leaking out of it, and a new one never waits for a release. The `+`/`-` fold suffix is understood well enough to stay out of the label, but nothing folds: collapsed text is invisible to ⌘F and to a printed page. On paper the tint drops and the rule down the side and the label carry it.
+
+### Fixed
+
+- **Blocks nested in a quote are separated.** A blockquote holding two paragraphs, or a list under a line of prose, ran together as a single wall of text: the rule that separates one block from the next only ever applied to the top level of an entry. Ordinary quotes and callouts both.
+
+## v0.7.0 — 2026-09-08
+
+### New
+
+- **A reading width you choose.** An entry opens in a column sized for reading, and the toggle in its top corner releases it to the width of the window. Wide moves the tables, code blocks and images out and holds the prose at its measure, so switching does not restretch the paragraph you were in the middle of. The choice is yours rather than the bundle's — the same as the theme — and it is applied before the first paint, so a wide page arrives wide instead of reflowing once React has mounted.
+
 ## v0.6.0 — 2026-08-14
 
 ### New

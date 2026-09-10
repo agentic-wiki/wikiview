@@ -77,7 +77,7 @@ Images display inline. A link to a contract or a spreadsheet sitting beside the 
 
 Callouts are set apart rather than shown as syntax: `> [!warning]`, `> [!success] Shipped`, and any other marker word, in GitHub's spelling or Obsidian's. A word with no colour of its own is still labelled with itself.
 
-Light, dark and system themes, applied before the first paint.
+Light, dark and system themes, and a reading column you can widen for a big screen. Both are yours rather than the bundle's, and both are applied before the first paint.
 
 Boards are built: columns, lanes, drag by both at once, and a card sheet. Git is there too: refresh, pull and sync, each showing what it will do before it does it, and a failed pull undoing itself and offering your work as a named branch. Dataset tables are not built yet, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
 
