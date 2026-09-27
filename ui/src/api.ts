@@ -15,6 +15,9 @@ export interface BundleInfo {
   /** Boards declared in `[tool.wikiview]`, with their defaults filled in.
    *  Absent when the bundle declares none, which is the common case. */
   boards?: BoardConfig[];
+  /** Graphs declared in `[tool.wikiview]`. There is no built-in one, so absent
+   *  means none. */
+  graphs?: GraphConfig[];
 }
 
 /**
@@ -246,6 +249,51 @@ export interface Board {
   declared: boolean;
 }
 
+/** A graph a bundle declares. Ids are their own namespace, apart from boards'. */
+export interface GraphConfig {
+  path: string;
+  id: string;
+  name: string;
+  where?: string[];
+  neighbours?: boolean;
+}
+
+export interface GraphNode {
+  path: string;
+  label: string;
+  title?: string;
+  type?: string;
+  /** Drawn only because a filtered entry links to it or from it: context, not
+   *  what the graph is about. */
+  neighbour?: boolean;
+}
+
+/**
+ * Every link between two nodes, both directions together. `from` and `to` are
+ * the direction of the links, and say nothing when the pair is `mutual`.
+ */
+export interface GraphEdge {
+  from: string;
+  to: string;
+  mutual?: boolean;
+  /** Where the links were written: "body", or the frontmatter field naming the
+   *  other entry. */
+  via: string[];
+  count: number;
+}
+
+/** A slice of the bundle as nodes and links, assembled by the server where the
+ *  links are already resolved. */
+export interface Graph {
+  path: string;
+  id: string;
+  name: string;
+  where?: string[];
+  neighbours: boolean;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -293,6 +341,8 @@ export const api = {
   bundle: (signal?: AbortSignal) => get<BundleInfo>("/api/bundle", signal),
   tree: (signal?: AbortSignal) => get<TreeNode>("/api/tree", signal),
   board: (path: string, signal?: AbortSignal) => get<Board>("/api/board/" + encode(path), signal),
+  graph: (id: string, signal?: AbortSignal) =>
+    get<Graph>("/api/graph/" + encodeURIComponent(id), signal),
   entry: (path: string, signal?: AbortSignal) =>
     // The path is carried verbatim, `.md` and all, because it *is* the bundle
     // path. Each segment is encoded so a name with a space or a '#' survives.

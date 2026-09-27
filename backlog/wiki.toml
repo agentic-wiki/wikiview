@@ -34,3 +34,12 @@ status = "status"
 lanes = ["high", "medium", "low"]
 blockers = "blockers"
 
+
+# The same tasks as a graph: which ones link or wait on which. `blockers` and
+# body links both draw an edge, so an epic's shape is visible without reading
+# every task. `where` narrows to tasks, since index.md links everything.
+[[tool.wikiview.graph]]
+id    = "tasks"
+path  = "/"
+name  = "Tasks"
+where = ["type=task"]

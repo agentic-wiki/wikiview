@@ -50,6 +50,9 @@ Refresh, pull, sync. The first things that reach outside the machine, so each pr
 **6 — Export**
 A folder and everything under it as one document, in reading order, printed by the browser. Rendering stays in the client so the export cannot disagree with the screen about what an entry looks like.
 
+**7 — Graphs** *(current)*
+A folder's entries as nodes and the links between them as edges, at `/graph/<id>`. Declared like a board and never built in, filtered by `path` and an optional `where`, with body and frontmatter links both counting as edges. The view first, declaring from the UI second.
+
 ## Upstream
 
 Built on [`wiki` v0.9.0+](https://github.com/agentic-wiki/wiki), imported directly. Every rule lives there and none is reimplemented here: frontmatter reads and writes, link resolution both ways, checkbox toggling, `--where` parsing. Config is `[tool.wikiview]` inside the bundle's own `wiki.toml`, read through `bundle.DecodeTool`.

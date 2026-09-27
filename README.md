@@ -79,13 +79,13 @@ Callouts are set apart rather than shown as syntax: `> [!warning]`, `> [!success
 
 Light, dark and system themes, and a reading column you can widen for a big screen. Both are yours rather than the bundle's, and both are applied before the first paint.
 
-Boards are built: columns, lanes, drag by both at once, and a card sheet. Git is there too: refresh, pull and sync, each showing what it will do before it does it, and a failed pull undoing itself and offering your work as a named branch. Dataset tables are not built yet, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
+Boards are built: columns, lanes, drag by both at once, and a card sheet. So are graphs: the entries of a folder you declare as nodes, the links between them as edges, the way Obsidian draws them. Git is there too: refresh, pull and sync, each showing what it will do before it does it, and a failed pull undoing itself and offering your work as a named branch. Dataset tables are not built yet, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
 
 ## Configuration
 
 Optional, and it lives in the bundle's own `wiki.toml` under `[tool.wikiview]`, alongside whatever else that file already holds. There is no second config file and nothing to create: a bundle with none of this serves every view.
 
-What it configures is boards. Every bundle already has one — `/kanban/root`, the whole bundle — so this is for the others:
+What it configures is boards and [graphs](#graphs). Every bundle already has one board — `/kanban/root`, the whole bundle — so this is for the others:
 
 ```toml
 [[tool.wikiview.board]]
@@ -127,6 +127,26 @@ An id is a word, never a path: it is the first segment of a board's address, and
 
 **`columns` orders and adds. It never hides.** A status present in your entries but missing from the list still gets a column, appended after the ones you named. Declaring `["todo", "in-progress", "done"]` pins that order and shows `in-progress` while it is still empty, which is the thing inference cannot do for you — but a card whose status you forgot to list appears anyway rather than vanishing off a board while sitting in the folder. Hiding cards is `where`'s job, where it is explicit.
 
+### Graphs
+
+A graph draws a folder's entries and the links between them, reachable at `/graph/<id>`. Unlike boards, none is built in: every graph is declared.
+
+```toml
+[[tool.wikiview.graph]]
+id         = "people"
+path       = "/people"
+where      = ["type=person"]  # default: none, every entry under path
+neighbours = false            # default
+```
+
+`id` and `path` work as they do for a board, but graph ids are their own namespace, so a board and a graph can both be called `people`. `where` has no default: without it, the graph is every entry under `path`.
+
+An edge is any link from one entry on the graph to another: a link in the body, or a frontmatter value naming one (`manager: ./ana.md`, `blockers: [...]`). Several links between the same two entries are one edge, and two entries linking each other are one line. Self-links, links to entries nobody has written, and links to images and other files are not edges. An entry with no edges is still drawn, as a dot on its own.
+
+`neighbours = true` also draws the entries one link away from those, in either direction, even though they fail the filter. They are hollow, since they are context rather than what the graph is about, and no edge is drawn between two of them.
+
+Drag a node and its neighbours follow; point at one to light up what it touches; click it to open the entry over the graph. Zoom with the wheel and pan by dragging the background. Arrowheads are a toggle, remembered in your browser. Past 500 nodes the graph suggests narrowing `where`, and still draws every node.
+
 ## HTTP API
 
 Useful for scripting against a running server.
@@ -138,6 +158,8 @@ GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and reso
                               and heading-id tables
 GET  /api/board/{id}          one board as columns of cards, in the config's order,
                               with the frontmatter keys its folder uses
+GET  /api/graph/{id}          one graph as nodes and edges, each edge saying which
+                              way it points and whether it came from the body or a field
 GET  /api/git                 the bundle's repository: branch, upstream, ahead/behind,
                               and everything a commit would carry
 GET  /api/events              server-sent events carrying the current version

@@ -135,15 +135,20 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 // The root is the exception: "/" reads as nothing, so it borrows the bundle's
 // own name, which is what a board over everything is.
 func named(b config.Board, dir string) config.Board {
-	if b.Name != "" {
-		return b
-	}
-	if strings.TrimSuffix(b.Path, "/") == "" {
-		b.Name = dirLabel(dir)
-	} else {
-		b.Name = titleFromFilename(b.Path)
-	}
+	b.Name = viewName(b.Name, b.Path, dir)
 	return b
+}
+
+// viewName is the rule `named` applies, shared by every view over a folder so a
+// graph and a board over one folder are called the same thing.
+func viewName(name, path, dir string) string {
+	if name != "" {
+		return name
+	}
+	if strings.TrimSuffix(path, "/") == "" {
+		return dirLabel(dir)
+	}
+	return titleFromFilename(path)
 }
 
 // boardFor resolves an id to a board. Reports whether there is one.

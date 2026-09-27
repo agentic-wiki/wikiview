@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { api, type Board, type Card, type Column, type TreeNode } from "@/api";
 import { BoardSettings } from "@/views/BoardSettings";
 import { reordered, useDrag, type Drag as DragState } from "@/views/drag";
-import { EntryView } from "@/views/EntryView";
+import { CardSheet, sheetHref } from "@/views/CardSheet";
 import { Loading } from "@/views/Loading";
 import { NewBoard } from "@/views/NewBoard";
 import { NotFound } from "@/views/NotFound";
@@ -173,13 +173,15 @@ export function BoardView({
 
       {card && (
         <CardSheet
-          board={board.id}
           path={card}
           version={version}
           refresh={refresh}
           changedAt={changedAt[card]}
-          folder={board.path}
           queue={queue}
+          // A link to something else in this board's folder opens that card and
+          // keeps the board. Anything else leaves for the reader, which is what
+          // makes an off-board link ordinary rather than decorated.
+          destination={(to) => (within(board.path, to) ? cardHref(board.id, to) : "/wiki" + to)}
           // Replaced rather than pushed: closing a card should not leave a
           // history entry you have to press back through twice.
           onClose={() => navigate("/kanban/" + board.id, { replace: true })}
@@ -543,127 +545,6 @@ function columnOf(board: Board, card: Card): string | undefined {
 }
 
 /**
- * One card's entry, opened over the board.
- *
- * A dialog rather than a side panel: a panel takes its width out of the columns
- * for as long as it is open, and the columns are what you came for. This
- * borrows the screen and gives it back, and the board stays visible around it,
- * which is the context you were reading the card in.
- */
-function CardSheet({
-  board,
-  path,
-  version,
-  refresh,
-  changedAt,
-  folder,
-  queue,
-  onClose,
-}: {
-  board: string;
-  path: string;
-  version: number;
-  refresh: number;
-  changedAt?: number;
-  /** The folder this board covers, which is what decides whether a link from the
-   *  card stays here or leaves for the reader. */
-  folder: string;
-  queue: Queue;
-  onClose: () => void;
-}) {
-  // Escape closes, because a panel that only closes by finding its button is a
-  // panel people leave open.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // The dialog scrolls its own body, so following a link from halfway down one
-  // card into another would start you halfway down that one. The reader solves
-  // this for the page; nothing was solving it here.
-  const body = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (body.current) body.current.scrollTop = 0;
-  }, [path]);
-
-  return (
-    // Over the board rather than beside it. A panel takes its width from the
-    // columns permanently, and the columns are the thing you came for; a dialog
-    // borrows the screen and gives it back.
-    <div
-      // On paper the backdrop is a grey rectangle and a fixed box prints one
-      // clipped page, so the sheet stops being a sheet and becomes the page.
-      data-print="sheet"
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-[8vh]"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={path}
-        onClick={(e) => e.stopPropagation()}
-        // A fixed height rather than one taken from the content. A card's entry
-        // arrives a moment after the dialog does, and a dialog sized by its
-        // contents is a header alone until it lands, then a jump. It would also
-        // resize under you when a link inside one card opens another.
-        className="border-border bg-surface elev-3 flex h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border"
-      >
-        <header className="border-border flex shrink-0 items-center gap-2 border-b px-3 py-2">
-          <span className="text-muted truncate font-mono text-xs">{path}</span>
-          <Link
-            to={"/wiki" + path}
-            data-print="hide"
-            className="text-muted hover:text-fg ml-auto shrink-0 text-xs underline decoration-dotted underline-offset-2"
-          >
-            open in reader
-          </Link>
-          <button
-            type="button"
-            onClick={onClose}
-            data-print="hide"
-            aria-label="Close card"
-            className="text-muted hover:text-fg hover:bg-fg/5 grid size-7 shrink-0 place-items-center rounded-md"
-          >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-            </svg>
-          </button>
-        </header>
-
-        <div ref={body} className="min-h-0 grow overflow-y-auto">
-          <EntryView
-            path={path}
-            version={version}
-            refresh={refresh}
-            changedAt={changedAt}
-            // A link to something else on this board opens that card and keeps
-            // the board. Anything else leaves for the reader, which is what
-            // makes an off-board link ordinary rather than decorated.
-            destination={(to) => (within(folder, to) ? cardHref(board, to) : "/wiki" + to)}
-            queued={queue.queued.has(path)}
-            onQueue={() => queue.toggle(path)}
-            inCard
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The address of a card on a board: `/kanban/<id>/<entry path>`.
- *
- * The id is one segment and never a folder name, so everything after the first
- * slash is the bundle path — no separator to invent and nothing to guess. Each
- * segment is encoded the way an entry URL's are, which leaves the slashes
- * between them alone and escapes anything inside a name that would end the
- * path early.
- */
-/**
  * Whether a bundle path is inside the folder a board covers.
  *
  * This is what "on this board" means for following a link, and being a *card* was
@@ -684,11 +565,8 @@ function within(folder: string, path: string): boolean {
 }
 
 function cardHref(board: string, path: string): string {
-  const segments = path.replace(/^\//, "").split("/").map(encodeURIComponent);
-  return "/kanban/" + encodeURIComponent(board) + "/" + segments.join("/");
+  return sheetHref("/kanban", board, path);
 }
-
-/** A list with one item moved to where another sits. */
 
 /** A board's column by its value, for rebuilding the board in a new order
  *  without refetching what is in each one. */

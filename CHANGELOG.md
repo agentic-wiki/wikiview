@@ -2,6 +2,12 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## Unreleased
+
+### New
+
+- **Graphs.** `[[tool.wikiview.graph]]` declares one over a folder, narrowed by an optional `where`, and `/graph/<id>` draws its entries as nodes and the links between them as edges, the way Obsidian does. A link in the body and a frontmatter value naming an entry (`manager: ./ana.md`) are both edges. Two entries linking each other are one line, and an entry linked to nothing is still drawn, on its own. `neighbours = true` adds the entries one link away, hollow, as context. Drag, hover, zoom and pan; click a node to open it over the graph in the sheet a board uses. A refresh keeps nodes where they were, so an agent writing elsewhere in the bundle does not scramble the picture. Declared by hand for now, and the Graphs panel shows the table to write.
+
 ## v0.8.0 — 2026-09-10
 
 ### New

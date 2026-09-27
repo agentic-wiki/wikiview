@@ -45,6 +45,7 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
 	srv.mux.HandleFunc("GET /api/tree", srv.handleTree)
 	srv.mux.HandleFunc("GET /api/board/{id}", srv.handleBoard)
+	srv.mux.HandleFunc("GET /api/graph/{id}", srv.handleGraph)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
 	// The wildcard has to be the final segment, so the verb leads the path
 	// rather than trailing it.
@@ -92,6 +93,9 @@ type BundleInfo struct {
 	// filled in. Only the ones with an id, since an id is what a board is
 	// addressed by and listing one without an address offers a dead link.
 	Boards []config.Board `json:"boards,omitempty"`
+	// Graphs are the graphs declared, named. There is no built-in one, so this
+	// is every graph there is.
+	Graphs []config.Graph `json:"graphs,omitempty"`
 }
 
 // bundleID identifies a bundle by where it lives, which is the only thing
@@ -127,6 +131,13 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		}
 		boards = append(boards, named(b, v.Index.Bundle.Dir))
 	}
+	graphs := make([]config.Graph, 0, len(cfg.Graph))
+	for _, g := range cfg.Graph {
+		if servable(g) {
+			g.Name = viewName(g.Name, g.Path, v.Index.Bundle.Dir)
+			graphs = append(graphs, g)
+		}
+	}
 	writeJSON(w, http.StatusOK, BundleInfo{
 		ID:      s.id,
 		Label:   dirLabel(v.Index.Bundle.Dir),
@@ -136,6 +147,7 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		Tools:   v.Index.Bundle.Tools(),
 		Version: v.Version,
 		Boards:  boards,
+		Graphs:  graphs,
 	})
 }
 

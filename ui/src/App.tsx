@@ -10,6 +10,8 @@ import { FolderView } from "@/views/FolderView";
 import { ChangedView } from "@/views/ChangedView";
 import { ReadLaterView } from "@/views/ReadLaterView";
 import { BoardView } from "@/views/BoardView";
+import { GraphView } from "@/views/GraphView";
+import { splitSheetPath } from "@/views/CardSheet";
 import { NotFound } from "@/views/NotFound";
 
 export function App() {
@@ -168,6 +170,19 @@ function Reader({
             />
           }
         />
+        {/* A graph is addressed like a board, and none is built in. */}
+        <Route
+          path="/graph/*"
+          element={
+            <GraphRoute
+              bundleId={bundle.id}
+              changedAt={changedAt}
+              version={bundle.version}
+              refresh={refresh}
+              queue={queue}
+            />
+          }
+        />
         {/* Anything else. Without this a mistyped URL rendered an empty page,
             which reads as a broken app rather than a wrong address. */}
         <Route path="*" element={<UnknownRoute />} />
@@ -269,11 +284,7 @@ function BoardRoute({
   refresh: number;
   queue: Queue;
 }) {
-  const { pathname } = useLocation();
-  const rest = decodeURIComponent(pathname).replace(/^\/kanban\/?/, "");
-  const cut = rest.indexOf("/");
-  const id = cut < 0 ? rest : rest.slice(0, cut);
-  const card = cut < 0 ? "" : rest.slice(cut); // keeps the leading slash
+  const { id, path: card } = splitSheetPath(decodeURIComponent(useLocation().pathname), "/kanban");
   return (
     <BoardView
       id={id}
@@ -286,6 +297,18 @@ function BoardRoute({
       queue={queue}
     />
   );
+}
+
+/** `/graph/<id>/<entry path>`, split the way a board address is. */
+function GraphRoute(props: {
+  bundleId: string;
+  changedAt: Record<string, number>;
+  version: number;
+  refresh: number;
+  queue: Queue;
+}) {
+  const { id, path } = splitSheetPath(decodeURIComponent(useLocation().pathname), "/graph");
+  return <GraphView id={id} card={path} {...props} />;
 }
 
 function UnknownRoute() {

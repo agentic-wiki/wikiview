@@ -89,6 +89,7 @@ export function Shell({
   // whichever one happens to be declared first. A view preference, so it is
   // scoped to this bundle like the rest.
   const [lastBoard, setLastBoard] = useBundleState(bundle.id, "board", "");
+  const [lastGraph, setLastGraph] = useBundleState(bundle.id, "graph", "");
 
   /**
    * Whether a section's panel is open, when nobody has said.
@@ -98,7 +99,11 @@ export function Shell({
    * on a chooser — but a list of several is exactly the thing you clicked for.
    */
   const openByDefault = (s: RailSection) =>
-    s === "boards" ? (bundle.boards?.length ?? 0) > 1 : wideEnough;
+    s === "boards"
+      ? (bundle.boards?.length ?? 0) > 1
+      : s === "graphs"
+        ? (bundle.graphs?.length ?? 0) > 1
+        : wideEnough;
   const panelOpen = hasPanel(section) && (openFor[section] ?? openByDefault(section));
 
   /** Opening or closing a panel, which is a thing you did and so animates. */
@@ -137,14 +142,14 @@ export function Shell({
     }
 
     if (!showing) {
-      const boards = bundle.boards ?? [];
-      const target = boards.find((b) => b.id === lastBoard) ?? boards[0];
       const to =
         next === "entries"
           ? frontDoor(tree) // the bundle's own front door, not the prefix
           : next === "boards"
-            ? target && boardHref(target)
-            : PREFIX[next];
+            ? returnTo("/kanban", bundle.boards, lastBoard)
+            : next === "graphs"
+              ? returnTo("/graph", bundle.graphs, lastGraph)
+              : PREFIX[next];
       if (to) {
         // Going somewhere hands the section back to the route, so a panel picked
         // over the last view does not follow you into this one.
@@ -224,6 +229,19 @@ export function Shell({
               }}
             />
           )}
+          {panelOpen && section === "graphs" &&
+            (bundle.graphs?.length ? (
+              <ViewList
+                prefix="/graph"
+                views={bundle.graphs}
+                onPick={(picked) => {
+                  setLastGraph(picked);
+                  toggle("graphs", false);
+                }}
+              />
+            ) : (
+              <NoGraphs />
+            ))}
         </aside>
 
         <main ref={viewRef} className="min-w-0 grow overflow-y-auto">
@@ -253,6 +271,7 @@ const wideEnough = window.innerWidth >= 768;
 const PREFIX: Partial<Record<RailSection, string>> = {
   entries: "/wiki",
   boards: "/kanban",
+  graphs: "/graph",
   changed: "/changed",
   later: "/read-later",
 };
@@ -276,7 +295,7 @@ function sectionFor(pathname: string): RailSection {
  * landing on something you did not aim at.
  */
 function hasPanel(section: RailSection): boolean {
-  return section === "entries" || section === "boards";
+  return section === "entries" || section === "boards" || section === "graphs";
 }
 
 /**
@@ -298,39 +317,7 @@ function Boards({
 
   return (
     <>
-    <ul className="p-2">
-      {boards.map((b) => (
-        <li key={b.path}>
-          {/* Two lines, because a board's name and the folder it covers answer
-              different questions and a one-line row makes you hover to get the
-              second. There are rarely more than a handful of these, so the
-              space is affordable. */}
-          <NavLink
-            to={boardHref(b)}
-            onClick={() => onPick(b.id)}
-            className={({ isActive }) =>
-              [
-                "block rounded-md px-2 py-1.5",
-                isActive ? "bg-accent/10" : "hover:bg-fg/5",
-              ].join(" ")
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className={["block truncate text-sm", isActive ? "text-accent" : "text-fg"].join(
-                    " ",
-                  )}
-                >
-                  {b.name}
-                </span>
-                <span className="text-muted block truncate font-mono text-xs">{b.path}</span>
-              </>
-            )}
-          </NavLink>
-        </li>
-      ))}
-    </ul>
+    <ViewList prefix="/kanban" views={boards} onPick={onPick} />
 
     {/* Behind a disclosure, because the list is what you came for and a form
         under every one of them is a form you scroll past. Without it, adding a
@@ -383,14 +370,86 @@ function NoBoards({ tree, rootLabel }: { tree: TreeNode; rootLabel: string }) {
   );
 }
 
+/** A declared view over a folder: a board or a graph. */
+type Declared = { id: string; name: string; path: string };
+
 /**
- * A board's address.
+ * The declared views of one kind, as the panel lists them.
  *
- * The id rather than the path, because two boards can be over one folder and
- * only the id tells them apart.
+ * Addressed by id rather than path, because two views can be over one folder
+ * and only the id tells them apart.
  */
-function boardHref(b: BoardConfig): string {
-  return "/kanban/" + b.id;
+function ViewList({
+  prefix,
+  views,
+  onPick,
+}: {
+  prefix: string;
+  views: Declared[];
+  onPick: (id: string) => void;
+}) {
+  return (
+    <ul className="p-2">
+      {views.map((v) => (
+        <li key={v.id}>
+          {/* Two lines, because a view's name and the folder it covers answer
+              different questions and a one-line row makes you hover to get the
+              second. There are rarely more than a handful of these, so the
+              space is affordable. */}
+          <NavLink
+            to={prefix + "/" + encodeURIComponent(v.id)}
+            onClick={() => onPick(v.id)}
+            className={({ isActive }) =>
+              ["block rounded-md px-2 py-1.5", isActive ? "bg-accent/10" : "hover:bg-fg/5"].join(" ")
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <span className={["block truncate text-sm", isActive ? "text-accent" : "text-fg"].join(" ")}>
+                  {v.name}
+                </span>
+                <span className="text-muted block truncate font-mono text-xs">{v.path}</span>
+              </>
+            )}
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Where a rail icon returns you to: the view you were last on, or the first one
+ * declared. Nothing when none is, which leaves the click to open the panel.
+ */
+function returnTo(prefix: string, views: Declared[] | undefined, last: string): string | undefined {
+  const target = views?.find((v) => v.id === last) ?? views?.[0];
+  return target && prefix + "/" + encodeURIComponent(target.id);
+}
+
+/**
+ * What the Graphs panel shows before there are any.
+ *
+ * The snippet to write, for now. The form belongs here, the way the Boards
+ * panel's is, and arrives with declaring graphs from the UI
+ * (backlog/7-graphs/002-declaring-graphs.md).
+ */
+function NoGraphs() {
+  return (
+    <div className="space-y-3 p-3">
+      <p className="text-fg text-sm font-medium">Your first graph</p>
+      <p className="text-muted text-sm">
+        A graph is a folder's entries and the links between them. Declare one in <code>wiki.toml</code>:
+      </p>
+      <pre className="bg-sunken border-border overflow-x-auto rounded-md border p-2 text-xs">
+        {'[[tool.wikiview.graph]]\nid    = "people"\npath  = "/people"\nwhere = ["type=person"]'}
+      </pre>
+      <p className="text-muted text-xs">
+        <code>where</code> is optional, and <code>neighbours = true</code> also draws what those entries
+        link to.
+      </p>
+    </div>
+  );
 }
 
 /**

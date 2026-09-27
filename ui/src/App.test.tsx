@@ -4,7 +4,7 @@ import { StrictMode, act } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { App } from "@/App";
 import { proposeMessage } from "@/shell/GitActions";
-import type { BundleInfo, Entry, GitStatus, TreeNode } from "@/api";
+import type { BundleInfo, Entry, GitStatus, Graph, TreeNode } from "@/api";
 import { forget } from "@/cache";
 
 /**
@@ -27,6 +27,30 @@ const bundle: BundleInfo = {
   tools: ["wikiview"],
   version: 1,
   boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status" }],
+  // One graph, over the same folder under the same id as the board: the two
+  // are addressed under different prefixes and must not be confused.
+  graphs: [{ path: "/notes", id: "notes", name: "Who links whom" }],
+};
+
+/** The graph over /notes: A and B link each other, A links the front door from
+ *  outside the folder, and D links nothing and is linked by nothing — which is
+ *  still a node. */
+const graphFixture: Graph = {
+  path: "/notes",
+  id: "notes",
+  name: "Who links whom",
+  where: ["type=note"],
+  neighbours: true,
+  nodes: [
+    { path: "/index.md", label: "Index", neighbour: true },
+    { path: "/notes/a.md", label: "A", title: "A Note", type: "note" },
+    { path: "/notes/b.md", label: "B", type: "note" },
+    { path: "/notes/d.md", label: "D", type: "note" },
+  ],
+  edges: [
+    { from: "/notes/a.md", to: "/notes/b.md", mutual: true, via: ["blockers", "body"], count: 3 },
+    { from: "/notes/a.md", to: "/index.md", via: ["body"], count: 1 },
+  ],
 };
 
 const tree: TreeNode = {
@@ -223,6 +247,7 @@ function stubFetch() {
     if (url.endsWith("/api/bundle")) return body(bundle);
     if (url.endsWith("/api/tree")) return body(tree);
     if (url.includes("/api/board/")) return body(boardFixture);
+    if (url.endsWith("/api/graph/notes")) return body(graphFixture);
     if (url.includes("/api/entry/notes/checks.md")) return body(checksEntry);
     if (url.includes("/api/entry/notes/named.md")) return body(namedInProse);
     if (url.includes("/api/entry/notes/differs.md")) return body(headingDiffers);
@@ -1570,14 +1595,14 @@ test("an index entry is named by its folder in both lists", async () => {
   restore();
 });
 
-test("the rail names four working sections, and the two lists open no panel", async () => {
+test("the rail names five working sections, and the two lists open no panel", async () => {
   await mountAt("/wiki/index.md");
 
   const labels = [...document.querySelectorAll("nav[aria-label='Sections'] button")].map((b) =>
     b.getAttribute("aria-label"),
   );
   // Named for what they are for, not for the state they hold.
-  expect(labels).toEqual(["Entries", "Boards", "Recently changed", "Read later"]);
+  expect(labels).toEqual(["Entries", "Boards", "Graphs", "Recently changed", "Read later"]);
   // The section that answered a click with an apology is gone until it can keep
   // the promise.
   expect(labels).not.toContain("Search");
@@ -3097,4 +3122,203 @@ test("wide is one click, applies to the page, and is remembered", async () => {
   await act(async () => toggle().click());
   expect(document.documentElement.hasAttribute("data-width")).toBe(false);
   expect(localStorage.getItem("wiki:width")).toBeNull();
+});
+
+// ── Graphs ────────────────────────────────────────────────────────────────
+
+const graphNodes = () =>
+  [...document.querySelectorAll("main svg [data-path]")].map((g) => ({
+    path: g.getAttribute("data-path"),
+    name: g.getAttribute("aria-label"),
+    neighbour: g.hasAttribute("data-neighbour"),
+  }));
+
+async function openGraph(path = "/graph/notes") {
+  await mountAt("/wiki/index.md");
+  await act(async () => navigateTo(path));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+}
+
+// Every node the server sent is drawn, the isolated one included: a node that
+// links nothing is the answer to "who is not connected", and leaving it off is
+// how a graph lies.
+test("a graph URL draws every node, isolated and neighbour ones included", async () => {
+  await openGraph();
+
+  expect(graphNodes()).toEqual([
+    { path: "/index.md", name: "Index", neighbour: true },
+    // Its title, which is what it calls itself.
+    { path: "/notes/a.md", name: "A Note", neighbour: false },
+    { path: "/notes/b.md", name: "B", neighbour: false },
+    { path: "/notes/d.md", name: "D", neighbour: false },
+  ]);
+  const header = document.querySelector("main header")!.textContent;
+  expect(header).toContain("Who links whom");
+  expect(header).toContain("type=note");
+  expect(header).toContain("4 entries · 2 links");
+  // Two edges, each drawn once: a mutual pair is one line, not two stacked.
+  expect(document.querySelectorAll("main svg line[class]").length).toBe(2);
+});
+
+// An edge says what it is when pointed at: which way, how it was written, and
+// how many links it stands for.
+test("an edge describes itself", async () => {
+  await openGraph();
+  const titles = [...document.querySelectorAll("main svg line title")].map((t) => t.textContent);
+  expect(titles).toContain("A Note ↔ B\nblockers, body · 3 links");
+  expect(titles).toContain("A Note → Index\nbody");
+});
+
+// A node opens as the card sheet a board uses, and the address carries it, so
+// back closes it and a link reopens the same thing.
+test("clicking a node opens its entry over the graph", async () => {
+  await openGraph();
+  const a = document.querySelector("main svg [data-path='/notes/a.md']") as SVGElement;
+  await act(async () => a.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(here).toBe("/graph/notes/notes/a.md");
+  const sheet = document.querySelector("[role='dialog']")!;
+  expect(sheet.textContent).toContain("The body of the entry.");
+  // The graph is still behind it.
+  expect(graphNodes().length).toBe(4);
+
+  // A link to another node opens that node over the graph; one to an entry the
+  // graph does not hold leaves for the reader.
+  const hrefs = [...sheet.querySelectorAll(".markdown a")].map((l) => l.getAttribute("href"));
+  expect(hrefs).toContain("/graph/notes/notes/b.md");
+  expect(hrefs).toContain("/graph/notes/index.md"); // a neighbour is on the graph too
+  expect(hrefs).toContain("/wiki/notes/gone.md");
+});
+
+test("a node opens from the keyboard", async () => {
+  await openGraph();
+  const b = document.querySelector("main svg [data-path='/notes/b.md']") as SVGElement;
+  await act(async () => b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(here).toBe("/graph/notes/notes/b.md");
+});
+
+// The id is the graph's, not the board's: the same word under /kanban is a
+// different view, and asking the graph endpoint for it is what proves which.
+test("a graph and a board may share an id", async () => {
+  await openGraph();
+  expect(document.querySelector("main svg")).not.toBeNull();
+  expect(document.querySelector("main section[aria-label]")).toBeNull(); // no columns
+});
+
+test("a graph nobody declared is not found", async () => {
+  await openGraph("/graph/nobody");
+  expect(document.querySelector("main")!.textContent).toContain("There is no graph with that id");
+});
+
+// Direction is a preference, not a fact about the bundle: off by default, and
+// remembered per bundle once changed.
+test("arrowheads are off until asked for, and stay asked for", async () => {
+  await openGraph();
+  const markers = () => document.querySelectorAll("main svg line[marker-end]").length;
+  expect(markers()).toBe(0);
+
+  const toggle = [...document.querySelectorAll("main header label")]
+    .find((l) => l.textContent?.includes("Direction"))!
+    .querySelector("input")!;
+  await act(async () => toggle.click());
+  expect(markers()).toBe(2);
+  // A mutual edge points both ways, a one-way edge one way.
+  expect(document.querySelectorAll("main svg line[marker-start]").length).toBe(1);
+
+  await openGraph();
+  expect(markers()).toBe(2);
+});
+
+// Hovering a node lights its edges and its neighbours and fades the rest.
+test("pointing at a node lights what it touches", async () => {
+  await openGraph();
+  const d = document.querySelector("main svg [data-path='/notes/d.md']") as SVGElement;
+  const a = document.querySelector("main svg [data-path='/notes/a.md']") as SVGElement;
+  await act(async () => a.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => a.dispatchEvent(new PointerEvent("pointerenter")));
+  expect(a.getAttribute("opacity")).toBe("1");
+  expect(Number(d.getAttribute("opacity"))).toBeLessThan(0.5);
+  expect(document.querySelectorAll("main svg line.stroke-accent").length).toBe(2);
+});
+
+async function mountWithGraphs(graphs: BundleInfo["graphs"], served?: Graph) {
+  await mountAt("/wiki/index.md");
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const json = (v: unknown) =>
+      Promise.resolve(new Response(JSON.stringify(v), { headers: { "content-type": "application/json" } }));
+    if (url.endsWith("/api/bundle")) return json({ ...bundle, graphs });
+    if (served && url.includes("/api/graph/")) return json(served);
+    return real(input, init);
+  }) as typeof fetch;
+  // An unseen version refetches the bundle, which is how the stub takes effect.
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+}
+
+// No graph is built in, so with none declared the Graphs icon has nowhere to go
+// and the panel says how to declare one rather than doing nothing.
+test("with no graphs declared the panel shows how to declare one", async () => {
+  await mountWithGraphs(undefined);
+  await act(async () => openSection("Graphs"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(here).toBe("/wiki/index.md");
+  const panel = document.querySelector("aside")!;
+  expect(panel.textContent).toContain("Your first graph");
+  expect(panel.textContent).toContain("[[tool.wikiview.graph]]");
+});
+
+// With graphs declared the icon goes to one, the one you were last on.
+test("the Graphs icon returns to the graph you were last on", async () => {
+  await mountWithGraphs([
+    { path: "/notes", id: "notes", name: "Who links whom" },
+    { path: "/", id: "all", name: "Everything" },
+  ]);
+  await act(async () => openSection("Graphs"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(here).toBe("/graph/notes");
+  expect(activeSection()).toBe("Graphs");
+
+  // Two graphs are a choice, so the list is open beside the first.
+  const links = [...document.querySelectorAll("aside a")];
+  expect(links.map((l) => l.getAttribute("href"))).toEqual(["/graph/notes", "/graph/all"]);
+  await act(async () => (links[1] as HTMLElement).click());
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => openSection("Graphs"));
+  expect(here).toBe("/graph/all");
+});
+
+// Filters exist so a graph is not thousands of nodes. Past the soft limit it
+// says so — and still draws every one, since the node left off would be the one
+// you were looking for.
+test("a very large graph warns and still draws everything", async () => {
+  const many: Graph = {
+    ...graphFixture,
+    nodes: Array.from({ length: 501 }, (_, i) => ({ path: `/notes/n${i}.md`, label: `N${i}` })),
+    edges: [],
+  };
+  await mountWithGraphs(bundle.graphs, many);
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(document.querySelector("main [role='status']")?.textContent).toContain("501 entries");
+  expect(graphNodes().length).toBe(501);
+});
+
+test("a graph with nothing in it says why", async () => {
+  await mountWithGraphs(bundle.graphs, { ...graphFixture, nodes: [], edges: [] });
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelector("main")!.textContent).toContain("No entry under /notes matches its filter");
+});
+
+test("the tab names the graph, or the entry open over it", async () => {
+  await openGraph();
+  expect(document.title).toBe("Who links whom · My kb");
+  await act(async () => navigateTo("/graph/notes/notes/a.md"));
+  expect(document.title).toBe("A Note · My kb");
 });

@@ -293,3 +293,69 @@ status = "status"
 		}
 	}
 }
+
+// A graph is checked by the rules a board is, with its own table of keys: a key
+// that means something on a board is still a misspelling on a graph.
+func TestGraphsAreCheckedLikeBoards(t *testing.T) {
+	cfg, problems := load(t, `spec = "0.1"
+
+[[tool.wikiview.graph]]
+id    = "a"
+path  = "/backlog"
+where = ["this is not a filter"]
+lane  = "priority"
+
+[[tool.wikiview.graph]]
+id   = "a"
+path = "/nowhere"
+
+[[tool.wikiview.graph]]
+path = "/backlog"
+
+[[tool.wikiview.graph]]
+id = "x/y"
+path = "/backlog"
+
+[[tool.wikiview.graph]]
+id = "lost"
+`)
+	joined := strings.Join(problems, "\n")
+	for _, want := range []string{
+		"unknown key in graph 1: lane",
+		"graph /backlog: ",                 // the bad filter
+		`id "a" is already graph 1`,        // a duplicate id
+		"graph /nowhere: no entries there", // a folder with nothing in it
+		"graph 3 (/backlog): id is required",
+		`graph 4: id "x/y" contains a slash`,
+		"graph 5: path is required",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("problems=%q, want one containing %q", problems, want)
+		}
+	}
+	if len(cfg.Graph) != 5 {
+		t.Errorf("graphs=%d, want every one kept: reported, not discarded", len(cfg.Graph))
+	}
+}
+
+// No default filter, unlike a board's `type=task`: a graph assumes nothing about
+// what it is over. And a graph may share an id with a board, since the two are
+// addressed under different prefixes.
+func TestAGraphHasNoDefaultFilterAndItsOwnIDs(t *testing.T) {
+	cfg, problems := load(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id   = "backlog"
+path = "/backlog"
+
+[[tool.wikiview.graph]]
+id   = "backlog"
+path = "/backlog"
+`)
+	if len(problems) != 0 {
+		t.Errorf("problems=%v, want none", problems)
+	}
+	if g := cfg.Graph[0]; g.Where != nil || g.Filters != nil || g.Neighbours {
+		t.Errorf("graph=%+v, want no filter and no neighbours", g)
+	}
+}

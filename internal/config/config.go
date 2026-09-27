@@ -77,8 +77,35 @@ type Board struct {
 	Filters []index.PropFilter `toml:"-" json:"-"`
 }
 
+// Graph is one declared graph: the entries under a folder, and the links
+// between them.
+//
+//	[[tool.wikiview.graph]]
+//	id         = "people"
+//	path       = "/people"
+//	where      = ["type=person"]  # default: none, every entry under path
+//	neighbours = true             # default: false
+type Graph struct {
+	// Path and ID mean what they mean for a board, and are required for the
+	// same reasons. Ids are a namespace of their own: `/graph/<id>` cannot be
+	// mistaken for `/kanban/<id>`.
+	Path string `toml:"path" json:"path"`
+	ID   string `toml:"id" json:"id"`
+	Name string `toml:"name" json:"name,omitempty"`
+	// Where narrows the entries under Path. No default, unlike a board's: a
+	// board assumes tasks, and a graph assumes nothing.
+	Where []string `toml:"where" json:"where,omitempty"`
+	// Neighbours also draws the entries one link away from the filtered ones.
+	// Config rather than a view toggle because it changes which entries the
+	// graph holds, which is what `where` is for too.
+	Neighbours bool `toml:"neighbours" json:"neighbours,omitempty"`
+
+	Filters []index.PropFilter `toml:"-" json:"-"`
+}
+
 type Config struct {
 	Board []Board `toml:"board" json:"board,omitempty"`
+	Graph []Graph `toml:"graph" json:"graph,omitempty"`
 }
 
 // Defaults applied to a board that leaves a key out. A backlog is tasks with a
@@ -214,7 +241,48 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 			}
 		}
 	}
+	problems = append(problems, checkGraphs(cfg.Graph, idx)...)
 	return cfg, problems
+}
+
+// checkGraphs validates graphs by the rules boards follow, and parses their
+// filters in place. A problem is reported, and what can still be served is.
+func checkGraphs(graphs []Graph, idx *index.Index) []string {
+	var problems []string
+	seen := map[string]int{}
+	for i := range graphs {
+		g := &graphs[i]
+		if g.Path == "" {
+			problems = append(problems, fmt.Sprintf("graph %d: path is required", i+1))
+			continue
+		}
+		if g.ID == "" {
+			problems = append(problems, fmt.Sprintf("graph %d (%s): id is required", i+1, g.Path))
+			continue
+		}
+		if strings.Contains(g.ID, "/") {
+			problems = append(problems, fmt.Sprintf(
+				"graph %d: id %q contains a slash, and an id is a word rather than a path", i+1, g.ID))
+		}
+		if first, ok := seen[g.ID]; ok {
+			problems = append(problems, fmt.Sprintf(
+				"graph %d: id %q is already graph %d, so give them different ids", i+1, g.ID, first))
+		} else {
+			seen[g.ID] = i + 1
+		}
+		for _, w := range g.Where {
+			f, err := index.ParseFilter(w)
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("graph %s: %v", g.Path, err))
+				continue
+			}
+			g.Filters = append(g.Filters, f)
+		}
+		if idx != nil && !hasEntries(idx, g.Path) {
+			problems = append(problems, fmt.Sprintf("graph %s: no entries there", g.Path))
+		}
+	}
+	return problems
 }
 
 // decoding serialises the engine's TOML decoder.
@@ -257,11 +325,13 @@ func IsList(entries []*index.Entry, key string) bool {
 
 // known keys, so a misspelling is reported rather than ignored.
 var (
-	topKeys   = map[string]bool{"board": true}
+	topKeys   = map[string]bool{"board": true, "graph": true}
 	boardKeys = map[string]bool{
 		"path": true, "id": true, "name": true, "where": true, "status": true, "columns": true,
 		"lane": true, "lanes": true, "blockers": true,
 	}
+	graphKeys = map[string]bool{"path": true, "id": true, "name": true, "where": true, "neighbours": true}
+	tableKeys = map[string]map[string]bool{"board": boardKeys, "graph": graphKeys}
 )
 
 func unknownKeys(loose map[string]any) []string {
@@ -271,11 +341,11 @@ func unknownKeys(loose map[string]any) []string {
 			out = append(out, fmt.Sprintf("unknown key [tool.wikiview] %s", key))
 			continue
 		}
-		boards, _ := value.([]map[string]any)
-		for i, board := range boards {
-			for k := range board {
-				if !boardKeys[k] {
-					out = append(out, fmt.Sprintf("unknown key in board %d: %s", i+1, k))
+		tables, _ := value.([]map[string]any)
+		for i, table := range tables {
+			for k := range table {
+				if !tableKeys[key][k] {
+					out = append(out, fmt.Sprintf("unknown key in %s %d: %s", key, i+1, k))
 				}
 			}
 		}

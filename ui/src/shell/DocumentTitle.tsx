@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router";
 import type { BundleInfo, TreeNode } from "@/api";
 import { nameOf } from "@/tree";
+import { splitSheetPath } from "@/views/CardSheet";
 
 /**
  * Keeps the browser's title saying what is on screen.
@@ -45,15 +46,16 @@ export function titleFor(bundle: BundleInfo, tree: TreeNode, pathname: string): 
 
 /** What the route is showing, or nothing when the route names no one thing. */
 function subject(bundle: BundleInfo, tree: TreeNode, pathname: string): string | undefined {
-  if (pathname.startsWith("/kanban")) {
-    // The same split the board route makes: one id, then a bundle path.
-    const rest = pathname.replace(/^\/kanban\/?/, "");
-    const cut = rest.indexOf("/");
-    const card = cut < 0 ? "" : rest.slice(cut);
-    const board = bundle.boards?.find((b) => b.id === (cut < 0 ? rest : rest.slice(0, cut)));
-    // The card when one is open: it is what you are reading, and the board is
+  for (const [prefix, views] of [
+    ["/kanban", bundle.boards],
+    ["/graph", bundle.graphs],
+  ] as const) {
+    if (!pathname.startsWith(prefix)) continue;
+    // The same split the route makes: one id, then a bundle path.
+    const { id, path } = splitSheetPath(pathname, prefix);
+    // The entry when one is open: it is what you are reading, and the view is
     // context. Three names would not survive the width a tab has anyway.
-    return (card ? nameOf(tree, card, bundle.label) : undefined) ?? board?.name;
+    return (path ? nameOf(tree, path, bundle.label) : undefined) ?? views?.find((v) => v.id === id)?.name;
   }
   if (pathname.startsWith("/wiki")) {
     const path = "/" + pathname.replace(/^\/wiki\/?/, "");

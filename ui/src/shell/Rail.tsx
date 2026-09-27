@@ -1,4 +1,4 @@
-export type RailSection = "entries" | "boards" | "changed" | "later";
+export type RailSection = "entries" | "boards" | "graphs" | "changed" | "later";
 
 /**
  * The sections, and what each icon is.
@@ -20,6 +20,12 @@ export type RailSection = "entries" | "boards" | "changed" | "later";
 const SECTIONS: { id: RailSection; label: string; icon: string }[] = [
   { id: "entries", label: "Entries", icon: "M4 4h10l4 4v12H4z M14 4v4h4" },
   { id: "boards", label: "Boards", icon: "M4 5h4v14H4z M10 5h4v9h-4z M16 5h4v6h-4z" },
+  // Three entries and the links between them.
+  {
+    id: "graphs",
+    label: "Graphs",
+    icon: "M4 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z M16 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z M10 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0z M8 6h8 M6.9 7.8l4.2 8.4 M17.1 7.8l-4.2 8.4",
+  },
   {
     id: "changed",
     label: "Recently changed",
