@@ -129,7 +129,7 @@ An id is a word, never a path: it is the first segment of a board's address, and
 
 ### Graphs
 
-A graph draws a folder's entries and the links between them, reachable at `/graph/<id>`. Unlike boards, none is built in: every graph is declared.
+A graph draws a folder's entries and the links between them, reachable at `/graph/<id>`. Unlike boards, none is built in: every graph is declared. The Graphs panel declares one for you, and a graph's Settings change its name, filter and neighbours without opening this file.
 
 ```toml
 [[tool.wikiview.graph]]
@@ -168,6 +168,8 @@ PUT  /api/checkbox/{path...}  toggle a checkbox, guarded by the version you read
 PUT  /api/card/{id}/{path...} move a card to another column and lane, same guard
 POST /api/board               declare a board, appending it to the bundle's wiki.toml
 PUT  /api/board/{id}          change a board's settings in place
+POST /api/graph               declare a graph, the same way
+PUT  /api/graph/{id}          change a graph's settings in place
 POST /api/refresh             re-read the files
 POST /api/git/fetch           ask the remote what it has
 POST /api/git/pull            rebase onto the upstream, undoing the attempt if it fails
@@ -179,7 +181,9 @@ A write carries the `version` it was read at, and one that has moved is refused 
 
 `POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs"}` and appends a `[[tool.wikiview.board]]` table, leaving the rest of the file alone. It refuses an id that is not a word, one already declared, and a folder with no cards under it.
 
-`PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane`, `lanes` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it. Both writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
+`PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane`, `lanes` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it.
+
+`POST /api/graph` and `PUT /api/graph/{id}` do the same for graphs. A graph's settings are `name`, `where` and `neighbours`, and a graph's id is checked only against other graphs. A graph is refused when its folder holds no entries at all, since it has no filter by default. All of these writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
 
 `/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. A `.env` sitting beside your notes has no key there, so it cannot be requested.
 

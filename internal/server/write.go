@@ -195,6 +195,60 @@ func (s *Server) handleDeclareBoard(w http.ResponseWriter, r *http.Request) {
 	s.committed(w)
 }
 
+// handleDeclareGraph adds a graph to the bundle's wiki.toml, by the rules a
+// board is declared by.
+func (s *Server) handleDeclareGraph(w http.ResponseWriter, r *http.Request) {
+	var req declareRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{"malformed request: " + err.Error()})
+		return
+	}
+
+	v := s.store.View()
+	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
+	graph := config.Graph{ID: req.ID, Path: path.Clean("/" + strings.Trim(req.Path, "/")), Name: req.Name}
+	// A graph has no default filter, so it is empty only when the folder is:
+	// refused for the reason an empty board is, a page with nothing on it.
+	if len(v.Index.Filter(strings.TrimSuffix(graph.Path, "/"), nil)) == 0 {
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{"no entries under " + graph.Path})
+		return
+	}
+	if err := config.DeclareGraph(v.Index.Bundle.Dir, cfg, graph); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
+		return
+	}
+	s.committed(w)
+}
+
+// handleGraphSettings changes a graph's name, filter and neighbours, as a
+// whole, for the reason a board's settings are sent whole.
+func (s *Server) handleGraphSettings(w http.ResponseWriter, r *http.Request) {
+	var req config.GraphSettings
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{"malformed request: " + err.Error()})
+		return
+	}
+
+	v := s.store.View()
+	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
+	id := strings.Trim(r.PathValue("id"), "/")
+	if !slices.ContainsFunc(cfg.Graph, func(g config.Graph) bool { return servable(g) && g.ID == id }) {
+		writeJSON(w, http.StatusNotFound, errorBody{"no graph with that id"})
+		return
+	}
+	for _, expr := range req.Where {
+		if _, err := index.ParseFilter(expr); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
+			return
+		}
+	}
+	if err := config.UpdateGraph(v.Index.Bundle.Dir, id, req); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
+		return
+	}
+	s.committed(w)
+}
+
 // handleBoardSettings changes what a board is, rather than what is on it.
 //
 // A PUT of the whole settings object rather than a patch of one key: the form

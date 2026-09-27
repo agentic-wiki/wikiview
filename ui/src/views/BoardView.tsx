@@ -5,7 +5,7 @@ import { BoardSettings } from "@/views/BoardSettings";
 import { reordered, useDrag, type Drag as DragState } from "@/views/drag";
 import { CardSheet, sheetHref } from "@/views/CardSheet";
 import { Loading } from "@/views/Loading";
-import { NewBoard } from "@/views/NewBoard";
+import { NewView } from "@/views/NewView";
 import { NotFound } from "@/views/NotFound";
 import type { Queue } from "@/queue";
 
@@ -224,7 +224,7 @@ function EmptyBoard({
         {/* A form is a control, and paper takes no input. */}
         <div data-print="hide" className="border-border rounded-lg border p-4">
           <p className="text-muted mb-3 text-sm">Point a board at a folder that has some:</p>
-          <NewBoard tree={tree} rootLabel={rootLabel} />
+          <NewView kind="board" tree={tree} rootLabel={rootLabel} />
         </div>
       </div>
     </div>

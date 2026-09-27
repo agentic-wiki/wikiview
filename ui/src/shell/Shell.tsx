@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
-import type { BoardConfig, BundleInfo, TreeNode } from "@/api";
+import type { BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
 import { Breadcrumbs } from "@/shell/Breadcrumbs";
 import { Tree } from "@/shell/Tree";
@@ -10,7 +10,7 @@ import { ScrollRestoration } from "@/shell/ScrollRestoration";
 import { ThemeToggle } from "@/shell/Theme";
 import { useBundleState } from "@/state";
 import { GitActions } from "@/shell/GitActions";
-import { NewBoard } from "@/views/NewBoard";
+import { NewView } from "@/views/NewView";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -216,10 +216,16 @@ export function Shell({
             </div>
           )}
           {panelOpen && section === "boards" && (
-            <Boards
-              boards={bundle.boards}
+            <ViewsPanel
+              kind="board"
+              views={bundle.boards}
               tree={tree}
               rootLabel={bundle.label}
+              intro={
+                <>
+                  A board is a folder's tasks, in columns by <code>status</code>.
+                </>
+              }
               // Choosing from the list is done with the list, so it gives the
               // width back — and animates, because that close is something you
               // did rather than something that happened around you.
@@ -229,19 +235,19 @@ export function Shell({
               }}
             />
           )}
-          {panelOpen && section === "graphs" &&
-            (bundle.graphs?.length ? (
-              <ViewList
-                prefix="/graph"
-                views={bundle.graphs}
-                onPick={(picked) => {
-                  setLastGraph(picked);
-                  toggle("graphs", false);
-                }}
-              />
-            ) : (
-              <NoGraphs />
-            ))}
+          {panelOpen && section === "graphs" && (
+            <ViewsPanel
+              kind="graph"
+              views={bundle.graphs}
+              tree={tree}
+              rootLabel={bundle.label}
+              intro="A graph is a folder's entries and the links between them. Narrow it with a filter afterwards, in its settings."
+              onPick={(picked) => {
+                setLastGraph(picked);
+                toggle("graphs", false);
+              }}
+            />
+          )}
         </aside>
 
         <main ref={viewRef} className="min-w-0 grow overflow-y-auto">
@@ -299,74 +305,72 @@ function hasPanel(section: RailSection): boolean {
 }
 
 /**
- * The boards a bundle declares, which is every board there is beyond `root`.
- */
-function Boards({
-  boards,
-  tree,
-  rootLabel,
-  onPick,
-}: {
-  boards?: BoardConfig[];
-  tree: TreeNode;
-  rootLabel: string;
-  onPick: (path: string) => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  if (!boards?.length) return <NoBoards tree={tree} rootLabel={rootLabel} />;
-
-  return (
-    <>
-    <ViewList prefix="/kanban" views={boards} onPick={onPick} />
-
-    {/* Behind a disclosure, because the list is what you came for and a form
-        under every one of them is a form you scroll past. Without it, adding a
-        second board means editing wiki.toml by hand, which is the dead end the
-        empty state already avoids. */}
-    <div className="border-border border-t p-2">
-      {adding ? (
-        <div className="space-y-2 p-1">
-          <NewBoard tree={tree} rootLabel={rootLabel} />
-          <button
-            type="button"
-            onClick={() => setAdding(false)}
-            className="text-muted hover:text-fg w-full text-xs"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="text-muted hover:text-fg hover:bg-fg/5 w-full rounded-md px-2 py-1.5 text-left text-sm"
-        >
-          + New board
-        </button>
-      )}
-    </div>
-    </>
-  );
-}
-
-/**
- * What the Boards panel shows before there are any.
+ * The views of one kind a bundle declares, and the way to declare another.
  *
- * The form rather than a paragraph about the form. The empty state of a feature
+ * With none declared the form is the whole panel. The empty state of a feature
  * is the one moment somebody is definitely willing to be shown how it works, and
  * showing them is cheaper than explaining: a note about what to hand-write into
  * `wiki.toml` leaves them to go and do it, which is exactly the step this can
  * take for them.
  */
-function NoBoards({ tree, rootLabel }: { tree: TreeNode; rootLabel: string }) {
+function ViewsPanel({
+  kind,
+  views,
+  tree,
+  rootLabel,
+  intro,
+  onPick,
+}: {
+  kind: "board" | "graph";
+  views?: Declared[];
+  tree: TreeNode;
+  rootLabel: string;
+  /** What this kind of view is, said once, where the first one is made. */
+  intro: ReactNode;
+  onPick: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  if (!views?.length) {
+    return (
+      <div className="space-y-3 p-3">
+        <p className="text-fg text-sm font-medium">Your first {kind}</p>
+        <p className="text-muted text-sm">{intro}</p>
+        <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3 p-3">
-      <p className="text-fg text-sm font-medium">Your first board</p>
-      <p className="text-muted text-sm">
-        A board is a folder's tasks, in columns by <code>status</code>.
-      </p>
-      <NewBoard tree={tree} rootLabel={rootLabel} />
-    </div>
+    <>
+      <ViewList prefix={kind === "board" ? "/kanban" : "/graph"} views={views} onPick={onPick} />
+
+      {/* Behind a disclosure, because the list is what you came for and a form
+          under every one of them is a form you scroll past. Without it, adding a
+          second one means editing wiki.toml by hand, which is the dead end the
+          empty state already avoids. */}
+      <div className="border-border border-t p-2">
+        {adding ? (
+          <div className="space-y-2 p-1">
+            <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="text-muted hover:text-fg w-full text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="text-muted hover:text-fg hover:bg-fg/5 w-full rounded-md px-2 py-1.5 text-left text-sm"
+          >
+            + New {kind}
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -425,31 +429,6 @@ function ViewList({
 function returnTo(prefix: string, views: Declared[] | undefined, last: string): string | undefined {
   const target = views?.find((v) => v.id === last) ?? views?.[0];
   return target && prefix + "/" + encodeURIComponent(target.id);
-}
-
-/**
- * What the Graphs panel shows before there are any.
- *
- * The snippet to write, for now. The form belongs here, the way the Boards
- * panel's is, and arrives with declaring graphs from the UI
- * (backlog/7-graphs/002-declaring-graphs.md).
- */
-function NoGraphs() {
-  return (
-    <div className="space-y-3 p-3">
-      <p className="text-fg text-sm font-medium">Your first graph</p>
-      <p className="text-muted text-sm">
-        A graph is a folder's entries and the links between them. Declare one in <code>wiki.toml</code>:
-      </p>
-      <pre className="bg-sunken border-border overflow-x-auto rounded-md border p-2 text-xs">
-        {'[[tool.wikiview.graph]]\nid    = "people"\npath  = "/people"\nwhere = ["type=person"]'}
-      </pre>
-      <p className="text-muted text-xs">
-        <code>where</code> is optional, and <code>neighbours = true</code> also draws what those entries
-        link to.
-      </p>
-    </div>
-  );
 }
 
 /**

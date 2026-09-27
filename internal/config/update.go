@@ -27,6 +27,61 @@ type Settings struct {
 // reads the same way as one written by hand.
 var settingKeys = []string{"name", "where", "status", "columns", "lane", "lanes", "blockers"}
 
+// values renders each setting as it is written, "" for one to leave out.
+func (s Settings) values() map[string]string {
+	return map[string]string{
+		"name":     optional(s.Name),
+		"status":   optional(s.Status),
+		"lane":     optional(s.Lane),
+		"blockers": optional(s.Blockers),
+		"where":    list(s.Where),
+		"columns":  list(s.Columns),
+		"lanes":    list(s.Lanes),
+	}
+}
+
+// GraphSettings are the keys a graph's own settings own. Not `id` or `path`,
+// for the reason a board's are not.
+type GraphSettings struct {
+	Name       string   `json:"name"`
+	Where      []string `json:"where"`
+	Neighbours bool     `json:"neighbours"`
+}
+
+var graphSettingKeys = []string{"name", "where", "neighbours"}
+
+func (s GraphSettings) values() map[string]string {
+	neighbours := ""
+	// Off is the default, so it is written by leaving the key out.
+	if s.Neighbours {
+		neighbours = "true"
+	}
+	return map[string]string{"name": optional(s.Name), "where": list(s.Where), "neighbours": neighbours}
+}
+
+// UpdateGraph rewrites a declared graph's settings in place, by the rules
+// Update follows. There is no built-in graph, so nothing is declared by it.
+func UpdateGraph(dir, id string, s GraphSettings) error {
+	if err := allWritable(append([]string{s.Name}, s.Where...)); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "wiki.toml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(raw), "\n")
+	body, ok := findTable(lines, "graph", id)
+	if !ok {
+		return fmt.Errorf("no graph with the id %q is declared", id)
+	}
+	edited, err := applySettings(lines, body, "graph", s.values(), graphSettingKeys)
+	if err != nil {
+		return err
+	}
+	return replace(path, strings.Join(edited, "\n"))
+}
+
 // Update rewrites a board's settings in the bundle's wiki.toml, in place.
 //
 // Every other byte of the file is left alone: comments, other tools' tables, and
@@ -50,14 +105,14 @@ func Update(dir, id string, s Settings) error {
 	}
 
 	lines := strings.Split(string(raw), "\n")
-	span, ok := boardTable(lines, id)
+	body, ok := findTable(lines, "board", id)
 	if !ok {
 		if id != RootID {
 			return fmt.Errorf("no board with the id %q is declared", id)
 		}
 		return declareRoot(path, string(raw), s)
 	}
-	edited, err := applySettings(lines, span, s)
+	edited, err := applySettings(lines, body, "board", s.values(), settingKeys)
 	if err != nil {
 		return err
 	}
@@ -67,15 +122,16 @@ func Update(dir, id string, s Settings) error {
 // span is a half-open range of lines: the body of one table, header excluded.
 type span struct{ from, to int }
 
-// boardTable finds the body of the `[[tool.wikiview.board]]` table declaring id.
+// findTable finds the body of the `[[tool.wikiview.<kind>]]` table declaring id.
 //
 // Line-based rather than parsed, because parsing is the thing that loses the
 // file. A table's body runs from its header to the next one, which is what makes
 // "leave every other byte alone" something this can actually promise.
-func boardTable(lines []string, id string) (span, bool) {
+func findTable(lines []string, kind, id string) (span, bool) {
 	want := quote(id)
+	header := "[[tool.wikiview." + kind + "]]"
 	for i, line := range lines {
-		if strings.TrimSpace(line) != "[[tool.wikiview.board]]" {
+		if strings.TrimSpace(line) != header {
 			continue
 		}
 		body := span{from: i + 1, to: len(lines)}
@@ -136,17 +192,9 @@ func complete(value string) bool {
 }
 
 // applySettings replaces, adds and removes the setting lines inside one table.
-func applySettings(lines []string, body span, s Settings) ([]string, error) {
-	values := map[string]string{
-		"name":     optional(s.Name),
-		"status":   optional(s.Status),
-		"lane":     optional(s.Lane),
-		"blockers": optional(s.Blockers),
-		"where":    list(s.Where),
-		"columns":  list(s.Columns),
-		"lanes":    list(s.Lanes),
-	}
-
+// values holds each setting as written, "" to remove it; order is the order
+// new keys are appended in.
+func applySettings(lines []string, body span, kind string, values map[string]string, order []string) ([]string, error) {
 	kept := make([]string, 0, body.to-body.from)
 	written := map[string]bool{}
 	for _, line := range lines[body.from:body.to] {
@@ -157,7 +205,7 @@ func applySettings(lines []string, body span, s Settings) ([]string, error) {
 		}
 		if !complete(value) {
 			return nil, fmt.Errorf(
-				"the board's %q spans more than one line, so wiki.toml has to be edited by hand", key)
+				"the %s's %q spans more than one line, so wiki.toml has to be edited by hand", kind, key)
 		}
 		next, mine := values[key]
 		if !mine {
@@ -174,8 +222,8 @@ func applySettings(lines []string, body span, s Settings) ([]string, error) {
 	// Anything not already in the table goes after what is, in a settled order so
 	// two boards edited here do not read differently.
 	at := alignment(lines[body.from:body.to])
-	added := make([]string, 0, len(settingKeys))
-	for _, key := range settingKeys {
+	added := make([]string, 0, len(order))
+	for _, key := range order {
 		if !written[key] && values[key] != "" {
 			added = append(added, pad(key, at)+"= "+values[key])
 		}
@@ -239,31 +287,13 @@ func declareRoot(path, raw string, s Settings) error {
 	out.WriteString("\n[[tool.wikiview.board]]\n")
 	fmt.Fprintf(&out, "id   = %s\n", quote(RootID))
 	fmt.Fprintf(&out, "path = %s\n", quote("/"))
+	values := s.values()
 	for _, key := range settingKeys {
-		switch key {
-		case "name":
-			writeIf(&out, key, optional(s.Name))
-		case "status":
-			writeIf(&out, key, optional(s.Status))
-		case "lane":
-			writeIf(&out, key, optional(s.Lane))
-		case "blockers":
-			writeIf(&out, key, optional(s.Blockers))
-		case "where":
-			writeIf(&out, key, list(s.Where))
-		case "columns":
-			writeIf(&out, key, list(s.Columns))
-		case "lanes":
-			writeIf(&out, key, list(s.Lanes))
+		if values[key] != "" {
+			fmt.Fprintf(&out, "%s = %s\n", key, values[key])
 		}
 	}
 	return replace(path, out.String())
-}
-
-func writeIf(out *strings.Builder, key, value string) {
-	if value != "" {
-		fmt.Fprintf(out, "%s = %s\n", key, value)
-	}
 }
 
 // optional renders a string setting, or "" for one that should not be written.
@@ -293,7 +323,11 @@ func list(values []string) string {
 // validSettings refuses what cannot be written as a TOML basic string. Whether a
 // `where` expression parses is the caller's to check, with the engine's parser.
 func validSettings(s Settings) error {
-	for _, v := range append([]string{s.Name, s.Status, s.Lane, s.Blockers}, append(s.Where, append(s.Columns, s.Lanes...)...)...) {
+	return allWritable(append([]string{s.Name, s.Status, s.Lane, s.Blockers}, append(s.Where, append(s.Columns, s.Lanes...)...)...))
+}
+
+func allWritable(values []string) error {
+	for _, v := range values {
 		if !writable(v) {
 			return errors.New("a setting holds a character that cannot be written to wiki.toml")
 		}

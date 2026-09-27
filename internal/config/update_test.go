@@ -258,3 +258,50 @@ func TestComplete(t *testing.T) {
 		}
 	}
 }
+
+// A graph is edited by the writer a board is, so the same promises hold: only
+// its own keys change, alignment is kept, and a board sharing its id is not the
+// table it finds.
+func TestUpdateGraphEditsOnlyItsOwnTable(t *testing.T) {
+	dir := declared(t, twoBoards+`
+[[tool.wikiview.graph]]
+id    = "backlog"
+path  = "/backlog"
+where = ["type=task"]
+`)
+	if err := UpdateGraph(dir, "backlog", GraphSettings{Name: "Links", Neighbours: true}); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, dir)
+	boards, graph, _ := strings.Cut(got, "[[tool.wikiview.graph]]")
+	if boards != twoBoards+"\n" {
+		t.Errorf("the boards were touched:\n%s", boards)
+	}
+	for _, want := range []string{`name  = "Links"`, "neighbours = true"} {
+		if !strings.Contains(graph, want) {
+			t.Errorf("graph table missing %q:\n%s", want, graph)
+		}
+	}
+	// Cleared, where was removed rather than written empty.
+	if strings.Contains(graph, "where") {
+		t.Errorf("a cleared filter survived:\n%s", graph)
+	}
+}
+
+func TestUpdateGraphRefusesWhatItCannotEdit(t *testing.T) {
+	dir := declared(t, "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"g\"\npath = \"/backlog\"\nwhere = [\n  \"type=task\",\n]\n")
+	before := read(t, dir)
+	err := UpdateGraph(dir, "g", GraphSettings{})
+	if err == nil || !strings.Contains(err.Error(), "graph's") {
+		t.Errorf("err = %v, want the graph's multi-line value named", err)
+	}
+	if err := UpdateGraph(dir, "nobody", GraphSettings{}); err == nil {
+		t.Error("updated a graph nobody declared")
+	}
+	if err := UpdateGraph(dir, "g", GraphSettings{Name: "a\nb"}); err == nil {
+		t.Error("accepted a name that would break the file")
+	}
+	if read(t, dir) != before {
+		t.Error("a refused update wrote anyway")
+	}
+}

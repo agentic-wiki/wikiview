@@ -42,7 +42,7 @@ The shell is settled: an icon rail, a collapsible panel, ellipsizing breadcrumbs
 **4 — Boards** *(done)*
 Columns, lanes, drag on pointer events, the card sheet. A view over one folder of the same index, reached from the reader and returning to it. A board is addressed by an id — `/kanban/<id>/<entry path>` — so the whole address is unambiguous and a card can live in it. `root` is the one board every bundle has; the rest are declared in `[[tool.wikiview.board]]`, from the UI or by hand.
 
-Boards are the only thing that writes `wiki.toml`, which it does line by line and never by reserializing: the file is the user's, `wiki` reads it too, and a parse-and-write loses the comments and formatting that make it theirs.
+Boards and graphs are the only things that write `wiki.toml`, which they do line by line and never by reserializing: the file is the user's, `wiki` reads it too, and a parse-and-write loses the comments and formatting that make it theirs.
 
 **5 — Actions**
 Refresh, pull, sync. The first things that reach outside the machine, so each previews before acting, and a failed pull restores the previous state and offers the work as a named branch rather than stranding anyone in a conflicted tree.
@@ -50,8 +50,8 @@ Refresh, pull, sync. The first things that reach outside the machine, so each pr
 **6 — Export**
 A folder and everything under it as one document, in reading order, printed by the browser. Rendering stays in the client so the export cannot disagree with the screen about what an entry looks like.
 
-**7 — Graphs** *(current)*
-A folder's entries as nodes and the links between them as edges, at `/graph/<id>`. Declared like a board and never built in, filtered by `path` and an optional `where`, with body and frontmatter links both counting as edges. The view first, declaring from the UI second.
+**7 — Graphs** *(done)*
+A folder's entries as nodes and the links between them as edges, at `/graph/<id>`. Declared like a board and never built in, filtered by `path` and an optional `where`, with body and frontmatter links both counting as edges. Declared and edited from the UI through the writer boards use, which now takes the kind of table it is editing.
 
 ## Upstream
 

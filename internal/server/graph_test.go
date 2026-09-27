@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentic-wiki/wikiview/internal/config"
 	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
@@ -106,6 +107,12 @@ func TestAGraphIsTheFilteredEntriesAndTheLinksBetweenThem(t *testing.T) {
 	assertSame(t, "nodes", nodePaths(g), []string{
 		"/people/ana.md", "/people/bo.md", "/people/cy.md", "/people/dee.md",
 	})
+	// The keys under the folder, before the filter: `pet` is offerable because
+	// choosing a filter is choosing from what is there, not from what passes.
+	i := slices.IndexFunc(g.Fields, func(f Field) bool { return f.Key == "type" })
+	if i < 0 || !slices.Equal(g.Fields[i].Values, []string{"person", "pet"}) {
+		t.Errorf("fields=%+v, want type offering person and pet", g.Fields)
+	}
 	assertSame(t, "edges", edgeStrings(g), []string{
 		// Three links, two of them from Bo, the second with an anchor: one edge.
 		"/people/ana.md <-> /people/bo.md via body x3",
@@ -227,5 +234,137 @@ func TestAGraphOverNothingHasEmptyLists(t *testing.T) {
 	g := fetchGraph(t, newGraphServer(t, graphTOML(`where = ["type=robot"]`+"\n")), "people")
 	if g.Nodes == nil || g.Edges == nil || len(g.Nodes) != 0 {
 		t.Errorf("nodes=%v edges=%v, want two empty lists", g.Nodes, g.Edges)
+	}
+}
+
+// Declaring a graph writes the table and nothing else, and the graph it wrote is
+// one the server then serves — the only proof the file parses as intended.
+func TestDeclareGraphAppendsToWikiToml(t *testing.T) {
+	srv := newGraphServer(t, "spec = \"0.1\"\n# the user's comment\n")
+	at := versionOf(t, srv)
+
+	code, after := post(t, srv, "/api/graph", declareRequest{ID: "people", Path: "/people/", Name: "People I know"})
+	if code != http.StatusOK {
+		t.Fatalf("POST = %d, want 200", code)
+	}
+	if after == at {
+		t.Errorf("version did not move: %d", after)
+	}
+	got := raw(t, srv, "wiki.toml")
+	for _, want := range []string{"# the user's comment", "[[tool.wikiview.graph]]", `id   = "people"`, `path = "/people"`, `name = "People I know"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wiki.toml is missing %q: %q", want, got)
+		}
+	}
+	// No filter written: a graph has no default one to spell out.
+	if strings.Contains(got, "where") {
+		t.Errorf("wrote a filter nobody chose: %q", got)
+	}
+	if g := fetchGraph(t, srv, "people"); g.Name != "People I know" || len(g.Nodes) != 5 {
+		t.Errorf("graph = %s, %v", g.Name, nodePaths(g))
+	}
+}
+
+func TestDeclareGraphRefusesWhatCannotBeAddressed(t *testing.T) {
+	cases := []struct {
+		why string
+		req declareRequest
+	}{
+		{"an id with a slash", declareRequest{ID: "a/b", Path: "/people"}},
+		{"an empty id", declareRequest{ID: "", Path: "/people"}},
+		{"an id another graph has", declareRequest{ID: "people", Path: "/orgs"}},
+		{"a folder with nothing in it", declareRequest{ID: "none", Path: "/nowhere"}},
+		{"a name that would break the file", declareRequest{ID: "ok", Path: "/people", Name: "a\nb"}},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			srv := newGraphServer(t, graphTOML(""))
+			before := raw(t, srv, "wiki.toml")
+			if code, _ := post(t, srv, "/api/graph", c.req); code != http.StatusUnprocessableEntity {
+				t.Errorf("POST = %d, want 422", code)
+			}
+			if raw(t, srv, "wiki.toml") != before {
+				t.Error("a refused declaration wrote to wiki.toml anyway")
+			}
+		})
+	}
+}
+
+// A board's id is not a graph's: declaring a graph called what a board is
+// called is allowed, and leaves the board what it was.
+func TestAGraphMayTakeABoardsID(t *testing.T) {
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"people\"\npath = \"/people\"\nwhere = []\n")
+	if code, _ := post(t, srv, "/api/graph", declareRequest{ID: "people", Path: "/orgs"}); code != http.StatusOK {
+		t.Fatalf("POST = %d, want 200", code)
+	}
+	if g := fetchGraph(t, srv, "people"); g.Path != "/orgs" {
+		t.Errorf("graph path = %s", g.Path)
+	}
+	if b := board(t, srv, "/api/board/people"); b.Path != "/people" {
+		t.Errorf("board path = %s: declaring the graph disturbed the board", b.Path)
+	}
+}
+
+func TestGraphSettingsAreWritten(t *testing.T) {
+	srv := newGraphServer(t, graphTOML("# kept\n"))
+
+	code, _ := put(t, srv, "/api/graph/people", config.GraphSettings{
+		Name: "Who", Where: []string{"type=person"}, Neighbours: true,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", code)
+	}
+	got := raw(t, srv, "wiki.toml")
+	for _, want := range []string{"# kept", `name = "Who"`, `where = ["type=person"]`, "neighbours = true"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wiki.toml is missing %q: %q", want, got)
+		}
+	}
+	g := fetchGraph(t, srv, "people")
+	if g.Name != "Who" || !g.Neighbours || len(g.Where) != 1 {
+		t.Errorf("graph = %+v", g)
+	}
+
+	// Cleared is removed: no filter is no key, and neighbours off is no key.
+	if code, _ := put(t, srv, "/api/graph/people", config.GraphSettings{}); code != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", code)
+	}
+	got = raw(t, srv, "wiki.toml")
+	for _, gone := range []string{"name", "where", "neighbours"} {
+		if strings.Contains(got, gone+" ") {
+			t.Errorf("%s survived being cleared: %q", gone, got)
+		}
+	}
+	if !strings.Contains(got, `id = "people"`) || !strings.Contains(got, `path = "/people"`) {
+		t.Errorf("clearing the settings touched what the graph is: %q", got)
+	}
+}
+
+func TestGraphSettingsRefuseWhatCannotBeMeant(t *testing.T) {
+	srv := newGraphServer(t, graphTOML(""))
+	before := raw(t, srv, "wiki.toml")
+	if code, _ := put(t, srv, "/api/graph/people", config.GraphSettings{Where: []string{"no filter here"}}); code != http.StatusUnprocessableEntity {
+		t.Errorf("a bad filter: PUT = %d, want 422", code)
+	}
+	if code, _ := put(t, srv, "/api/graph/nobody", config.GraphSettings{}); code != http.StatusNotFound {
+		t.Errorf("an undeclared graph: PUT = %d, want 404", code)
+	}
+	if raw(t, srv, "wiki.toml") != before {
+		t.Error("a refused update wrote to wiki.toml anyway")
+	}
+}
+
+// Updating one table of a kind must not find the other kind's table of the same
+// id: a board and a graph called people are two different lines to edit.
+func TestGraphSettingsLeaveTheSameIDsBoardAlone(t *testing.T) {
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"people\"\npath = \"/people\"\n\n"+
+		"[[tool.wikiview.graph]]\nid = \"people\"\npath = \"/people\"\n")
+	if code, _ := put(t, srv, "/api/graph/people", config.GraphSettings{Name: "Graph"}); code != http.StatusOK {
+		t.Fatalf("PUT = %d", code)
+	}
+	got := raw(t, srv, "wiki.toml")
+	board, graph, _ := strings.Cut(got, "[[tool.wikiview.graph]]")
+	if strings.Contains(board, "name") || !strings.Contains(graph, `name = "Graph"`) {
+		t.Errorf("the edit landed in the wrong table: %q", got)
 	}
 }

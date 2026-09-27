@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -29,7 +30,27 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 // all have defaults, and writing them out would be a config file full of
 // settings nobody chose.
 func Declare(dir string, existing Config, b Board) error {
-	if err := validate(existing, b); err != nil {
+	taken := make([]string, 0, len(existing.Board))
+	for _, other := range existing.Board {
+		taken = append(taken, other.ID)
+	}
+	return declare(dir, "board", taken, b.ID, b.Path, b.Name)
+}
+
+// DeclareGraph appends a graph, by the rules a board is declared by. Ids are
+// checked against the other graphs only: a board's are another namespace.
+func DeclareGraph(dir string, existing Config, g Graph) error {
+	taken := make([]string, 0, len(existing.Graph))
+	for _, other := range existing.Graph {
+		taken = append(taken, other.ID)
+	}
+	return declare(dir, "graph", taken, g.ID, g.Path, g.Name)
+}
+
+// declare appends one `[[tool.wikiview.<kind>]]` table naming a view over a
+// folder. Every view is declared the same way, so there is one writer for it.
+func declare(dir, kind string, taken []string, id, folder, name string) error {
+	if err := validate(kind, taken, id, folder, name); err != nil {
 		return err
 	}
 
@@ -44,33 +65,31 @@ func Declare(dir string, existing Config, b Board) error {
 	if len(raw) > 0 && !strings.HasSuffix(string(raw), "\n") {
 		out.WriteString("\n")
 	}
-	out.WriteString("\n[[tool.wikiview.board]]\n")
-	fmt.Fprintf(&out, "id   = %s\n", quote(b.ID))
-	fmt.Fprintf(&out, "path = %s\n", quote(b.Path))
-	if b.Name != "" {
-		fmt.Fprintf(&out, "name = %s\n", quote(b.Name))
+	fmt.Fprintf(&out, "\n[[tool.wikiview.%s]]\n", kind)
+	fmt.Fprintf(&out, "id   = %s\n", quote(id))
+	fmt.Fprintf(&out, "path = %s\n", quote(folder))
+	if name != "" {
+		fmt.Fprintf(&out, "name = %s\n", quote(name))
 	}
 
 	return replace(path, out.String())
 }
 
-// validate reports what would make the board unaddressable or the file wrong.
-func validate(existing Config, b Board) error {
-	if !idPattern.MatchString(b.ID) {
+// validate reports what would make the view unaddressable or the file wrong.
+func validate(kind string, taken []string, id, path, name string) error {
+	if !idPattern.MatchString(id) {
 		return errors.New("an id is a word: lowercase letters, digits, '-' and '_', starting with a letter or digit")
 	}
-	for _, other := range existing.Board {
-		if other.ID == b.ID {
-			return fmt.Errorf("a board with the id %q is already declared", b.ID)
-		}
+	if slices.Contains(taken, id) {
+		return fmt.Errorf("a %s with the id %q is already declared", kind, id)
 	}
-	if !strings.HasPrefix(b.Path, "/") {
-		return errors.New("a board path starts at the bundle root, like /backlog")
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("a %s path starts at the bundle root, like /backlog", kind)
 	}
-	if !writable(b.Path) {
+	if !writable(path) {
 		return errors.New("that path cannot be written to wiki.toml")
 	}
-	if !writable(b.Name) {
+	if !writable(name) {
 		return errors.New("that name cannot be written to wiki.toml")
 	}
 	return nil

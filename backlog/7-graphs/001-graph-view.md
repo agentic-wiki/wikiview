@@ -81,4 +81,4 @@ Its own icon, listing declared graphs the way Boards lists boards. With none dec
 
 **A graph with no `path` is not served.** It is reported at startup and missing from the list, because an empty prefix is how the index spells the whole bundle, so serving it would quietly graph everything.
 
-**Not here:** declaring and editing from the UI ([002](./002-declaring-graphs.md)), colouring nodes, and a whole-bundle graph built in.
+**Not here:** declaring and editing from the UI, which is [002](./002-declaring-graphs.md); colouring nodes; and a whole-bundle graph built in.

@@ -3,18 +3,30 @@ import { useNavigate } from "react-router";
 import { api, type TreeNode } from "@/api";
 
 /**
- * Declaring a board: pick a folder, name it, and it is written to the bundle's
+ * What differs between declaring one kind of view and another: where it lives,
+ * what the button says, and which request writes it. Everything else — the
+ * folder, the name, the suggested id — is the same form.
+ */
+const KINDS = {
+  board: { prefix: "/kanban", noun: "board", idLabel: "Board id", declare: api.declareBoard },
+  graph: { prefix: "/graph", noun: "graph", idLabel: "Graph id", declare: api.declareGraph },
+} as const;
+
+/**
+ * Declaring a view: pick a folder, name it, and it is written to the bundle's
  * `wiki.toml`.
  *
- * A config write rather than a navigation, because a board needs an address and
+ * A config write rather than a navigation, because a view needs an address and
  * an address needs an id, which is not something a folder has. That makes this a
  * real edit to a file the user owns, so it is something asked for by filling
  * this in rather than implied by having visited a folder.
  */
-export function NewBoard({
+export function NewView({
+  kind,
   tree,
   rootLabel,
 }: {
+  kind: keyof typeof KINDS;
   tree: TreeNode;
   /** What to call the bundle itself, since its folder has no name of its own. */
   rootLabel: string;
@@ -28,6 +40,7 @@ export function NewBoard({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const { prefix, noun, idLabel, declare } = KINDS[kind];
 
   // Choosing a folder refills both, because at that moment neither has been
   // typed in on purpose.
@@ -43,11 +56,11 @@ export function NewBoard({
     setBusy(true);
     setError(null);
     try {
-      // Straight to the board. The list catches up on its own: the write moves
+      // Straight to the view. The list catches up on its own: the write moves
       // the bundle's version, and the stream is what tells every client to
       // refetch — the same path every other write here takes.
-      await api.declareBoard({ id, path, name });
-      navigate("/kanban/" + encodeURIComponent(id));
+      await declare({ id, path, name });
+      navigate(prefix + "/" + encodeURIComponent(id));
     } catch (err) {
       // The server owns what a valid id is and which ones are taken, so its
       // message is the one worth showing rather than a guess made here.
@@ -60,7 +73,7 @@ export function NewBoard({
   if (options.length === 0) {
     return (
       <p className="text-muted text-sm">
-        No folder here holds entries yet, so there is nothing to board.
+        No folder here holds entries yet, so there is nothing to make a {noun} of.
       </p>
     );
   }
@@ -94,11 +107,11 @@ export function NewBoard({
 
       <Field label="Address">
         <div className="flex items-center gap-1">
-          <span className="text-muted shrink-0 font-mono text-xs">/kanban/</span>
+          <span className="text-muted shrink-0 font-mono text-xs">{prefix}/</span>
           <input
             value={id}
             onChange={(e) => setId(e.target.value)}
-            aria-label="Board id"
+            aria-label={idLabel}
             className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
           />
         </div>
@@ -111,10 +124,10 @@ export function NewBoard({
         disabled={busy || !id}
         className="bg-accent text-accent-fg w-full rounded-md px-2 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
       >
-        {busy ? "Writing wiki.toml…" : "Make this a board"}
+        {busy ? "Writing wiki.toml…" : `Make this a ${noun}`}
       </button>
       <p className="text-muted text-xs">
-        Appends a <code>[[tool.wikiview.board]]</code> table to the bundle's{" "}
+        Appends a <code>[[tool.wikiview.{noun}]]</code> table to the bundle's{" "}
         <code>wiki.toml</code>.
       </p>
     </form>
@@ -147,8 +160,8 @@ function slug(name: string): string {
 /**
  * The folders worth offering: the ones with entries anywhere beneath them.
  *
- * A board covers a folder and everything under it, so a folder whose entries all
- * live in its children is still a board. One with nothing under it at all is
+ * A view covers a folder and everything under it, so a folder whose entries all
+ * live in its children is still a candidate. One with nothing under it at all is
  * not, and the server refuses it for that reason — leaving it out here is the
  * same rule said earlier, where it costs nobody a round trip.
  */

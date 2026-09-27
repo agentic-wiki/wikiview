@@ -52,6 +52,8 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("PUT /api/checkbox/{path...}", srv.handleCheckbox)
 	srv.mux.HandleFunc("PUT /api/card/{id}/{path...}", srv.handleCard)
 	srv.mux.HandleFunc("POST /api/board", srv.handleDeclareBoard)
+	srv.mux.HandleFunc("POST /api/graph", srv.handleDeclareGraph)
+	srv.mux.HandleFunc("PUT /api/graph/{id}", srv.handleGraphSettings)
 	srv.mux.HandleFunc("POST /api/refresh", srv.handleRefresh)
 	// Git, which is optional: a bundle is a folder and need not be a repository.
 	// The status says so, and the actions are absent rather than broken.

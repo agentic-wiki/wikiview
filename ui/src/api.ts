@@ -292,6 +292,17 @@ export interface Graph {
   neighbours: boolean;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** The frontmatter keys under the graph's folder, before its filter, so
+   *  choosing one is picking from what is there. */
+  fields: Field[];
+}
+
+/** What a graph's settings form owns. Not `id` or `path`, for the reason a
+ *  board's are not. Sent whole, so an empty `where` clears the filter. */
+export interface GraphSettings {
+  name: string;
+  where: string[];
+  neighbours: boolean;
 }
 
 export class ApiError extends Error {
@@ -392,6 +403,12 @@ export const api = {
    */
   boardSettings: (id: string, settings: BoardSettings) =>
     put<{ version: number }>("/api/board/" + encodeURIComponent(id), settings),
+
+  /** Declares a graph, and changes one, by the rules boards follow. */
+  declareGraph: (graph: { id: string; path: string; name: string }) =>
+    post<{ version: number }>("/api/graph", graph),
+  graphSettings: (id: string, settings: GraphSettings) =>
+    put<{ version: number }>("/api/graph/" + encodeURIComponent(id), settings),
 
   // Git. Every one of these is asked for: nothing fetches on load, nothing
   // pushes on a timer, and the bundle belongs to whoever else is editing it.

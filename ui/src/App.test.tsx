@@ -41,6 +41,12 @@ const graphFixture: Graph = {
   name: "Who links whom",
   where: ["type=note"],
   neighbours: true,
+  // What the folder holds, before the filter: `task` is offerable though no node
+  // is one.
+  fields: [
+    { key: "status", values: ["todo"] },
+    { key: "type", values: ["note", "task"] },
+  ],
   nodes: [
     { path: "/index.md", label: "Index", neighbour: true },
     { path: "/notes/a.md", label: "A", title: "A Note", type: "note" },
@@ -3259,18 +3265,6 @@ async function mountWithGraphs(graphs: BundleInfo["graphs"], served?: Graph) {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 }
 
-// No graph is built in, so with none declared the Graphs icon has nowhere to go
-// and the panel says how to declare one rather than doing nothing.
-test("with no graphs declared the panel shows how to declare one", async () => {
-  await mountWithGraphs(undefined);
-  await act(async () => openSection("Graphs"));
-  await act(async () => new Promise((r) => setTimeout(r, 0)));
-
-  expect(here).toBe("/wiki/index.md");
-  const panel = document.querySelector("aside")!;
-  expect(panel.textContent).toContain("Your first graph");
-  expect(panel.textContent).toContain("[[tool.wikiview.graph]]");
-});
 
 // With graphs declared the icon goes to one, the one you were last on.
 test("the Graphs icon returns to the graph you were last on", async () => {
@@ -3321,4 +3315,127 @@ test("the tab names the graph, or the entry open over it", async () => {
   expect(document.title).toBe("Who links whom · My kb");
   await act(async () => navigateTo("/graph/notes/notes/a.md"));
   expect(document.title).toBe("A Note · My kb");
+});
+
+// No graph is built in, so with none declared the Graphs icon has nowhere to go:
+// the panel is where the first one is made, and it is the form, not a note about
+// what to write by hand.
+test("with no graphs declared the panel is the form that makes one", async () => {
+  await mountWithGraphs(undefined);
+  await act(async () => openSection("Graphs"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(here).toBe("/wiki/index.md");
+  const panel = document.querySelector("aside")!;
+  expect(panel.textContent).toContain("Your first graph");
+  expect(panel.textContent).not.toContain("Your first board");
+  // Addressed under its own prefix, with an id suggested from the name.
+  expect(panel.textContent).toContain("/graph/");
+  expect(panel.querySelector<HTMLInputElement>("input[aria-label='Graph id']")?.value).toBe("my-kb");
+
+  const writes = captureWrites();
+  await act(async () => submit(panel));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(writes).toEqual([{ url: "/api/graph", body: { id: "my-kb", path: "/", name: "My kb" } }]);
+  expect(here).toBe("/graph/my-kb");
+});
+
+test("a refused graph keeps you on the form and says why", async () => {
+  await mountWithGraphs(undefined);
+  await act(async () => openSection("Graphs"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  captureWrites(422);
+  const panel = document.querySelector("aside")!;
+  await act(async () => submit(panel));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(panel.textContent).toContain(refusal);
+  expect(here).toBe("/wiki/index.md");
+});
+
+// With graphs declared, the list is what you came for and the form waits behind
+// a disclosure.
+test("the graphs list can add another", async () => {
+  await mountWithGraphs([
+    { path: "/notes", id: "notes", name: "Who links whom" },
+    { path: "/", id: "all", name: "Everything" },
+  ]);
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const panel = document.querySelector("aside")!;
+  expect(Boolean(panel.querySelector("form"))).toBe(false);
+
+  const add = [...panel.querySelectorAll("button")].find((b) => b.textContent === "+ New graph")!;
+  await act(async () => add.click());
+  expect(Boolean(panel.querySelector("input[aria-label='Graph id']"))).toBe(true);
+});
+
+function openGraphSettings() {
+  const button = [...document.querySelectorAll("main header button")].find(
+    (b) => b.textContent === "Settings",
+  ) as HTMLElement;
+  button.click();
+}
+
+const graphDialog = () => document.querySelector<HTMLElement>("[aria-label='Graph settings']");
+
+// Seeded from the graph, so saving without touching anything writes back what
+// it already is.
+test("graph settings open seeded from the graph and save it whole", async () => {
+  await openGraph();
+  await act(async () => openGraphSettings());
+  const dialog = graphDialog()!;
+
+  expect(dialog.querySelector<HTMLInputElement>("input:not([type])")?.value).toBe("Who links whom");
+  expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Filter key']")?.value).toBe("type");
+  expect(dialog.querySelector<HTMLInputElement>("[aria-label='Filter value']")?.value).toBe("note");
+  const neighbours = dialog.querySelector<HTMLInputElement>("input[type='checkbox']")!;
+  expect(neighbours.checked).toBe(true);
+  // A node, not a card: the words are the view's.
+  expect(dialog.textContent).toContain("A node is an entry matching");
+
+  // Turn neighbours off and drop the filter: sent whole, so both clearings say
+  // so rather than being mistaken for "unchanged".
+  await act(async () => neighbours.click());
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 1']")!.click());
+  const writes = captureWrites();
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(writes).toEqual([
+    { url: "/api/graph/notes", body: { name: "Who links whom", where: [], neighbours: false } },
+  ]);
+  expect(graphDialog()).toBeNull();
+});
+
+// The filter offers what the folder holds, before the graph's own filter: that
+// is how `task` can be chosen though no node is one.
+test("a graph's filter offers the folder's keys", async () => {
+  await openGraph();
+  await act(async () => openGraphSettings());
+  const dialog = graphDialog()!;
+  const keys = [...dialog.querySelectorAll("[aria-label='Filter key'] option")].map((o) => o.textContent);
+  expect(keys).toEqual(["status", "type"]);
+  const values = [...dialog.querySelectorAll("datalist option")].map((o) => o.getAttribute("value"));
+  expect(values).toEqual(["note", "task"]);
+});
+
+test("a refused graph save keeps the form open and says why", async () => {
+  await openGraph();
+  await act(async () => openGraphSettings());
+  captureWrites(422);
+  const dialog = graphDialog()!;
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(dialog.textContent).toContain(refusal);
+  expect(graphDialog()).not.toBeNull();
+});
+
+test("graph settings close on Escape without writing", async () => {
+  await openGraph();
+  await act(async () => openGraphSettings());
+  const writes = captureWrites();
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(graphDialog()).toBeNull();
+  expect(writes).toEqual([]);
 });

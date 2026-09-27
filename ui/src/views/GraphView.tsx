@@ -13,6 +13,7 @@ import { api, type Graph } from "@/api";
 import { useBundleState } from "@/state";
 import type { Queue } from "@/queue";
 import { CardSheet, sheetHref } from "@/views/CardSheet";
+import { GraphSettings } from "@/views/GraphSettings";
 import { Loading } from "@/views/Loading";
 import { NotFound } from "@/views/NotFound";
 import { neighbourhood, place, radius, SOFT_LIMIT, type Joined, type Layout, type Placed } from "@/views/graph";
@@ -47,6 +48,7 @@ export function GraphView({
   const [graph, setGraph] = useState<Graph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [arrows, setArrows] = useBundleState(bundleId, "graph-arrows", false);
+  const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -96,6 +98,14 @@ export function GraphView({
           <input type="checkbox" checked={arrows} onChange={(e) => setArrows(e.target.checked)} />
           Direction
         </label>
+        <button
+          type="button"
+          data-print="hide"
+          onClick={() => setEditing(true)}
+          className="text-muted hover:text-fg hover:bg-fg/5 shrink-0 rounded-md px-2 py-1 text-xs"
+        >
+          Settings
+        </button>
       </header>
 
       {graph.nodes.length > SOFT_LIMIT && (
@@ -119,6 +129,8 @@ export function GraphView({
           onOpen={(path) => navigate(sheetHref("/graph", id, path))}
         />
       )}
+
+      {editing && <GraphSettings graph={graph} onClose={() => setEditing(false)} />}
 
       {card && (
         <CardSheet

@@ -10,6 +10,7 @@ function graph(nodes: string[], edges: [string, string, boolean?][]): Graph {
     neighbours: false,
     nodes: nodes.map((path) => ({ path, label: path })),
     edges: edges.map(([from, to, mutual]): GraphEdge => ({ from, to, mutual, via: ["body"], count: 1 })),
+    fields: [],
   };
 }
 

@@ -24,6 +24,10 @@ type GraphView struct {
 	Neighbours bool     `json:"neighbours"`
 	Nodes      []Node   `json:"nodes"`
 	Edges      []Edge   `json:"edges"`
+	// Fields are the frontmatter keys under the graph's folder, taken before its
+	// filter, for the reason a board sends them: choosing a filter is picking
+	// from what is there.
+	Fields []Field `json:"fields"`
 }
 
 type Node struct {
@@ -90,6 +94,8 @@ func buildGraph(v store.View, g config.Graph) GraphView {
 	if prefix == "/" {
 		prefix = ""
 	}
+	out.Fields = fieldsIn(v.Index.Filter(prefix, nil))
+
 	filtered := map[string]bool{}
 	for _, e := range v.Index.Filter(prefix, g.Filters) {
 		filtered[e.Path] = true

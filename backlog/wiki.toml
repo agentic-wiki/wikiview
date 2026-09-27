@@ -43,3 +43,4 @@ id    = "tasks"
 path  = "/"
 name  = "Tasks"
 where = ["type=task"]
+neighbours = true
