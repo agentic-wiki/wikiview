@@ -16,7 +16,18 @@ import { CardSheet, sheetHref } from "@/views/CardSheet";
 import { GraphSettings } from "@/views/GraphSettings";
 import { Loading } from "@/views/Loading";
 import { NotFound } from "@/views/NotFound";
-import { neighbourhood, place, radius, SOFT_LIMIT, type Joined, type Layout, type Placed } from "@/views/graph";
+import {
+  neighbourhood,
+  place,
+  radius,
+  shorten,
+  SOFT_LIMIT,
+  TEXT_SIZES,
+  type Joined,
+  type Layout,
+  type Placed,
+  type TextSize,
+} from "@/views/graph";
 
 /**
  * A slice of the bundle as entries and the links between them.
@@ -48,6 +59,9 @@ export function GraphView({
   const [graph, setGraph] = useState<Graph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [arrows, setArrows] = useBundleState(bundleId, "graph-arrows", false);
+  const [storedSize, setTextSize] = useBundleState<TextSize>(bundleId, "graph-text", "m");
+  // A stored value from some other version of this control is not a size.
+  const textSize: TextSize = storedSize in TEXT_SIZES ? storedSize : "m";
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
 
@@ -94,10 +108,46 @@ export function GraphView({
         <span className="text-muted ml-auto shrink-0 text-xs">
           {count(graph.nodes.length, "entry", "entries")} · {count(graph.edges.length, "link", "links")}
         </span>
-        <label data-print="hide" className="text-muted flex shrink-0 items-center gap-1.5 text-xs">
-          <input type="checkbox" checked={arrows} onChange={(e) => setArrows(e.target.checked)} />
+        {/* A control, not prose: the whole label is the target, and dragging
+            across it selects nothing. */}
+        <label
+          data-print="hide"
+          className="text-muted hover:text-fg flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-xs"
+        >
+          <input
+            type="checkbox"
+            checked={arrows}
+            onChange={(e) => setArrows(e.target.checked)}
+            className="cursor-pointer"
+          />
           Direction
         </label>
+        <div
+          role="group"
+          aria-label="Text size"
+          data-print="hide"
+          className="border-border flex shrink-0 select-none overflow-hidden rounded-md border"
+        >
+          {(Object.keys(TEXT_SIZES) as TextSize[]).map((size) => (
+            <button
+              key={size}
+              type="button"
+              title={TEXT_SIZES[size].label + " text"}
+              aria-label={TEXT_SIZES[size].label + " text"}
+              aria-pressed={textSize === size}
+              onClick={() => setTextSize(size)}
+              // The letter drawn at the size it stands for, so the three read as
+              // a scale without a word each.
+              style={{ fontSize: TEXT_SIZES[size].font - 1 }}
+              className={[
+                "grid h-6 w-6 cursor-pointer place-items-center leading-none",
+                textSize === size ? "bg-accent/12 text-accent" : "text-muted hover:text-fg hover:bg-fg/5",
+              ].join(" ")}
+            >
+              A
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           data-print="hide"
@@ -126,6 +176,7 @@ export function GraphView({
         <Canvas
           graph={graph}
           arrows={arrows}
+          textSize={textSize}
           onOpen={(path) => navigate(sheetHref("/graph", id, path))}
         />
       )}
@@ -164,17 +215,19 @@ const LABELS_FROM = 0.6;
 function Canvas({
   graph,
   arrows,
+  textSize,
   onOpen,
 }: {
   graph: Graph;
   arrows: boolean;
+  textSize: TextSize;
   onOpen: (path: string) => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const layout = useRef<Layout | null>(null);
   const sim = useRef<Simulation<Placed, Joined> | null>(null);
   const [, redraw] = useState(0);
-  const [size, setSize] = useState({ w: 800, h: 600 });
+  const [box, setBox] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [hovered, setHovered] = useState<string | null>(null);
 
@@ -223,7 +276,7 @@ function Canvas({
   useEffect(() => {
     const measure = () => {
       const r = svg.current?.getBoundingClientRect();
-      if (r && r.width > 0 && r.height > 0) setSize({ w: r.width, h: r.height });
+      if (r && r.width > 0 && r.height > 0) setBox({ w: r.width, h: r.height });
     };
     measure();
     window.addEventListener("resize", measure);
@@ -306,6 +359,12 @@ function Canvas({
 
   const lit = hovered ? neighbourhood(current.links, hovered) : null;
   const labels = view.k >= LABELS_FROM;
+  const { font, dot } = TEXT_SIZES[textSize];
+  // Zoom moves nodes apart and never makes anything bigger: positions are
+  // scaled here, and every size is in screen pixels. So zooming in makes room
+  // between titles, which is what zooming in to read is for.
+  const at = (n: Placed) => ({ x: (n.x ?? 0) * view.k, y: (n.y ?? 0) * view.k });
+  const dotSize = (n: Placed) => radius(n.degree) * dot;
 
   return (
     <svg
@@ -335,12 +394,12 @@ function Canvas({
           <path d="M0 0L10 5L0 10z" className="fill-muted" />
         </marker>
       </defs>
-      <g transform={`translate(${size.w / 2 + view.x} ${size.h / 2 + view.y}) scale(${view.k})`}>
+      <g transform={`translate(${box.w / 2 + view.x} ${box.h / 2 + view.y})`}>
         {current.links.map((l) => {
           // The edges of the node you are pointing at, not every edge among its
           // neighbours: those say how they know each other, which you did not ask.
           const on = hovered !== null && (l.source.path === hovered || l.target.path === hovered);
-          const [x1, y1, x2, y2] = ends(l, arrows);
+          const [x1, y1, x2, y2] = ends(at(l.source), at(l.target), dotSize(l.source), dotSize(l.target), arrows);
           return (
             <g key={l.edge.from + "\n" + l.edge.to} opacity={lit && !on ? 0.15 : 1}>
               <line
@@ -361,9 +420,10 @@ function Canvas({
           );
         })}
         {current.nodes.map((n) => {
-          const r = radius(n.degree);
+          const r = dotSize(n);
           const on = lit?.has(n.path) ?? false;
           const name = n.node.title || n.node.label;
+          const p = at(n);
           return (
             <g
               key={n.path}
@@ -372,7 +432,7 @@ function Canvas({
               aria-label={name}
               data-path={n.path}
               data-neighbour={n.node.neighbour || undefined}
-              transform={`translate(${n.x ?? 0} ${n.y ?? 0})`}
+              transform={`translate(${p.x} ${p.y})`}
               opacity={lit && !on ? 0.25 : n.node.neighbour ? 0.6 : 1}
               className="cursor-pointer outline-none"
               onPointerDown={(e) => {
@@ -410,9 +470,16 @@ function Canvas({
                 strokeWidth={1.5}
                 strokeDasharray={n.node.neighbour ? "2 2" : undefined}
               />
+              {/* Shortened until it is the one you are pointing at, which is
+                  when the whole title is worth its width. */}
               {(labels || on) && (
-                <text y={r + 11} textAnchor="middle" fontSize={10} className={on ? "fill-fg" : "fill-muted"}>
-                  {name}
+                <text
+                  y={r + font + 1}
+                  textAnchor="middle"
+                  fontSize={font}
+                  className={on ? "fill-fg" : "fill-muted"}
+                >
+                  {n.path === hovered ? name : shorten(name)}
                 </text>
               )}
             </g>
@@ -427,18 +494,18 @@ function Canvas({
  * Where an edge's line starts and ends: at the edge of each circle rather than
  * its centre, so an arrowhead lands on the rim and is not hidden under the node.
  */
-function ends(l: Joined, arrows: boolean): [number, number, number, number] {
-  const sx = l.source.x ?? 0;
-  const sy = l.source.y ?? 0;
-  const tx = l.target.x ?? 0;
-  const ty = l.target.y ?? 0;
-  const d = Math.hypot(tx - sx, ty - sy) || 1;
-  const ux = (tx - sx) / d;
-  const uy = (ty - sy) / d;
+function ends(
+  s: { x: number; y: number },
+  t: { x: number; y: number },
+  sr: number,
+  tr: number,
+  arrows: boolean,
+): [number, number, number, number] {
+  const d = Math.hypot(t.x - s.x, t.y - s.y) || 1;
+  const ux = (t.x - s.x) / d;
+  const uy = (t.y - s.y) / d;
   const gap = arrows ? 2 : 0;
-  const rs = radius(l.source.degree) + gap;
-  const rt = radius(l.target.degree) + gap;
-  return [sx + ux * rs, sy + uy * rs, tx - ux * rt, ty - uy * rt];
+  return [s.x + ux * (sr + gap), s.y + uy * (sr + gap), t.x - ux * (tr + gap), t.y - uy * (tr + gap)];
 }
 
 /** What an edge is, for pointing at it: which way, how it was written, how

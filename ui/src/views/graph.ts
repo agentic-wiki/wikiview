@@ -106,9 +106,34 @@ function jitter(seed: string): number {
 }
 
 /** Nodes grow with how connected they are, gently: the sixth link matters less
- *  than the first. */
+ *  than the first. In screen pixels at the medium text size, whatever the zoom. */
 export function radius(degree: number): number {
-  return Math.min(4 + Math.sqrt(degree) * 2.5, 16);
+  return Math.min(3 + Math.sqrt(degree) * 1.8, 10);
+}
+
+/**
+ * How big labels are drawn, chosen live and remembered in the browser.
+ *
+ * Apart from zoom on purpose: zoom only spreads the nodes apart, so zooming in
+ * makes room to read without making anything bigger, and this is how anything
+ * gets bigger. Dots follow the text a little, so a large title does not hang
+ * off a speck.
+ */
+export const TEXT_SIZES = {
+  s: { label: "Small", font: 10, dot: 0.9 },
+  m: { label: "Medium", font: 12, dot: 1 },
+  l: { label: "Large", font: 15, dot: 1.12 },
+} as const;
+
+export type TextSize = keyof typeof TEXT_SIZES;
+
+/** Past this many characters a title is shortened, since titles are sentences
+ *  and a graph of sentences is a wall. The whole title shows when a node is
+ *  pointed at. */
+const LABEL_CHARS = 24;
+
+export function shorten(name: string): string {
+  return name.length <= LABEL_CHARS ? name : name.slice(0, LABEL_CHARS - 1).trimEnd() + "…";
 }
 
 /** A node and everything one edge away, for lighting up what hovering one

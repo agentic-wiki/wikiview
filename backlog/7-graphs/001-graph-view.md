@@ -82,3 +82,15 @@ Its own icon, listing declared graphs the way Boards lists boards. With none dec
 **A graph with no `path` is not served.** It is reported at startup and missing from the list, because an empty prefix is how the index spells the whole bundle, so serving it would quietly graph everything.
 
 **Not here:** declaring and editing from the UI, which is [002](./002-declaring-graphs.md); colouring nodes; and a whole-bundle graph built in.
+
+## Zoom spreads, a control sizes
+
+Added after first use. Zoom scaled the whole drawing, so zooming in to read made the dots and titles bigger along with the gaps between them: a bigger copy of the same crowding, and the dots felt too large.
+
+**Zoom now moves nodes apart and makes nothing bigger.** Positions are multiplied by the zoom and every size is in screen pixels, so zooming in makes room between titles.
+
+**Size is its own control: Small, Medium, Large**, live in the header and remembered per bundle, like Direction. Dots follow the text a little but less than in proportion, since a large dot is what this was fixing. Kept out of Settings because it is how you look at the graph, not what the graph is.
+
+Titles are shortened at 24 characters and shown whole on the node you point at; the accessible name is never shortened. Dots are smaller than before, 3–10 px at Medium rather than 4–16.
+
+**Not done:** a spacing slider. Zoom already sets on-screen spacing, and a slider changing the layout's own distances would re-run it and move every node, including ones you placed.

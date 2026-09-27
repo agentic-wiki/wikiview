@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Graph, GraphEdge } from "@/api";
-import { neighbourhood, place, radius } from "@/views/graph";
+import { neighbourhood, place, radius, shorten } from "@/views/graph";
 
 function graph(nodes: string[], edges: [string, string, boolean?][]): Graph {
   return {
@@ -111,4 +111,16 @@ test("a neighbourhood is one edge out, both ways", () => {
 test("an edge to a node that is not there is dropped", () => {
   const g = place(graph(["/a"], [["/a", "/ghost"]]), null);
   expect(g.links).toEqual([]);
+});
+
+// Titles are sentences. A short one is left alone; a long one is cut at a word
+// boundary's worth of room and says it was cut.
+test("a long title is shortened and says so, a short one is not", () => {
+  expect(shorten("Short title")).toBe("Short title");
+  expect(shorten("a".repeat(24))).toBe("a".repeat(24));
+  const long = shorten("the board: columns, lanes, cards and everything else");
+  expect(long.endsWith("…")).toBe(true);
+  expect(long.length).toBeLessThanOrEqual(24);
+  // No space left dangling before the ellipsis.
+  expect(shorten("abcdefghij klmnopqrstuv wxyz")).not.toContain(" …");
 });

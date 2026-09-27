@@ -3439,3 +3439,89 @@ test("graph settings close on Escape without writing", async () => {
   expect(graphDialog()).toBeNull();
   expect(writes).toEqual([]);
 });
+
+const labelOf = (path: string) =>
+  document.querySelector(`main svg [data-path='${path}'] text`) as SVGTextElement | null;
+const dotOf = (path: string) =>
+  document.querySelector(`main svg [data-path='${path}'] circle`) as SVGCircleElement;
+const positionOf = (path: string) => {
+  const t = document.querySelector(`main svg [data-path='${path}']`)!.getAttribute("transform")!;
+  const [x, y] = t.replace(/translate\(|\)/g, "").split(" ").map(Number);
+  return { x: x!, y: y! };
+};
+const textSizeButton = (label: string) =>
+  document.querySelector<HTMLButtonElement>(`main header [aria-label='${label} text']`)!;
+
+// Zoom spreads nodes apart and never makes anything bigger, so zooming in to
+// read makes room between titles rather than a bigger copy of the crowding.
+test("zooming in moves nodes apart and leaves dots and labels their size", async () => {
+  await openGraph();
+  const gap = () => {
+    const a = positionOf("/notes/a.md");
+    const d = positionOf("/notes/d.md");
+    return Math.hypot(a.x - d.x, a.y - d.y);
+  };
+  const before = { gap: gap(), r: dotOf("/notes/a.md").getAttribute("r"), font: labelOf("/notes/a.md")!.getAttribute("font-size") };
+
+  const svg = document.querySelector("main svg")!;
+  await act(async () => svg.dispatchEvent(new WheelEvent("wheel", { deltaY: -800, bubbles: true, cancelable: true })));
+
+  expect(gap()).toBeGreaterThan(before.gap * 2);
+  expect(dotOf("/notes/a.md").getAttribute("r")).toBe(before.r);
+  expect(labelOf("/notes/a.md")!.getAttribute("font-size")).toBe(before.font);
+});
+
+// How big things are is its own control, live and remembered: the other half of
+// zoom no longer enlarging anything.
+test("text size is a live control, remembered, that the dots follow a little", async () => {
+  await openGraph();
+  expect(textSizeButton("Medium").getAttribute("aria-pressed")).toBe("true");
+  const medium = { font: Number(labelOf("/notes/a.md")!.getAttribute("font-size")), r: Number(dotOf("/notes/a.md").getAttribute("r")) };
+
+  await act(async () => textSizeButton("Large").click());
+  const large = { font: Number(labelOf("/notes/a.md")!.getAttribute("font-size")), r: Number(dotOf("/notes/a.md").getAttribute("r")) };
+  expect(large.font).toBeGreaterThan(medium.font);
+  // The dot grows too, but less than the text: a large title should not hang
+  // off a speck, and a large dot is what this was fixing.
+  expect(large.r).toBeGreaterThan(medium.r);
+  expect(large.r / medium.r).toBeLessThan(large.font / medium.font);
+
+  await act(async () => textSizeButton("Small").click());
+  expect(Number(labelOf("/notes/a.md")!.getAttribute("font-size"))).toBeLessThan(medium.font);
+
+  await openGraph();
+  expect(textSizeButton("Small").getAttribute("aria-pressed")).toBe("true");
+});
+
+// Something stored by another version of the control is not a size, and must
+// not leave the graph drawn without one.
+test("a stored text size that is not one falls back to medium", async () => {
+  localStorage.setItem("wiki:abc123:graph-text", JSON.stringify("huge"));
+  await openGraph();
+  expect(textSizeButton("Medium").getAttribute("aria-pressed")).toBe("true");
+  expect(labelOf("/notes/a.md")!.getAttribute("font-size")).not.toBeNull();
+});
+
+// Titles are sentences, so a long one is shortened — and shown whole on the
+// node you are pointing at, which is when it is worth its width.
+test("a long title is shortened until you point at it", async () => {
+  const long = "A title that is really a whole sentence about the thing";
+  await mountWithGraphs(bundle.graphs, {
+    ...graphFixture,
+    nodes: [{ path: "/notes/a.md", label: "A", title: long }],
+    edges: [],
+  });
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const label = () => labelOf("/notes/a.md")!.textContent!;
+  expect(label().endsWith("…")).toBe(true);
+  expect(label().length).toBeLessThan(long.length);
+  // The accessible name is never shortened.
+  expect(document.querySelector("main svg [data-path='/notes/a.md']")!.getAttribute("aria-label")).toBe(long);
+
+  const node = document.querySelector("main svg [data-path='/notes/a.md']")!;
+  await act(async () => node.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => node.dispatchEvent(new PointerEvent("pointerenter")));
+  expect(label()).toBe(long);
+});
