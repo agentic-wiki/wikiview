@@ -5380,8 +5380,8 @@ test("a saved row drags by its body, and a still press still opens it", async ()
 });
 
 // The legend stays out of the way until you reach for it: folded to its dots,
-// open while pointed at, and pinned open by a click on its header.
-test("the groups legend folds until pointed at, and a click pins it open", async () => {
+// open while pointed at, and kept open by its pin.
+test("the groups legend folds until pointed at, and its pin keeps it open", async () => {
   await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 3 }], {
     ...graphFixture,
     id: "all",
@@ -5396,55 +5396,84 @@ test("the groups legend folds until pointed at, and a click pins it open", async
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   const legend = () => document.querySelector<HTMLElement>("[role='group'][aria-label='Groups']")!;
   const rows = () => legend().querySelectorAll("[data-legend-row]").length;
-  const header = () => legend().querySelector<HTMLElement>("button[aria-expanded]")!;
-
-  // Folded: no rows, but a dot per group, so the colours still say something.
-  expect(rows()).toBe(0);
-  expect(header().querySelectorAll("span[aria-hidden] > span").length).toBe(2);
-
-  // Pointed at, it opens; left, it folds again after a beat.
-  await act(async () => legend().dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
-  await act(async () => legend().dispatchEvent(new PointerEvent("pointerenter")));
-  expect(rows()).toBe(2);
-  await act(async () => [...legend().querySelectorAll<HTMLElement>("[data-legend-row] > button:first-child")][1]!.click()); // hide Notes
-  await act(async () => legend().dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
-  await act(async () => legend().dispatchEvent(new PointerEvent("pointerleave")));
-  expect(rows()).toBe(2); // not yet: a pointer grazing the edge does not flicker it
-  await act(async () => new Promise((r) => setTimeout(r, 250)));
-  expect(rows()).toBe(0);
-  // Folded, it still says something is hidden.
-  expect(header().textContent).toContain("1 hidden");
-
-  // A click on the header keeps it open, and that is remembered.
-  await act(async () => header().click());
-  expect(rows()).toBe(2);
-  await act(async () => navigateTo("/wiki/index.md"));
-  await act(async () => navigateTo("/graph/all"));
-  await act(async () => new Promise((r) => setTimeout(r, 0)));
-  expect(rows()).toBe(2);
-  expect(header().querySelector("svg")).not.toBeNull(); // the pin says so
-
-  // Every click shows what it did (found by the user: clicks on a legend open
-  // under the pointer changed nothing visible). Pinned, a click folds it at
-  // once, and it stays folded while still pointed at, until the pointer leaves.
+  const header = () => legend().firstElementChild as HTMLElement;
+  const dots = () => [...header().querySelectorAll("span[aria-hidden] > span")];
+  const pin = () => legend().querySelector<HTMLElement>("button[aria-label='Keep the groups open'], button[aria-label='Let the groups fold']");
+  const showAll = () => [...legend().querySelectorAll("button")].find((b) => b.textContent === "show all");
   const point = (on: boolean) =>
     act(async () => {
       legend().dispatchEvent(new PointerEvent(on ? "pointerover" : "pointerout", { bubbles: true }));
       legend().dispatchEvent(new PointerEvent(on ? "pointerenter" : "pointerleave"));
     });
-  await point(true);
-  await act(async () => header().click());
+  const settle = () => act(async () => new Promise((r) => setTimeout(r, 250)));
+
+  // Folded: no rows and no pin, but a dot per group, so the colours still say
+  // something.
   expect(rows()).toBe(0);
-  expect(header().getAttribute("aria-pressed")).toBe("false");
-  await point(true);
-  expect(rows()).toBe(0);
-  await point(false);
+  expect(dots().length).toBe(2);
+  expect(pin()).toBeNull();
+
+  // Pointed at, it opens, with its pin; left, it folds again after a beat.
   await point(true);
   expect(rows()).toBe(2);
-  // Open under the pointer, a click pins it: the pin shows.
-  await act(async () => header().click());
-  expect(header().getAttribute("aria-pressed")).toBe("true");
-  expect(header().querySelector("svg")).not.toBeNull();
+  expect(pin()?.getAttribute("aria-pressed")).toBe("false");
+  expect(showAll()).toBeUndefined(); // nothing hidden, nothing to bring back
+  await act(async () => [...legend().querySelectorAll<HTMLElement>("[data-legend-row] > button:first-child")][1]!.click()); // hide Notes
+  // "show all" comes, before the pin: the pin keeps the header's last place.
+  const buttons = [...header().querySelectorAll("button")];
+  expect(buttons.map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["show all", "Keep the groups open"]);
+  await point(false);
+  expect(rows()).toBe(2); // not yet: a pointer grazing the edge does not flicker it
+  await settle();
+  expect(rows()).toBe(0);
+  // Folded, its dots are muted so the fold does not compete with the graph,
+  // and the hidden group's is fainter still, which is how it says so.
+  expect(dots().map((d) => d.className.match(/opacity-\d+/)?.[0])).toEqual(["opacity-45", "opacity-15"]);
+  // Kept to the right, clear of the label.
+  expect(dots()[0]!.parentElement!.className).toContain("justify-end-safe");
+
+  // The pin keeps it open, and that is remembered.
+  await point(true);
+  await act(async () => pin()!.click());
+  expect(pin()?.getAttribute("aria-pressed")).toBe("true");
+  await point(false);
+  await settle();
+  expect(rows()).toBe(2);
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(rows()).toBe(2);
+
+  // Unpinned, it stays open while still pointed at, and folds once the
+  // pointer leaves.
+  await point(true);
+  await act(async () => pin()!.click());
+  expect(pin()?.getAttribute("aria-pressed")).toBe("false");
+  expect(rows()).toBe(2);
+  await point(false);
+  await settle();
+  expect(rows()).toBe(0);
+});
+
+// Folded, there are no buttons in it to tab to, so the legend itself is.
+test("the groups legend opens from the keyboard", async () => {
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 3 }], {
+    ...graphFixture,
+    id: "all",
+    path: "/",
+    nodes: [
+      { path: "/index.md", label: "Index" },
+      { path: "/notes/a.md", label: "A" },
+    ],
+    edges: [],
+  });
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const legend = () => document.querySelector<HTMLElement>("[role='group'][aria-label='Groups']")!;
+  expect(legend().tabIndex).toBe(0);
+  await act(async () => legend().focus());
+  expect(legend().querySelectorAll("[data-legend-row]").length).toBe(2);
+  expect(legend().tabIndex).toBe(-1); // open, its own buttons are the stops
 });
 
 /** Rests the pointer on a folded properties line long enough to open it. */

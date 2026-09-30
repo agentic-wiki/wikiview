@@ -233,10 +233,10 @@ export function GraphView({
   );
 }
 
-/** Says a fold is being kept open. */
-function PinMark() {
+/** A pin: keeps a fold open. */
+function PinGlyph() {
   return (
-    <svg viewBox="0 0 24 24" width="12" height="12" className="text-accent-ink shrink-0" fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden>
       <path d="M16 3l5 5-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z" />
     </svg>
   );
@@ -691,56 +691,66 @@ function Canvas({
           aria-label="Groups"
           data-print="hide"
           {...legendPeek.handlers}
-          className="bg-elev shadow-float absolute top-4 left-4 flex max-h-[45%] w-52 flex-col overflow-y-auto rounded-[10px] p-1"
+          // Folded, the legend itself is what the keyboard reaches, and focus
+          // opens it; open, its buttons are.
+          tabIndex={legendOpen ? -1 : 0}
+          className="bg-elev shadow-float focus-visible:outline-accent absolute top-4 left-4 flex max-h-[45%] w-52 flex-col overflow-y-auto rounded-[10px] p-1 outline-none focus-visible:outline-2"
         >
-          <div className="flex items-center pr-1.5 pl-1">
-            <button
-              type="button"
-              aria-expanded={legendOpen}
-              aria-pressed={pinned}
-              title={pinned ? "Let it fold again" : "Keep it open"}
-              // Every click shows what it did. Open under the pointer, it pins,
-              // and the pin lights; pinned, it folds at once, and stays folded
-              // until the pointer has left, rather than reopening under it.
-              onClick={() => {
-                if (!pinned) return setPinned(true);
-                setPinned(false);
-                legendPeek.dismiss();
-              }}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 pl-1.5 text-left"
-            >
-              <SectionLabel>Groups</SectionLabel>
-              {pinned && <PinMark />}
-              {/* Folded, the groups as their dots — the ones set aside faded —
-                  so the fold still says what the colours are. */}
-              {!legendOpen && (
-                <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden" aria-hidden>
+          <div className="flex h-8 items-center gap-2 pr-1 pl-2.5">
+            <SectionLabel>Groups</SectionLabel>
+            {legendOpen ? (
+              <>
+                <div className="flex-1" />
+                {/* Everything back at once, whenever anything is set aside. */}
+                {hidden.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onHidden([])}
+                    className="text-faint hover:text-fg rounded-md px-1 text-[11px]"
+                  >
+                    show all
+                  </button>
+                )}
+                {/* Keeps it open. Unpinned, it stays open while pointed at,
+                    and folds once the pointer leaves, like any peek. */}
+                <button
+                  type="button"
+                  aria-pressed={pinned}
+                  aria-label={pinned ? "Let the groups fold" : "Keep the groups open"}
+                  title={pinned ? "Let the groups fold" : "Keep the groups open"}
+                  onClick={() => setPinned(!pinned)}
+                  className={[
+                    "hover:bg-fg/5 grid size-6 shrink-0 place-items-center rounded-md",
+                    pinned ? "text-accent-ink" : "text-faint hover:text-fg",
+                  ].join(" ")}
+                >
+                  <PinGlyph />
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Folded, the groups as their dots, so the fold still says
+                    what the colours are, kept to the right, clear of the
+                    label. Muted, since folded is out of the way and should not
+                    compete with the graph; the ones set aside fainter still,
+                    which is how the fold says some are hidden. Full colour is
+                    for the open legend. Right-aligned only while they fit
+                    (`safe`): with more groups than room, they start at the left
+                    and the last are cut, never the first. */}
+                <span className="ml-2 flex min-w-0 flex-1 items-center justify-end-safe gap-1 overflow-hidden pr-1.5" aria-hidden>
                   {legend.map((g) => (
                     <span
                       key={g.key || " root"}
                       className={[
                         "size-2 shrink-0 rounded-full",
                         g.hollow ? "border-faint border border-dashed" : "",
-                        hidden.includes(g.key) ? "opacity-30" : "",
+                        hidden.includes(g.key) ? "opacity-15" : "opacity-45",
                       ].join(" ")}
                       style={g.hollow ? undefined : { background: g.colour }}
                     />
                   ))}
                 </span>
-              )}
-              {!legendOpen && hidden.length > 0 && (
-                <span className="text-faint shrink-0 text-[11px]">{hidden.length} hidden</span>
-              )}
-            </button>
-            {/* Everything back at once, whenever anything is set aside. */}
-            {legendOpen && hidden.length > 0 && (
-              <button
-                type="button"
-                onClick={() => onHidden([])}
-                className="text-faint hover:text-fg rounded-md px-1 text-[11px]"
-              >
-                show all
-              </button>
+              </>
             )}
           </div>
           {legendOpen && legend.map((g) => {

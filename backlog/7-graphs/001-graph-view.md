@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the graph: entries and the links between them"
-status: done
+status: in-progress
 priority: medium
 tags: [feature, graphs]
 ---
