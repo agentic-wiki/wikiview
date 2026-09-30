@@ -12,3 +12,4 @@ coverage.out
 
 # tsc -b's incremental cache. Machine-specific and regenerated on every build.
 *.tsbuildinfo
+.DS_Store

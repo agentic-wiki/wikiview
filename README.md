@@ -1,12 +1,19 @@
 # wikiview
 
+[![Release](https://img.shields.io/github/v/release/agentic-wiki/wikiview?sort=semver)](https://github.com/agentic-wiki/wikiview/releases)
+[![Homebrew](https://img.shields.io/badge/brew-agentic--wiki%2Ftap%2Fwikiview-FBB040?logo=homebrew&logoColor=white)](https://github.com/agentic-wiki/homebrew-tap)
+[![CI](https://github.com/agentic-wiki/wikiview/actions/workflows/ci.yml/badge.svg)](https://github.com/agentic-wiki/wikiview/actions/workflows/ci.yml)
+
 > A web UI for [agentic-wiki](https://github.com/agentic-wiki/wiki) bundles.
 
-A wiki bundle is a folder of Markdown that an agent maintains and the `wiki` CLI queries like a database. wikiview is the screen for it: point it at the folder, read it in a browser, follow the links, tick the checkboxes.
+A wiki bundle is a folder of Markdown that an agent maintains and the `wiki` CLI queries like a database. wikiview is the screen for it: point it at the folder, read it in a browser, follow the links, tick the checkboxes, and see the same entries as boards and graphs.
+
+![A board of tasks, one of them open in the side panel](img/2-kanban.png)
 
 One binary with the frontend built into it. Your files stay ordinary Markdown.
 
 ```sh
+brew install agentic-wiki/tap/wikiview
 cd my-kb && wikiview      # Open http://localhost:8080
 ```
 
@@ -65,11 +72,40 @@ wikiview my-kb --host 0.0.0.0 --port 3000
 
 **`--host 0.0.0.0` puts it on your network.** wikiview has no authentication and writes to the bundle, so anyone who can reach it can read every entry and tick boxes in them. It warns on startup when you do this. Put it behind something that authenticates, or keep it on localhost.
 
+## A quick tour
+
+<table>
+  <tr>
+    <td width="50%"><img src="img/1-main.png" alt="The reader: the folder tree, an entry, and its heading map"></td>
+    <td width="50%"><img src="img/3-multiple-kanbans.png" alt="A board with lanes, and the form that adds another"></td>
+  </tr>
+  <tr>
+    <td><b>Read.</b> The folder as a tree and each entry as a page, with a heading map in the margin and a dot on what changed since you last looked.</td>
+    <td><b>Board.</b> Any folder's entries as columns and lanes, from their frontmatter. Drag a card and its file changes. A new board is one form.</td>
+  </tr>
+  <tr>
+    <td><img src="img/4-graph.png" alt="A graph of tasks, coloured by folder, with the groups legend open"></td>
+    <td><img src="img/5-subgraph.png" alt="Pointing at a node lights its links and shows which way they go"></td>
+  </tr>
+  <tr>
+    <td><b>Graph.</b> Entries as nodes and their links as edges, coloured by folder. Hide a group, or show only one.</td>
+    <td><b>Follow a thread.</b> Point at a node and its links light, with arrows for which way they go.</td>
+  </tr>
+  <tr>
+    <td><img src="img/6-multiple-graphs.png" alt="The graphs list, and the form that adds another"></td>
+    <td><img src="img/7-read-later-and-git.png" alt="The read later list, and the source control popover"></td>
+  </tr>
+  <tr>
+    <td><b>Many views, one folder.</b> Boards and graphs are declared in <code>wiki.toml</code>, and the UI writes that for you.</td>
+    <td><b>Read later, and git.</b> A queue of entries to come back to, and commit, pull and push without leaving the page.</td>
+  </tr>
+</table>
+
 ## What you get
 
 Browse the folder tree, follow links between entries, jump to headings. A folder opens its `index.md`, or gets a listing if it has none.
 
-Tick a checkbox and it edits the file: one character, written atomically through the engine's write API. That is the only write in the program.
+Tick a checkbox and it edits the file: one character, written atomically through the engine's write API. Moving a card writes its status (and its lane, when that changes) the same way, and the board and graph settings write their table in `wiki.toml`. Nothing else is written: prose is never edited.
 
 The screen keeps up with the files. An agent or an editor working on the same folder shows up within a second. Entries that changed since you last opened them get a dot in the tree, so you notice the ones you were not watching.
 

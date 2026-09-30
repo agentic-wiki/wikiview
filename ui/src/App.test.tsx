@@ -5568,3 +5568,33 @@ test("every sheet folds the properties, and a board's controls work while they f
     restore();
   }
 });
+
+// A key with nothing after it is YAML's null. It says nothing, so it is left
+// off the folded line, and the grid shows the key with "(nothing)", never the
+// word "null" (found in a screenshot of a card: "todo · medium · null").
+test("an empty property says nothing folded, and (nothing) in the grid", async () => {
+  const saved = entry.frontmatter;
+  entry.frontmatter = { ...saved, owner: null, note: "", aliases: [], tags: ["api", null] };
+  try {
+    await mountAt("/wiki/notes/a.md");
+    const line = propertiesToggle()!.textContent ?? "";
+    expect(line).not.toContain("null");
+    expect(line).toContain("todo");
+    expect(line).toContain("api");
+    // Three fields shown (status, blockers, tags), so two separators: the empty
+    // ones take no place on the line.
+    const dots = [...propertiesToggle()!.querySelectorAll("span[aria-hidden]")].filter((s) => s.textContent === "·");
+    expect(dots.length).toBe(2);
+
+    await act(async () => propertiesToggle()!.click());
+    const grid = document.querySelector("#entry-properties")!;
+    const row = (key: string) => grid.querySelector(`dt[title='${key}']`)!.nextElementSibling!.textContent;
+    expect(row("owner")).toBe("(nothing)");
+    expect(row("note")).toBe("(nothing)");
+    expect(row("aliases")).toBe("(nothing)");
+    expect(row("tags")).toBe("api");
+    expect(grid.textContent).not.toContain("null");
+  } finally {
+    entry.frontmatter = saved;
+  }
+});

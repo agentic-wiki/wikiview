@@ -452,6 +452,9 @@ function Frontmatter({
                   </span>
                 );
               })}
+              {/* The key is there, so the grid says so, in the word the filter
+                  uses for an empty value. */}
+              {values(value).length === 0 && <span className="text-faint">(nothing)</span>}
             </dd>
           </Fragment>
         );
@@ -459,10 +462,10 @@ function Frontmatter({
     </dl>
   );
   // The view's own rows lead the line, as they lead the grid: a card's status
-  // and lane are what you look for first.
+  // and lane are what you look for first. A key that says nothing is left off.
   const summary: [string, unknown][] = [
     ...properties.filter((p) => p.value !== "").map((p): [string, unknown] => [p.key, p.value]),
-    ...fields,
+    ...fields.filter(([, value]) => values(value).length > 0),
   ];
 
   return (
@@ -576,10 +579,12 @@ export interface Property {
 }
 
 /** A scalar and a list are the same thing here, one of them repeated — which is
- *  how the format treats a frontmatter reference too. */
+ *  how the format treats a frontmatter reference too. A key written with
+ *  nothing after it (YAML's null), an empty string and an empty list all say
+ *  nothing, so they have no values, rather than the word "null". */
 function values(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String);
-  return [String(value)];
+  const all = Array.isArray(value) ? value : [value];
+  return all.filter((v) => v !== null && v !== undefined && v !== "").map(String);
 }
 
 /**
