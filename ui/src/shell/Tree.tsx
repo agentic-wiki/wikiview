@@ -209,7 +209,7 @@ function Level({
             className={({ isActive }) =>
               [
                 "flex items-center gap-2 py-1 pr-3",
-                isActive ? "text-accent bg-accent/10" : "text-muted hover:text-fg hover:bg-fg/5",
+                isActive ? "text-accent-ink bg-accent-bg" : "text-muted hover:text-fg hover:bg-fg/5",
               ].join(" ")
             }
             title={e.name}

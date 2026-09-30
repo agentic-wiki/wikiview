@@ -50,14 +50,14 @@ export function SettingsDialog({
           e.preventDefault();
           onSubmit();
         }}
-        className="border-border bg-surface elev-3 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border"
+        className="bg-elev shadow-float flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl"
       >
         {/* The path under the title, where it says which view this is rather
             than sitting where a dialog's close is. */}
-        <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
+        <header className="border-line flex shrink-0 items-center gap-2 border-b px-4 py-3">
           <div className="min-w-0">
             <span className="text-fg block text-sm font-medium">{title}</span>
-            <span className="text-muted block truncate font-mono text-xs">{path}</span>
+            <span className="text-faint block truncate font-mono text-xs">{path}</span>
           </div>
           <button
             type="button"
@@ -76,7 +76,7 @@ export function SettingsDialog({
           {error && <p className="text-danger text-sm">{error}</p>}
         </div>
 
-        <footer className="border-border flex shrink-0 items-center gap-2 border-t px-4 py-3">
+        <footer className="border-line flex shrink-0 items-center gap-2 border-t px-4 py-3">
           <span className="text-muted text-xs">Writes to the bundle's wiki.toml.</span>
           <button
             type="button"
@@ -88,7 +88,7 @@ export function SettingsDialog({
           <button
             type="submit"
             disabled={busy}
-            className="bg-accent text-accent-fg rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
+            className="bg-accent text-on-accent rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save"}
           </button>

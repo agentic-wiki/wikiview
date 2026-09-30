@@ -59,7 +59,7 @@ export function Rail({
     <nav
       data-print="hide"
       aria-label="Sections"
-      className="border-border bg-surface elev-1 absolute inset-y-0 left-0 z-20 flex w-14 flex-col gap-1 border-r p-2"
+      className="border-line bg-panel absolute inset-y-0 left-0 z-20 flex w-14 flex-col gap-1 border-r p-2"
     >
       {SECTIONS.map((s) => (
         <button
@@ -79,7 +79,7 @@ export function Rail({
             "before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-[3px]",
             "before:-translate-y-1/2 before:rounded-r-full before:bg-accent before:transition-opacity",
             active === s.id
-              ? "bg-accent/12 text-accent before:opacity-100"
+              ? "bg-accent-bg text-accent-ink before:opacity-100"
               : "text-muted hover:text-fg hover:bg-fg/5 before:opacity-0",
           ].join(" ")}
         >

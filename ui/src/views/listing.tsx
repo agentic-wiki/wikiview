@@ -45,9 +45,9 @@ export function Row({
       >
         {/* The icon carries the accent permanently: it is what makes a row
             scannable as a row rather than a line of text. */}
-        <span className="text-accent shrink-0">{icon}</span>
+        <span className="text-accent-ink shrink-0">{icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="text-fg group-hover:text-accent block truncate text-sm transition-colors">
+          <span className="text-fg group-hover:text-accent-ink block truncate text-sm transition-colors">
             {title}
           </span>
           {subtitle && <span className="text-muted block truncate text-xs">{subtitle}</span>}

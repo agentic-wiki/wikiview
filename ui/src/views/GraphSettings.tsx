@@ -31,7 +31,7 @@ export function GraphSettings({ graph, onClose }: { graph: Graph; onClose: () =>
           value={settings.name}
           onChange={(e) => set({ name: e.target.value })}
           placeholder={graph.name}
-          className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
         />
       </Field>
 

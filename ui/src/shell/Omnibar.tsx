@@ -36,13 +36,13 @@ export function Omnibar({ tree, unseen }: { tree: TreeNode; unseen: Set<string> 
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-label="Search entries and boards"
-        className="border-border bg-bg text-muted hover:border-muted/50 hover:text-fg flex h-8 w-full max-w-sm min-w-0 items-center gap-2 rounded-md border px-2.5 text-sm transition-colors"
+        className="border-line bg-panel-2 text-muted hover:border-line-2 hover:text-fg flex h-8 w-full max-w-sm min-w-0 items-center gap-2 rounded-md border px-2.5 text-sm transition-colors"
       >
         <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
           <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.2-4.2" strokeLinecap="round" />
         </svg>
         <span className="truncate">Search entries…</span>
-        <kbd className="border-border text-muted ml-auto hidden shrink-0 rounded border px-1 text-[11px] font-sans sm:block">
+        <kbd className="border-line text-muted ml-auto hidden shrink-0 rounded border px-1 text-[11px] font-sans sm:block">
           ⌘K
         </kbd>
       </button>
@@ -114,7 +114,7 @@ function Palette({
         aria-modal="true"
         aria-label="Search"
         onClick={(e) => e.stopPropagation()}
-        className="border-border bg-surface elev-3 w-full max-w-xl overflow-hidden rounded-xl border"
+        className="bg-elev shadow-float w-full max-w-xl overflow-hidden rounded-xl"
       >
         <input
           ref={inputRef}
@@ -135,7 +135,7 @@ function Palette({
           placeholder="Search entries by name or path…"
           className="text-fg placeholder:text-muted w-full bg-transparent px-4 py-3 text-sm outline-none"
         />
-        <ul className="border-border max-h-80 overflow-y-auto border-t">
+        <ul className="border-line max-h-80 overflow-y-auto border-t">
           {results.length === 0 && <li className="text-muted px-4 py-6 text-center text-sm">No matches</li>}
           {results.map((item, i) => (
             <li key={item.path}>
@@ -145,7 +145,7 @@ function Palette({
                 onClick={() => go(item)}
                 className={[
                   "flex w-full items-baseline gap-3 px-4 py-2 text-left text-sm",
-                  i === selected ? "bg-accent/12 text-accent" : "text-fg",
+                  i === selected ? "bg-accent-bg text-accent-ink" : "text-fg",
                 ].join(" ")}
               >
                 <span className="truncate">{item.label}</span>

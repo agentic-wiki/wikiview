@@ -219,12 +219,12 @@ function Preview({
         aria-modal="true"
         aria-label={action === "pull" ? "Pull" : "Sync"}
         onClick={(e) => e.stopPropagation()}
-        className="border-border bg-surface elev-3 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border"
+        className="bg-elev shadow-float flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl"
       >
-        <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
+        <header className="border-line flex shrink-0 items-center gap-2 border-b px-4 py-3">
           <div className="min-w-0">
             <span className="text-fg block text-sm font-medium capitalize">{action}</span>
-            <span className="text-muted block truncate font-mono text-xs">
+            <span className="text-faint block truncate font-mono text-xs">
               {status.branch} → {status.remote}
             </span>
           </div>
@@ -260,7 +260,7 @@ function Preview({
                   did: an agent editing alongside is the expected case, and a
                   preview that hid its files would misdescribe the button. */}
               {status.changes.length > 0 && (
-                <ul className="border-border max-h-40 overflow-y-auto rounded-md border p-2 font-mono text-xs">
+                <ul className="border-line max-h-40 overflow-y-auto rounded-md border p-2 font-mono text-xs">
                   {status.changes.map((c) => (
                     <li key={c.path} className="flex gap-2">
                       <span className="text-muted w-5 shrink-0">{c.code.trim() || "M"}</span>
@@ -294,7 +294,7 @@ function Preview({
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     aria-label="Commit message"
-                    className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1"
+                    className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
                   />
                 </label>
               )}
@@ -307,7 +307,7 @@ function Preview({
               local; this puts it somewhere else so the conflict can be resolved
               with a real tool on a real checkout. */}
           {proposed && (
-            <div className="border-border space-y-2 rounded-md border p-3">
+            <div className="border-line space-y-2 rounded-md border p-3">
               <p className="text-muted text-xs">
                 Your work is untouched. Push it to a branch and resolve this where you have a
                 terminal.
@@ -316,13 +316,13 @@ function Preview({
                 value={proposed}
                 onChange={(e) => setProposed(e.target.value)}
                 aria-label="Branch name"
-                className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
+                className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
               />
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => act(() => api.gitBranch(proposed), proposed)}
-                className="border-border text-fg hover:bg-fg/5 w-full rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+                className="border-line text-fg hover:bg-fg/5 w-full rounded-md border px-2 py-1 text-xs disabled:opacity-50"
               >
                 Push to this branch
               </button>
@@ -339,7 +339,7 @@ function Preview({
           {done && !error && <p className="text-muted text-sm">Done.</p>}
         </div>
 
-        <footer className="border-border flex shrink-0 items-center gap-2 border-t px-4 py-3">
+        <footer className="border-line flex shrink-0 items-center gap-2 border-t px-4 py-3">
           <button
             type="button"
             onClick={onClose}
@@ -355,7 +355,7 @@ function Preview({
             onClick={() =>
               act(() => (action === "pull" ? api.gitPull() : api.gitSync(message)))
             }
-            className="bg-accent text-accent-fg rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
+            className="bg-accent text-on-accent rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
           >
             {busy ? (action === "pull" ? "Pulling…" : "Pushing…") : label}
           </button>

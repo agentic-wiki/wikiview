@@ -49,7 +49,7 @@ export function BoardSettings({
           value={settings.name}
           onChange={(e) => set({ name: e.target.value })}
           placeholder={board.name}
-          className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
         />
       </Field>
 
@@ -98,7 +98,7 @@ export function BoardSettings({
           two things to fill in, and side by side they would halve the width
           each has for a value like `in-progress`. */}
       <div className="space-y-2">
-        <div role="tablist" className="border-border flex gap-1 border-b">
+        <div role="tablist" className="border-line flex gap-1 border-b">
           {(["columns", "lanes"] as const).map((axis) => (
             <button
               key={axis}
@@ -226,7 +226,7 @@ function Axis({
               type="button"
               onClick={() => add(value)}
               aria-label={`Pin ${value}`}
-              className="border-border text-muted hover:text-fg rounded border px-1.5 py-0.5 font-mono text-xs"
+              className="border-line text-muted hover:text-fg rounded border px-1.5 py-0.5 font-mono text-xs"
             >
               + {value}
             </button>
@@ -251,13 +251,13 @@ function Axis({
           }}
           placeholder={label === "column" ? "in-progress" : "urgent"}
           aria-label={`New ${label}`}
-          className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-2 py-1 font-mono text-xs"
+          className="border-line-2 bg-panel-2 text-fg min-w-0 grow rounded-md border px-2 py-1 font-mono text-xs"
         />
         <button
           type="button"
           disabled={!canAdd}
           onClick={() => add(adding)}
-          className="border-border text-muted hover:text-fg shrink-0 rounded-md border px-2 py-1 text-xs capitalize disabled:opacity-50"
+          className="border-line text-muted hover:text-fg shrink-0 rounded-md border px-2 py-1 text-xs capitalize disabled:opacity-50"
         >
           Add {label}
         </button>
@@ -331,7 +331,7 @@ function KeyPicker({
       value={value}
       aria-label={label}
       onChange={(e) => onChange(e.target.value)}
-      className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
+      className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
     >
       {none !== undefined && <option value="">{none}</option>}
       {value !== "" && !keys.includes(value) && <option value={value}>{value} (nothing has it)</option>}

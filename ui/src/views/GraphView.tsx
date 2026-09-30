@@ -97,11 +97,11 @@ export function GraphView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-2">
+      <header className="border-line flex shrink-0 items-center gap-2 border-b px-4 py-2">
         <h1 className="text-fg truncate text-sm font-medium">{graph.name}</h1>
-        <span className="text-muted shrink-0 font-mono text-xs">{graph.path}</span>
+        <span className="text-faint shrink-0 font-mono text-xs">{graph.path}</span>
         {(graph.where ?? []).map((w) => (
-          <code key={w} className="border-border text-muted shrink-0 rounded border px-1.5 text-xs">
+          <code key={w} className="border-line text-muted shrink-0 rounded border px-1.5 text-xs">
             {w}
           </code>
         ))}
@@ -126,7 +126,7 @@ export function GraphView({
           role="group"
           aria-label="Text size"
           data-print="hide"
-          className="border-border flex shrink-0 select-none overflow-hidden rounded-md border"
+          className="border-line flex shrink-0 select-none overflow-hidden rounded-md border"
         >
           {(Object.keys(TEXT_SIZES) as TextSize[]).map((size) => (
             <button
@@ -141,7 +141,7 @@ export function GraphView({
               style={{ fontSize: TEXT_SIZES[size].font - 1 }}
               className={[
                 "grid h-6 w-6 cursor-pointer place-items-center leading-none",
-                textSize === size ? "bg-accent/12 text-accent" : "text-muted hover:text-fg hover:bg-fg/5",
+                textSize === size ? "bg-accent-bg text-accent-ink" : "text-muted hover:text-fg hover:bg-fg/5",
               ].join(" ")}
             >
               A
@@ -159,7 +159,7 @@ export function GraphView({
       </header>
 
       {graph.nodes.length > SOFT_LIMIT && (
-        <p role="status" className="border-border text-warn shrink-0 border-b px-4 py-1.5 text-xs">
+        <p role="status" className="border-line text-warn shrink-0 border-b px-4 py-1.5 text-xs">
           {graph.nodes.length} entries is more than a graph reads well. Narrowing <code>where</code> in
           wiki.toml would help — everything is still drawn.
         </p>
@@ -355,7 +355,7 @@ function Canvas({
   };
 
   const current = layout.current;
-  if (!current) return <svg ref={svg} className="bg-sunken min-h-0 grow" />;
+  if (!current) return <svg ref={svg} className="bg-bg min-h-0 grow" />;
 
   const lit = hovered ? neighbourhood(current.links, hovered) : null;
   const labels = view.k >= LABELS_FROM;
@@ -371,7 +371,7 @@ function Canvas({
       ref={svg}
       role="img"
       aria-label={`${graph.name}: ${graph.nodes.length} entries`}
-      className="bg-sunken min-h-0 grow cursor-grab touch-none select-none"
+      className="bg-bg min-h-0 grow cursor-grab touch-none select-none"
       onPointerDown={(e) => {
         gesture.current = { kind: "pan", x: e.clientX, y: e.clientY };
         (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
@@ -465,7 +465,7 @@ function Canvas({
                     ? "fill-bg stroke-muted"
                     : on
                       ? "fill-accent stroke-accent"
-                      : "fill-muted stroke-surface"
+                      : "fill-muted stroke-bg"
                 }
                 strokeWidth={1.5}
                 strokeDasharray={n.node.neighbour ? "2 2" : undefined}

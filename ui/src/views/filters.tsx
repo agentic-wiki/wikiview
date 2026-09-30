@@ -42,7 +42,7 @@ export function Filters({
                   value={rule.key}
                   aria-label="Filter key"
                   onChange={(e) => at(i, { key: e.target.value, value: "" })}
-                  className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-1 py-1 font-mono text-xs"
+                  className="border-line-2 bg-panel-2 text-fg min-w-0 grow rounded-md border px-1 py-1 font-mono text-xs"
                 >
                   {!fields.some((f) => f.key === rule.key) && (
                     <option value={rule.key}>{rule.key}</option>
@@ -57,7 +57,7 @@ export function Filters({
                   value={rule.negated ? "!=" : "="}
                   aria-label="Filter operator"
                   onChange={(e) => at(i, { negated: e.target.value === "!=" })}
-                  className="border-border bg-bg text-fg shrink-0 rounded-md border px-1 py-1 text-xs"
+                  className="border-line-2 bg-panel-2 text-fg shrink-0 rounded-md border px-1 py-1 text-xs"
                 >
                   <option value="=">is</option>
                   <option value="!=">is not</option>
@@ -85,7 +85,7 @@ export function Filters({
         type="button"
         disabled={fields.length === 0}
         onClick={() => onChange([...rules, { key: fields[0]?.key ?? "", negated: false, value: "" }])}
-        className="border-border text-muted hover:text-fg rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+        className="border-line text-muted hover:text-fg rounded-md border px-2 py-1 text-xs disabled:opacity-50"
       >
         Add filter
       </button>
@@ -129,7 +129,7 @@ function ValuePicker({
         list={values ? id : undefined}
         placeholder="(nothing)"
         onChange={(e) => onChange(e.target.value)}
-        className="border-border bg-bg text-fg min-w-0 grow rounded-md border px-1 py-1 font-mono text-xs"
+        className="border-line-2 bg-panel-2 text-fg min-w-0 grow rounded-md border px-1 py-1 font-mono text-xs"
       />
       {values && (
         <datalist id={id}>

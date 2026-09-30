@@ -224,7 +224,7 @@ function Frontmatter({
     // print button and its border stops short by exactly the button's width. An
     // ordinary block does not: only its line boxes avoid the float, while its
     // border box still spans the full column.
-    <div className="border-border mb-6 border-b pb-4">
+    <div className="border-line mb-6 border-b pb-4">
       <dl className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
       {fields.map(([key, value]) => (
         // Key and value read as one unit, so they share a chip and the accent
@@ -240,7 +240,7 @@ function Frontmatter({
           // buttons floated in the corner. Capped, each value truncates instead,
           // the line steps aside from the float the way a flex container should,
           // and the buttons stay reachable.
-          className="border-border/70 bg-surface/60 flex min-w-0 max-w-full items-baseline gap-1.5 rounded-md border px-2 py-0.5"
+          className="border-line bg-panel-2 flex min-w-0 max-w-full items-baseline gap-1.5 rounded-md border px-2 py-0.5"
         >
           {/* The key is muted rather than accented. Accent now means "this is
               interactive" — a resolving value is a link — and one colour cannot
@@ -257,7 +257,7 @@ function Frontmatter({
                 <Link
                   key={i}
                   to={destination(ref.to)}
-                  className="min-w-0 max-w-[20rem] truncate text-accent underline decoration-1 underline-offset-2"
+                  className="min-w-0 max-w-[20rem] truncate text-accent-ink underline decoration-1 underline-offset-2"
                   title={ref.value}
                 >
                   {ref.label}
@@ -295,7 +295,7 @@ function Backlinks({
 }) {
   if (entry.backlinks.length === 0) return null;
   return (
-    <section className="border-border mt-12 border-t pt-6">
+    <section className="border-line mt-12 border-t pt-6">
       <h2 className="text-muted text-xs font-medium tracking-wide uppercase">
         Backlinks ({entry.backlinks.length})
       </h2>
@@ -307,7 +307,7 @@ function Backlinks({
               className="hover:bg-fg/[0.04] flex items-baseline gap-3 rounded-md px-2 py-1.5 text-sm"
             >
               <span className="text-fg truncate">{b.title || b.from}</span>
-              <span className="text-muted ml-auto shrink-0 font-mono text-xs">
+              <span className="text-faint ml-auto shrink-0 font-mono text-xs">
                 {b.from}:{b.line}
               </span>
             </Link>
@@ -382,7 +382,7 @@ function QueueButton({ queued, onQueue }: { queued: boolean; onQueue: () => void
       title={queued ? "Saved to read later — click to remove" : "Read later"}
       className={[
         "hover:bg-fg/5 float-right ml-3 rounded-md p-1.5",
-        queued ? "text-accent" : "text-muted hover:text-fg",
+        queued ? "text-accent-ink" : "text-muted hover:text-fg",
       ].join(" ")}
     >
       <svg

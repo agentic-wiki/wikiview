@@ -108,7 +108,7 @@ export function ReadLaterView({
         <div
           style={{ left: drag.x - drag.dx, top: drag.y - drag.dy }}
           data-print="hide"
-          className="border-accent bg-surface elev-3 text-fg pointer-events-none fixed z-50 flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+          className="border-accent bg-elev shadow-float text-fg pointer-events-none fixed z-50 flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
         >
           <FileIcon />
           <span className="truncate">{describe(tree, drag.item, rootLabel).name}</span>
@@ -154,7 +154,7 @@ function Handle({
       title="Drag to reorder, or use arrow keys"
       className={[
         "grid size-8 shrink-0 cursor-grab touch-none place-items-center rounded-md",
-        dragging ? "text-accent" : "text-muted hover:text-fg hover:bg-fg/5",
+        dragging ? "text-accent-ink" : "text-muted hover:text-fg hover:bg-fg/5",
       ].join(" ")}
     >
       <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden>

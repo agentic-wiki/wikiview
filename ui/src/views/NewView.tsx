@@ -84,7 +84,7 @@ export function NewView({
         <select
           value={path}
           onChange={(e) => chooseFolder(e.target.value)}
-          className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
         >
           {options.map((f) => (
             <option key={f.path} value={f.path}>
@@ -101,18 +101,18 @@ export function NewView({
             setName(e.target.value);
             setId(slug(e.target.value));
           }}
-          className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
         />
       </Field>
 
       <Field label="Address">
         <div className="flex items-center gap-1">
-          <span className="text-muted shrink-0 font-mono text-xs">{prefix}/</span>
+          <span className="text-faint shrink-0 font-mono text-xs">{prefix}/</span>
           <input
             value={id}
             onChange={(e) => setId(e.target.value)}
             aria-label={idLabel}
-            className="border-border bg-bg text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
+            className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
           />
         </div>
       </Field>
@@ -122,7 +122,7 @@ export function NewView({
       <button
         type="submit"
         disabled={busy || !id}
-        className="bg-accent text-accent-fg w-full rounded-md px-2 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
+        className="bg-accent text-on-accent w-full rounded-md px-2 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
       >
         {busy ? "Writing wiki.toml…" : `Make this a ${noun}`}
       </button>

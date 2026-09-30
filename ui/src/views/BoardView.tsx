@@ -127,9 +127,9 @@ export function BoardView({
     <div className="flex h-full min-h-0 flex-col">
       {/* The board's own name, which nothing else on screen says: the breadcrumbs
           follow the reader's path and a board's address is an id. */}
-      <header className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-2">
+      <header className="border-line flex shrink-0 items-center gap-2 border-b px-4 py-2">
         <h1 className="text-fg truncate text-sm font-medium">{board.name}</h1>
-        <span className="text-muted shrink-0 font-mono text-xs">{board.path}</span>
+        <span className="text-faint shrink-0 font-mono text-xs">{board.path}</span>
         <button
           type="button"
           data-print="hide"
@@ -149,7 +149,7 @@ export function BoardView({
       <div
         data-scroller
         data-print={card ? "hide" : undefined}
-        className="bg-sunken flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4"
+        className="bg-bg flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4"
       >
         {board.columns.map((column) => (
           <BoardColumn
@@ -222,7 +222,7 @@ function EmptyBoard({
           </p>
         </div>
         {/* A form is a control, and paper takes no input. */}
-        <div data-print="hide" className="border-border rounded-lg border p-4">
+        <div data-print="hide" className="border-line rounded-lg border p-4">
           <p className="text-muted mb-3 text-sm">Point a board at a folder that has some:</p>
           <NewView kind="board" tree={tree} rootLabel={rootLabel} />
         </div>
@@ -283,7 +283,7 @@ function BoardColumn({
       data-drop={column.value || undefined}
       className={[
         "flex w-72 shrink-0 flex-col rounded-lg border",
-        over ? "border-accent bg-accent/8 elev-2" : "bg-surface border-border elev-1",
+        over ? "border-accent bg-accent-bg" : "bg-panel-2 border-line",
       ].join(" ")}
     >
       {/* Drag to reorder, except the unnamed column: it is not a status anybody
@@ -298,7 +298,7 @@ function BoardColumn({
             : undefined
         }
         className={[
-          "border-border bg-fg/2 flex items-baseline gap-2 rounded-t-lg border-b px-3 py-2",
+          "border-line bg-fg/2 flex items-baseline gap-2 rounded-t-lg border-b px-3 py-2",
           column.value ? "cursor-grab touch-none select-none" : "",
         ].join(" ")}
       >
@@ -311,7 +311,7 @@ function BoardColumn({
             one vanishes with the last entry that had it. Showing them the same
             is what makes config feel haunted. */}
         {column.pinned && (
-          <span className="text-accent shrink-0 text-xs" title="Pinned in wiki.toml">
+          <span className="text-accent-ink shrink-0 text-xs" title="Pinned in wiki.toml">
             ●
           </span>
         )}
@@ -337,8 +337,8 @@ function BoardColumn({
               lane ? "p-1" : "",
               // An empty band is only there to be aimed at, so it is drawn as a
               // place rather than as a row that happens to hold nothing.
-              lane && cards.length === 0 ? "border-border/60 min-h-10 border border-dashed" : "",
-              lane && name && overLane === name ? "bg-accent/10" : "",
+              lane && cards.length === 0 ? "border-line-2 min-h-10 border border-dashed" : "",
+              lane && name && overLane === name ? "bg-accent-bg" : "",
             ].join(" ")}
           >
             {lane && (
@@ -389,7 +389,7 @@ function BoardCard({
       draggable={false}
       to={cardHref(board, card.path)}
       className={[
-        "border-border bg-surface elev-1 lift hover:border-accent/50 block shrink-0 rounded-md border p-2",
+        "border-line bg-elev transition-transform hover:-translate-y-px hover:border-line-2 block shrink-0 rounded-md border p-2",
         // Left in place rather than removed, so the column does not reflow under
         // the pointer while you are deciding where to drop.
         dragging ? "opacity-40" : "",
@@ -435,7 +435,7 @@ function CardFace({ card }: { card: Card }) {
           {blocks > 0 && (
             <Badge
               count={blocks}
-              className="text-accent"
+              className="text-accent-ink"
               title={`Holding up ${blocks} ${blocks === 1 ? "entry" : "entries"}`}
             >
               {/* An arrow branching outward, pointing away rather than at, so the
@@ -446,7 +446,7 @@ function CardFace({ card }: { card: Card }) {
           {shown.map((tag) => (
             <span
               key={tag}
-              className="border-border text-muted rounded border px-1.5 py-0.5 text-xs"
+              className="border-line text-muted rounded border px-1.5 py-0.5 text-xs"
             >
               {tag}
             </span>
@@ -509,7 +509,7 @@ function Ghost({ card, drag }: { card: Card; drag: DragState<Card> }) {
       // a corner the moment it lifts.
       style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
       data-print="hide"
-      className="border-accent bg-surface elev-3 pointer-events-none fixed z-50 rotate-2 rounded-md border p-2"
+      className="border-accent bg-elev shadow-float pointer-events-none fixed z-50 rotate-2 rounded-md border p-2"
     >
       <CardFace card={card} />
     </div>

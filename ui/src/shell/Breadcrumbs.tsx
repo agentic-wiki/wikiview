@@ -40,14 +40,14 @@ export function Breadcrumbs({
         // bundle you are in — and the only breadcrumb link that is always there.
         // Hover dims rather than recolouring: there is no second colour left to
         // move to that would not read as a different kind of thing.
-        className="text-accent caps shrink-0 font-medium transition-opacity hover:opacity-70"
+        className="text-accent-ink caps shrink-0 font-medium transition-opacity hover:opacity-70"
         title="Go to the bundle's front door"
       >
         {bundleName}
       </Link>
       {shown.map((seg, i) => (
         <span key={i} className="flex min-w-0 items-center gap-1">
-          <span className="text-muted/60 shrink-0" aria-hidden>
+          <span className="text-line-2 shrink-0" aria-hidden>
             /
           </span>
           {seg.index < 0 ? (

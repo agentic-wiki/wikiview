@@ -67,10 +67,10 @@ export function CardSheet({
         // arrives a moment after the dialog does, and a dialog sized by its
         // contents is a header alone until it lands, then a jump. It would also
         // resize under you when a link inside one entry opens another.
-        className="border-border bg-surface elev-3 flex h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border"
+        className="bg-elev shadow-float flex h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl"
       >
-        <header className="border-border flex shrink-0 items-center gap-2 border-b px-3 py-2">
-          <span className="text-muted truncate font-mono text-xs">{path}</span>
+        <header className="border-line flex shrink-0 items-center gap-2 border-b px-3 py-2">
+          <span className="text-faint truncate font-mono text-xs">{path}</span>
           <Link
             to={"/wiki" + path}
             data-print="hide"

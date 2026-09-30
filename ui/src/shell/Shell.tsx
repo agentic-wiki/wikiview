@@ -179,7 +179,7 @@ export function Shell({
           control, and a hamburger beside it was a second way to do one thing —
           the vaguer of the two, since it could only ever mean "whichever panel
           is showing" while the icon names the section it hides. */}
-      <header className="border-border bg-surface elev-1 relative z-10 flex h-12 shrink-0 items-center gap-3 border-b px-3">
+      <header className="border-line bg-panel relative z-10 flex h-12 shrink-0 items-center gap-3 border-b px-3">
         {/* Breadcrumbs shrink and ellipsize; the omnibar keeps a workable
             width. The path orients you, the omnibar moves you. */}
         <div className="min-w-0 flex-1">
@@ -205,7 +205,7 @@ export function Shell({
         <aside
           data-print="hide"
           className={[
-            "border-border bg-bg ml-14 shrink-0 overflow-y-auto border-r",
+            "border-line bg-panel ml-14 shrink-0 overflow-y-auto border-r",
             animate ? "transition-[width] duration-200 ease-out" : "",
             panelOpen ? "w-64" : "w-0 border-r-0",
           ].join(" ")}
@@ -348,7 +348,7 @@ function ViewsPanel({
           under every one of them is a form you scroll past. Without it, adding a
           second one means editing wiki.toml by hand, which is the dead end the
           empty state already avoids. */}
-      <div className="border-border border-t p-2">
+      <div className="border-line border-t p-2">
         {adding ? (
           <div className="space-y-2 p-1">
             <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
@@ -404,15 +404,15 @@ function ViewList({
             to={prefix + "/" + encodeURIComponent(v.id)}
             onClick={() => onPick(v.id)}
             className={({ isActive }) =>
-              ["block rounded-md px-2 py-1.5", isActive ? "bg-accent/10" : "hover:bg-fg/5"].join(" ")
+              ["block rounded-md px-2 py-1.5", isActive ? "bg-accent-bg" : "hover:bg-fg/5"].join(" ")
             }
           >
             {({ isActive }) => (
               <>
-                <span className={["block truncate text-sm", isActive ? "text-accent" : "text-fg"].join(" ")}>
+                <span className={["block truncate text-sm", isActive ? "text-accent-ink" : "text-fg"].join(" ")}>
                   {v.name}
                 </span>
-                <span className="text-muted block truncate font-mono text-xs">{v.path}</span>
+                <span className="text-faint block truncate font-mono text-xs">{v.path}</span>
               </>
             )}
           </NavLink>

@@ -23,7 +23,7 @@ export function NotFound({ path, hint }: { path?: string; hint?: string }) {
       <div className="mt-8 flex justify-center gap-3 text-sm">
         <Link
           to="/"
-          className="border-border hover:bg-fg/5 rounded-md border px-3 py-1.5 transition-colors"
+          className="border-line hover:bg-fg/5 rounded-md border px-3 py-1.5 transition-colors"
         >
           Go to the front door
         </Link>

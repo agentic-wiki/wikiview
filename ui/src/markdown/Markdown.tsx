@@ -68,7 +68,7 @@ export function Markdown({
             <a
               href={"#" + id}
               aria-label="Link to this section"
-              className="text-muted hover:text-accent ml-2 no-underline opacity-0 transition-opacity group-hover:opacity-100"
+              className="text-muted hover:text-accent-ink ml-2 no-underline opacity-0 transition-opacity group-hover:opacity-100"
             >
               #
             </a>
@@ -105,7 +105,7 @@ export function Markdown({
             href={link.asset}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-accent underline decoration-1 underline-offset-2"
+            className="text-accent-ink underline decoration-1 underline-offset-2"
             title={`${link.to} — opens in a new tab`}
           >
             {children}
@@ -121,7 +121,7 @@ export function Markdown({
           <a
             href={href}
             {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-            className="text-accent underline decoration-1 underline-offset-2"
+            className="text-accent-ink underline decoration-1 underline-offset-2"
             {...props}
           >
             {children}
@@ -136,7 +136,7 @@ export function Markdown({
           title={link.exists ? undefined : "This entry does not exist yet"}
           className={
             link.exists
-              ? "text-accent underline decoration-1 underline-offset-2"
+              ? "text-accent-ink underline decoration-1 underline-offset-2"
               : "text-muted underline decoration-dotted underline-offset-2"
           }
         >
