@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import { Glyph } from "@/ui/IconButton";
+
 export type RailSection = "entries" | "boards" | "graphs" | "changed" | "later";
 
 /**
@@ -9,85 +12,120 @@ export type RailSection = "entries" | "boards" | "graphs" | "changed" | "later";
  * because that is what the structure is — added to at one end, worked from the
  * other.
  *
- * No Search. It sat here as permanent chrome answering a click with an apology,
- * and beside three icons that work a gap is better than a promise nothing keeps.
- * It comes back when the feature does.
- *
  * Recently changed is a clock: what happened while you were elsewhere. Read later
  * is a bookmark, the same glyph the tree marks a saved entry with, so one shape
- * means one thing wherever it appears.
+ * means one thing wherever it appears. The glyphs are the reference's.
  */
-const SECTIONS: { id: RailSection; label: string; icon: string }[] = [
-  { id: "entries", label: "Entries", icon: "M4 4h10l4 4v12H4z M14 4v4h4" },
-  { id: "boards", label: "Boards", icon: "M4 5h4v14H4z M10 5h4v9h-4z M16 5h4v6h-4z" },
-  // Three entries and the links between them.
+const SECTIONS: { id: RailSection; label: string; icon: ReactNode }[] = [
+  {
+    id: "entries",
+    label: "Entries",
+    icon: (
+      <>
+        <path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2.5V8h5.5" />
+      </>
+    ),
+  },
+  {
+    id: "boards",
+    label: "Boards",
+    icon: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        <path d="M8 7.5v8M12 7.5v4.5M16 7.5v6" />
+      </>
+    ),
+  },
   {
     id: "graphs",
     label: "Graphs",
-    icon: "M4 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z M16 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z M10 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0z M8 6h8 M6.9 7.8l4.2 8.4 M17.1 7.8l-4.2 8.4",
+    // Three entries and the links between them.
+    icon: (
+      <>
+        <circle cx="6" cy="6" r="2.4" />
+        <circle cx="18" cy="7" r="2.4" />
+        <circle cx="12" cy="18" r="2.4" />
+        <path d="M7.2 8.2l3.7 7.6M16.8 9.2l-3.8 6.8M8.4 6.3l7.2.5" />
+      </>
+    ),
   },
   {
     id: "changed",
     label: "Recently changed",
-    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3.5 2",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3.2 2" />
+      </>
+    ),
   },
-  { id: "later", label: "Read later", icon: "M7 4h10v16l-5-4-5 4z" },
+  {
+    id: "later",
+    label: "Read later",
+    icon: <path d="M18.5 21l-6.5-4-6.5 4V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2z" />,
+  },
 ];
 
 /**
  * The rail: a narrow column of sections, one always active.
  *
- * Icons and tooltips rather than a column that widens to show its labels. The
- * labels were the only reason to widen, and a tooltip says the same word
- * without moving anything: the panel beside it already appears and disappears,
- * and a rail sliding over that is a second animation for one word of text.
+ * Icons and tooltips rather than a column that widens to show its labels: the
+ * labels were the only reason to widen, and a tooltip says the same word without
+ * moving anything. Screen readers get every label from aria-label.
  *
- * It also removes a surprise. Expanding on focus was there so keyboard users
- * got the labels hover gives, but returning to the window refocuses whatever
- * had focus last — so alt-tabbing back to the app slid the rail open for no
- * reason. Screen readers still get every label, from aria-label rather than
- * from anything visual happening.
+ * The active section is its tint and its ink, as in the reference. The edge bar
+ * this used to carry said the same thing a second time.
+ *
+ * Two sections carry a count: what changed since you looked, and what you saved
+ * to read. Both are lists you go to, and the number is the reason to.
  */
 export function Rail({
   active,
   onSelect,
+  counts,
 }: {
   active: RailSection;
   onSelect: (s: RailSection) => void;
+  counts: Partial<Record<RailSection, number>>;
 }) {
   return (
     <nav
       data-print="hide"
       aria-label="Sections"
-      className="border-line bg-panel absolute inset-y-0 left-0 z-20 flex w-14 flex-col gap-1 border-r p-2"
+      className="border-line bg-panel flex w-14 shrink-0 flex-col items-center gap-1 border-r py-2.5"
     >
-      {SECTIONS.map((s) => (
-        <button
-          key={s.id}
-          type="button"
-          title={s.label}
-          aria-label={s.label}
-          aria-current={active === s.id ? "page" : undefined}
-          onClick={() => onSelect(s.id)}
-          // The bar at the rail's edge is what says "you are here"; the tint and
-          // the accent icon only say "this one is different from the others".
-          // A tint alone has to be read against its neighbours to mean anything,
-          // and at a glance across a narrow column there is nothing to read it
-          // against.
-          className={[
-            "relative grid h-10 shrink-0 place-items-center rounded-md",
-            "before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-[3px]",
-            "before:-translate-y-1/2 before:rounded-r-full before:bg-accent before:transition-opacity",
-            active === s.id
-              ? "bg-accent-bg text-accent-ink before:opacity-100"
-              : "text-muted hover:text-fg hover:bg-fg/5 before:opacity-0",
-          ].join(" ")}
-        >
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d={s.icon} strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      ))}
+      {SECTIONS.map((s) => {
+        const count = counts[s.id] ?? 0;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            title={s.label}
+            // The count is part of the name, so a screen reader hears "Read
+            // later, 3" rather than a number with no subject.
+            aria-label={count > 0 ? `${s.label}, ${count}` : s.label}
+            aria-current={active === s.id ? "page" : undefined}
+            onClick={() => onSelect(s.id)}
+            className={[
+              "relative grid size-10 shrink-0 place-items-center rounded-[10px]",
+              active === s.id ? "bg-accent-bg text-accent-ink" : "text-muted hover:text-fg",
+            ].join(" ")}
+          >
+            <Glyph size={19} className="[stroke-width:1.7]">
+              {s.icon}
+            </Glyph>
+            {count > 0 && (
+              <span
+                aria-hidden
+                className="bg-accent text-on-accent absolute top-1 right-0.5 grid h-[15px] min-w-[15px] place-items-center rounded-full px-1 text-[9.5px] font-bold"
+              >
+                {count > 99 ? "99+" : count}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </nav>
   );
 }

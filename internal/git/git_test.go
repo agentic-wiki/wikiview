@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -433,5 +434,96 @@ func TestOutsideCountsStagedWorkTheSyncWillNotTouch(t *testing.T) {
 	// can be outside it.
 	if got := Repo(clone).Outside; got != 0 {
 		t.Errorf("a bundle at the repository root has no outside: got %d", got)
+	}
+}
+
+// pushFrom makes n commits in a second checkout and pushes them, as somebody
+// else working on the same remote would. Subjects are "theirs 1"…"theirs n".
+func pushFrom(t *testing.T, remote string, n int) {
+	t.Helper()
+	other := filepath.Join(t.TempDir(), "other")
+	must(t, filepath.Dir(other), "clone", "--quiet", remote, other)
+	configure(t, other, "ana")
+	for i := 1; i <= n; i++ {
+		name := "theirs " + strconv.Itoa(i)
+		write(t, other, strconv.Itoa(i)+".md", "---\ntype: note\n---\n"+name+"\n")
+		must(t, other, "add", ".")
+		// A subject with a tab and a pipe in it: the fields are split on a
+		// character a message cannot hold, and this is what proves it.
+		must(t, other, "commit", "--quiet", "--author", "ana <ana@example.com>", "--message", name+"\twith | separators")
+	}
+	must(t, other, "push", "--quiet")
+}
+
+// What a pull would take, said as commits rather than a count: newest first,
+// with who wrote each and when, so the preview reads like the log it is.
+func TestIncomingListsTheCommitsAPullWouldTake(t *testing.T) {
+	clone, remote := repoPair(t)
+	if s := Repo(clone); len(s.Incoming) != 0 || s.Incoming == nil {
+		t.Fatalf("level with upstream, incoming = %#v, want an empty list", s.Incoming)
+	}
+	pushFrom(t, remote, 3)
+	// Nothing is known until something fetches, and nothing here fetches on its
+	// own: the list is as stale as Behind, by design.
+	if s := Repo(clone); len(s.Incoming) != 0 {
+		t.Errorf("before a fetch, incoming = %v", s.Incoming)
+	}
+	if _, err := Fetch(context.Background(), clone); err != nil {
+		t.Fatal(err)
+	}
+	s := Repo(clone)
+	if len(s.Incoming) != 3 {
+		t.Fatalf("incoming = %+v, want 3", s.Incoming)
+	}
+	first := s.Incoming[0]
+	if first.Subject != "theirs 3\twith | separators" || first.Author != "ana" {
+		t.Errorf("newest = %+v, want the last one pushed, whole subject, by ana", first)
+	}
+	if s.Incoming[2].Subject != "theirs 1\twith | separators" {
+		t.Errorf("oldest = %+v", s.Incoming[2])
+	}
+	if len(first.SHA) < 7 || strings.ContainsAny(first.SHA, " \t") {
+		t.Errorf("sha = %q, want an abbreviated hash", first.SHA)
+	}
+	if _, err := time.Parse(time.RFC3339, first.When); err != nil {
+		t.Errorf("when = %q: %v", first.When, err)
+	}
+
+	// Taken, and so no longer incoming.
+	if _, err := Pull(context.Background(), clone); err != nil {
+		t.Fatal(err)
+	}
+	if s := Repo(clone); len(s.Incoming) != 0 {
+		t.Errorf("after pulling, incoming = %v", s.Incoming)
+	}
+}
+
+// Behind is the count and Incoming is a sample of it: past the limit the list
+// stops, and the count does not.
+func TestIncomingIsCappedWhileBehindIsNot(t *testing.T) {
+	clone, remote := repoPair(t)
+	pushFrom(t, remote, IncomingLimit+2)
+	if _, err := Fetch(context.Background(), clone); err != nil {
+		t.Fatal(err)
+	}
+	s := Repo(clone)
+	if s.Behind != IncomingLimit+2 || len(s.Incoming) != IncomingLimit {
+		t.Errorf("behind=%d incoming=%d, want %d and %d", s.Behind, len(s.Incoming), IncomingLimit+2, IncomingLimit)
+	}
+}
+
+// Without an upstream there is nothing to pull from, and still a list.
+func TestIncomingIsAnEmptyListWithoutAnUpstream(t *testing.T) {
+	if !Available() {
+		t.Skip("git is not installed")
+	}
+	dir := t.TempDir()
+	must(t, dir, "init", "--quiet", "--initial-branch=main")
+	s := Repo(dir)
+	if s.Incoming == nil || len(s.Incoming) != 0 {
+		t.Errorf("incoming = %#v, want an empty list", s.Incoming)
+	}
+	if none := Repo(t.TempDir()); none.Incoming == nil {
+		t.Error("outside a repository, incoming is nil: it would marshal as null")
 	}
 }

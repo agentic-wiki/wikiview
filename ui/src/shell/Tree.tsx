@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from "react";
-import { NavLink, useLocation } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import type { TreeNode } from "@/api";
 import { useBundleState } from "@/state";
 import { folderHasUnseen } from "@/seen";
+import { groupsUnder, type Group } from "@/colour";
 
 /**
  * The bundle's folders and entries.
@@ -100,6 +101,9 @@ export function Tree({
   // the render wants.
   const [expanded, setExpanded] = useBundleState<string[]>(bundleId, "tree:expanded", []);
   const open = useMemo(() => new Set(expanded), [expanded]);
+  // Top-level folders carry their group's colour, the same one the rest of the
+  // app draws their entries in (backlog/8-design/003).
+  const groups = useMemo(() => groupsUnder(node, "/"), [node]);
 
   // Ancestors of the current entry, reopened whenever it changes. A union
   // rather than a replacement, so folders opened by hand stay open.
@@ -132,8 +136,21 @@ export function Tree({
       current={current}
       unseen={unseen}
       saved={saved}
+      groups={groups}
     />
   );
+}
+
+/** Where a row's content starts. A folder's chevron, then its dot at the top
+ *  level; an entry lines its name up with the name of the folder it is in. */
+function folderIndent(depth: number): number {
+  return 8 + depth * 12;
+}
+function entryIndent(depth: number): number {
+  if (depth === 0) return 12;
+  // The parent folder's indent, past its chevron (15) and gap (8), and past
+  // its dot and gap (15) when it is a top-level folder.
+  return folderIndent(depth - 1) + 23 + (depth === 1 ? 15 : 0);
 }
 
 function Level({
@@ -144,6 +161,7 @@ function Level({
   current,
   unseen,
   saved,
+  groups,
 }: {
   node: TreeNode;
   depth: number;
@@ -152,40 +170,69 @@ function Level({
   current: string;
   unseen: Set<string>;
   saved: Set<string>;
+  groups: Group[];
 }) {
   return (
-    <ul className="text-sm">
+    <ul>
       {node.children.map((child) => {
         const isOpen = open.has(child.path);
+        // On its listing, or on its own index.md: either way you are looking at
+        // this folder, so it is the row that says so.
+        const here = current === child.path || current === child.path + "/";
+        const colour = depth === 0 ? groups.find((g) => g.path === child.path)?.colour : undefined;
         return (
           <li key={child.path}>
-            <button
-              type="button"
-              onClick={() => toggle(child.path)}
-              aria-expanded={isOpen}
-              style={{ paddingLeft: `${depth * 12 + 8}px` }}
-              className="text-fg hover:bg-fg/5 flex w-full items-center gap-1 py-1 pr-3 text-left"
+            {/* Two controls in one row, because a folder is two things: a place
+                to go and a list to open. The chevron alone opens the list; the
+                name goes to the folder and opens it too. */}
+            <div
+              style={{ paddingLeft: `${folderIndent(depth)}px` }}
+              className={[
+                "group flex min-h-8 items-center gap-2 rounded-[7px] pr-2 font-medium",
+                here ? "bg-accent-bg text-accent-ink" : "text-fg hover:bg-fg/5",
+              ].join(" ")}
             >
-              <svg
-                viewBox="0 0 24 24"
-                className={[
-                  "text-muted size-3.5 shrink-0 transition-transform duration-150",
-                  isOpen ? "rotate-90" : "",
-                ].join(" ")}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                aria-hidden
+              <button
+                type="button"
+                onClick={() => toggle(child.path)}
+                aria-expanded={isOpen}
+                aria-label={`${isOpen ? "Collapse" : "Expand"} ${child.label ?? child.name}`}
+                className="hover:bg-line -ml-[5px] grid size-5 shrink-0 place-items-center rounded-[5px]"
               >
-                <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span className="truncate">{child.label ?? child.name}</span>
-              {/* Only while shut. Once it is open the marks inside say it
-                  better, and a folder wearing its children's dot as well is
-                  the same fact twice. In the same column as an entry's dot,
-                  since a folder never carries a bookmark. */}
-              {!isOpen && <Marks saved={false} changed={folderHasUnseen(child, unseen)} />}
-            </button>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  className={["text-faint transition-transform duration-150", isOpen ? "rotate-90" : ""].join(" ")}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
+              <Link
+                to={"/wiki" + child.path + "/"}
+                onClick={() => !isOpen && toggle(child.path)}
+                className="flex min-w-0 flex-1 items-center gap-2 self-stretch"
+              >
+                {colour && (
+                  <span className="size-[7px] shrink-0 rounded-[2px]" style={{ background: colour }} aria-hidden />
+                )}
+                <span className="truncate">{child.label ?? child.name}</span>
+                {/* Only while shut. Once it is open the marks inside say it
+                    better, and a folder wearing its children's dot as well is
+                    the same fact twice. In the same column as an entry's dot,
+                    since a folder never carries a bookmark. */}
+                {!isOpen && <Marks saved={false} changed={folderHasUnseen(child, unseen)} />}
+              </Link>
+              <span className="text-faint shrink-0 font-mono text-[11px] font-normal">
+                {child.entries.length + child.children.length}
+              </span>
+            </div>
             {isOpen && (
               <Level
                 node={child}
@@ -195,6 +242,7 @@ function Level({
                 current={current}
                 unseen={unseen}
                 saved={saved}
+                groups={groups}
               />
             )}
           </li>
@@ -205,11 +253,11 @@ function Level({
         <li key={e.path}>
           <NavLink
             to={"/wiki" + e.path}
-            style={{ paddingLeft: `${depth * 12 + 25}px` }}
+            style={{ paddingLeft: `${entryIndent(depth)}px` }}
             className={({ isActive }) =>
               [
-                "flex items-center gap-2 py-1 pr-3",
-                isActive ? "text-accent-ink bg-accent-bg" : "text-muted hover:text-fg hover:bg-fg/5",
+                "flex min-h-8 items-center gap-2 rounded-[7px] pr-2",
+                isActive ? "bg-accent-bg text-accent-ink font-medium" : "text-muted hover:text-fg hover:bg-fg/5",
               ].join(" ")
             }
             title={e.name}

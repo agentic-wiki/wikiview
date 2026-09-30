@@ -25,11 +25,14 @@ export function NewView({
   kind,
   tree,
   rootLabel,
+  onCancel,
 }: {
   kind: keyof typeof KINDS;
   tree: TreeNode;
   /** What to call the bundle itself, since its folder has no name of its own. */
   rootLabel: string;
+  /** Offered beside the submit when the form is something you opened. */
+  onCancel?: () => void;
 }) {
   const options = useMemo(() => folders(tree, rootLabel), [tree, rootLabel]);
   const [path, setPath] = useState(options[0]?.path ?? "/");
@@ -79,12 +82,12 @@ export function NewView({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 text-sm">
+    <form onSubmit={submit} className="flex flex-col gap-2.5">
       <Field label="Folder">
         <select
           value={path}
           onChange={(e) => chooseFolder(e.target.value)}
-          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel focus:border-accent h-8.5 w-full rounded-lg border px-2.5 outline-none"
         >
           {options.map((f) => (
             <option key={f.path} value={f.path}>
@@ -101,7 +104,7 @@ export function NewView({
             setName(e.target.value);
             setId(slug(e.target.value));
           }}
-          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel focus:border-accent h-8.5 w-full rounded-lg border px-2.5 outline-none"
         />
       </Field>
 
@@ -112,21 +115,32 @@ export function NewView({
             value={id}
             onChange={(e) => setId(e.target.value)}
             aria-label={idLabel}
-            className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
+            className="border-line-2 bg-panel focus:border-accent h-8.5 w-full rounded-lg border px-2.5 font-mono text-xs outline-none"
           />
         </div>
       </Field>
 
       {error && <p className="text-danger text-sm">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={busy || !id}
-        className="bg-accent text-on-accent w-full rounded-md px-2 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
-      >
-        {busy ? "Writing wiki.toml…" : `Make this a ${noun}`}
-      </button>
-      <p className="text-muted text-xs">
+      <div className="flex gap-2">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="border-line-2 text-muted hover:text-fg h-8.5 flex-1 rounded-lg border"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={busy || !id}
+          className="bg-accent text-on-accent h-8.5 flex-[1.4] rounded-lg font-semibold hover:brightness-110 disabled:opacity-50"
+        >
+          {busy ? "Writing wiki.toml…" : `Create ${noun}`}
+        </button>
+      </div>
+      <p className="text-faint text-[11.5px] leading-normal">
         Appends a <code>[[tool.wikiview.{noun}]]</code> table to the bundle's{" "}
         <code>wiki.toml</code>.
       </p>
@@ -136,8 +150,8 @@ export function NewView({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-muted block text-xs">{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className="text-muted text-xs">{label}</span>
       {children}
     </label>
   );

@@ -27,10 +27,10 @@ const bundle: BundleInfo = {
   tools: ["wikiview"],
   tags: [],
   version: 1,
-  boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status" }],
+  boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status", cards: 3 }],
   // One graph, over the same folder under the same id as the board: the two
   // are addressed under different prefixes and must not be confused.
-  graphs: [{ path: "/notes", id: "notes", name: "Who links whom" }],
+  graphs: [{ path: "/notes", id: "notes", name: "Who links whom", entries: 3 }],
 };
 
 /** The graph over /notes: A and B link each other, A links the front door from
@@ -718,12 +718,12 @@ test("the Boards crumb opens the boards panel", async () => {
   const restore = stubBoard();
   await mountAt("/kanban/notes");
   const panel = document.querySelector("aside")!;
-  expect(panel.className).toContain("w-0"); // one board, so no list by default
+  expect(panel.getAttribute("data-open")).toBe("false"); // one board, so no list by default
   const boards = [...document.querySelectorAll<HTMLElement>('nav[aria-label="Breadcrumb"] button')].find(
     (b) => b.textContent === "Boards",
   )!;
   await act(async () => boards.click());
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
   expect(panel.textContent).toContain("Notes");
   restore();
 });
@@ -1692,11 +1692,11 @@ test("the rail names five working sections, and the two lists open no panel", as
     await act(async () => openSection(label));
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(activeSection()).toBe(label);
-    expect(document.querySelector("aside")?.className).toContain("w-0");
+    expect(document.querySelector("aside")?.getAttribute("data-open")).toBe("false");
 
     // A second click has nothing to toggle. Opening an empty panel is the bug.
     await act(async () => openSection(label));
-    expect(document.querySelector("aside")?.className).toContain("w-0");
+    expect(document.querySelector("aside")?.getAttribute("data-open")).toBe("false");
   }
 });
 
@@ -1882,7 +1882,7 @@ test("a card can be saved to read later from the sheet", async () => {
 /** Clicks a rail icon by its label. */
 function openSection(label: string) {
   const button = [...document.querySelectorAll("nav[aria-label='Sections'] button")].find(
-    (b) => b.getAttribute("aria-label") === label,
+    (b) => b.getAttribute("title") === label,
   ) as HTMLElement | undefined;
   if (!button) throw new Error(`no ${label} section in the rail`);
   button.click();
@@ -2345,19 +2345,19 @@ test("enter in the new-column box adds the column rather than saving", async () 
 test("switching section swaps the panel rather than animating one shut", async () => {
   await mountAt("/wiki/index.md");
   const panel = document.querySelector("aside")!;
-  expect(panel.className).toContain("w-64"); // the tree, open
+  expect(panel.getAttribute("data-open")).toBe("true"); // the tree, open
 
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   // Closed, because one board is not a list worth width — and got there without
   // a transition to watch.
-  expect(panel.className).toContain("w-0");
+  expect(panel.getAttribute("data-open")).toBe("false");
   expect(panel.className).not.toContain("transition");
 
   // A toggle is something you did, so that one animates.
   await act(async () => openBoardsSection());
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
   expect(panel.className).toContain("transition");
 });
 
@@ -2369,17 +2369,17 @@ test("the panel remembers what each section was doing", async () => {
 
   // Open the boards list, then go to the reader and back.
   await act(async () => openBoardsSection());
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
   await act(async () => openSection("Entries"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  expect(panel.className).toContain("w-64"); // the tree, which is open by default
+  expect(panel.getAttribute("data-open")).toBe("true"); // the tree, which is open by default
   await act(async () => openSection("Entries")); // …and now closed
-  expect(panel.className).toContain("w-0");
+  expect(panel.getAttribute("data-open")).toBe("false");
 
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   // Boards is still open, rather than inheriting what Entries was just told.
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
 });
 
 // A bundle with no boards has nowhere to navigate, so the click has to be worth
@@ -2390,7 +2390,7 @@ test("with no boards the icon still opens the panel", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const panel = document.querySelector("aside")!;
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
   expect(Boolean(panel.querySelector("form"))).toBe(true);
 });
 
@@ -2405,7 +2405,7 @@ test("the panel does not move until the view does", async () => {
   await mountAt("/wiki/index.md");
   const panel = document.querySelector("aside")!;
   const main = document.querySelector("main")!;
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
 
   const flags = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
   flags.IS_REACT_ACT_ENVIRONMENT = false;
@@ -2418,7 +2418,7 @@ test("the panel does not move until the view does", async () => {
     await Promise.resolve();
 
     // The reader is still on screen, so the panel it sits beside must be too.
-    expect(panel.className).toContain("w-64");
+    expect(panel.getAttribute("data-open")).toBe("true");
     expect(main.textContent).toContain("Where the bundle starts.");
   } finally {
     flags.IS_REACT_ACT_ENVIRONMENT = true;
@@ -2426,7 +2426,7 @@ test("the panel does not move until the view does", async () => {
 
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   // And now both, together.
-  expect(panel.className).toContain("w-0");
+  expect(panel.getAttribute("data-open")).toBe("false");
   expect(main.textContent).not.toContain("Where the bundle starts.");
 });
 
@@ -2437,7 +2437,7 @@ test("the panel does not open until the reader arrives", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   const panel = document.querySelector("aside")!;
   const main = document.querySelector("main")!;
-  expect(panel.className).toContain("w-0"); // one board, so no list
+  expect(panel.getAttribute("data-open")).toBe("false"); // one board, so no list
 
   const flags = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
   flags.IS_REACT_ACT_ENVIRONMENT = false;
@@ -2445,14 +2445,14 @@ test("the panel does not open until the reader arrives", async () => {
     openSection("Entries");
     await Promise.resolve();
     await Promise.resolve();
-    expect(panel.className).toContain("w-0");
+    expect(panel.getAttribute("data-open")).toBe("false");
     expect(document.querySelectorAll("main section[aria-label]").length).toBeGreaterThan(0);
   } finally {
     flags.IS_REACT_ACT_ENVIRONMENT = true;
   }
 
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  expect(panel.className).toContain("w-64");
+  expect(panel.getAttribute("data-open")).toBe("true");
   expect(main.textContent).toContain("The Front Door");
 });
 
@@ -2795,18 +2795,33 @@ test("a card shows its tags, and counts the ones it cannot fit", async () => {
 });
 
 /** Serves a git status, and records what the actions ask for. */
+/** Opens the source-control popover on one of its tabs, the way a person does:
+ *  the pill, then the tab. Returns the popover. */
+async function openGit(tab: "Incoming" | "Changes"): Promise<HTMLElement> {
+  if (!document.querySelector("[role='dialog'][aria-label='Source control']")) {
+    await act(async () => document.querySelector<HTMLElement>("[aria-label='Source control']")!.click());
+  }
+  const tabs = [...document.querySelectorAll<HTMLElement>("[role='tab']")];
+  await act(async () => tabs.find((t) => t.textContent?.startsWith(tab))!.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  return document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
+}
+
+/** A repository level with its upstream and clean, which each test departs from. */
+const gitDefaults: GitStatus = {
+  repo: true,
+  branch: "main",
+  remote: "origin/main",
+  ahead: 0,
+  behind: 0,
+  changes: [],
+  outside: 0,
+  incoming: [],
+};
+
 function stubGit(status: Partial<GitStatus>, onAction?: (path: string, body: unknown) => Response) {
   const real = globalThis.fetch;
-  const full: GitStatus = {
-    repo: true,
-    branch: "main",
-    remote: "origin/main",
-    ahead: 0,
-    behind: 0,
-    changes: [],
-    outside: 0,
-    ...status,
-  };
+  const full: GitStatus = { ...gitDefaults, ...status };
   const seen: { path: string; body: unknown }[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -2836,8 +2851,7 @@ test("the git actions are absent when the bundle is not a repository", async () 
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  expect(Boolean(document.querySelector("[aria-label='Pull']"))).toBe(false);
-  expect(Boolean(document.querySelector("[aria-label='Sync']"))).toBe(false);
+  expect(Boolean(document.querySelector("[aria-label='Source control']"))).toBe(false);
   // Refresh re-reads the disk and has nothing to do with git, so it stays.
   expect(Boolean(document.querySelector("[aria-label='Refresh the index']"))).toBe(true);
 });
@@ -2870,8 +2884,8 @@ test("sync previews every file it would commit, then acts on confirmation", asyn
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await openGit("Changes");
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   expect(dialog.textContent).toContain("notes/mine.md");
   expect(dialog.textContent).toContain("notes/by-an-agent.md");
   expect(dialog.textContent).toContain("2 files to commit, 1 commit to push");
@@ -2879,7 +2893,7 @@ test("sync previews every file it would commit, then acts on confirmation", asyn
   expect(asked.length).toBe(0);
 
   const confirm = [...dialog.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Commit and push"),
+    b.textContent?.includes("Commit & push"),
   )!;
   await act(async () => confirm.click());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
@@ -2898,14 +2912,14 @@ test("a refused pull offers to push the work to a branch", async () => {
     if (path !== "/api/git/pull") {
       return new Response(
         JSON.stringify({
-          status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [] },
+          status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [], incoming: [] },
         }),
         { headers: { "content-type": "application/json" } },
       );
     }
     return new Response(
       JSON.stringify({
-        status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [] },
+        status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [], incoming: [] },
         error: "the pull was undone and nothing changed: CONFLICT in notes/a.md",
         proposed: "wikiview/2026-08-12-1430",
       }),
@@ -2916,13 +2930,13 @@ test("a refused pull offers to push the work to a branch", async () => {
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Pull']")!.click());
+  await openGit("Incoming");
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Pull']")!;
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   // Opening the preview is what asks the remote; nothing fetches on its own.
   expect(asked.some((a) => a.path === "/api/git/fetch")).toBe(true);
 
-  const pull = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull")!;
+  const pull = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull & rebase")!;
   await act(async () => pull.click());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
@@ -2960,8 +2974,8 @@ test("a sync with nothing to commit is a push, and asks nothing", async () => {
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await openGit("Changes");
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   expect(Boolean(dialog.querySelector("[aria-label='Commit message']"))).toBe(false);
 
   const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
@@ -2979,8 +2993,8 @@ test("an action with nothing to do cannot be confirmed", async () => {
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await openGit("Changes");
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
   expect(confirm.hasAttribute("disabled")).toBe(true);
   expect(dialog.textContent).toContain("Nothing to sync");
@@ -2996,17 +3010,17 @@ test("a finished action closes itself", async () => {
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await openGit("Changes");
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   await act(async () =>
     [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!.click(),
   );
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   // It says so first, and is still there to be read.
-  expect(document.querySelector("[role='dialog'][aria-label='Sync']")?.textContent).toContain("Done");
+  expect(document.querySelector("[role='dialog'][aria-label='Source control']")?.textContent).toContain("Done");
 
   await act(async () => new Promise((r) => setTimeout(r, 1400)));
-  expect(Boolean(document.querySelector("[role='dialog'][aria-label='Sync']"))).toBe(false);
+  expect(Boolean(document.querySelector("[role='dialog'][aria-label='Source control']"))).toBe(false);
 });
 
 // The one success worth staying open for: the branch name is the whole point of
@@ -3017,7 +3031,7 @@ test("a rescue stays on screen, because the branch name is the point", async () 
     if (path === "/api/git/pull") {
       return new Response(
         JSON.stringify({
-          status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [] },
+          status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [], incoming: [] },
           error: "the pull was undone and nothing changed",
           proposed: "wikiview/2026-08-12-1430",
         }),
@@ -3026,7 +3040,7 @@ test("a rescue stays on screen, because the branch name is the point", async () 
     }
     return new Response(
       JSON.stringify({
-        status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [] },
+        status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [], incoming: [] },
       }),
       { headers: { "content-type": "application/json" } },
     );
@@ -3035,11 +3049,11 @@ test("a rescue stays on screen, because the branch name is the point", async () 
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Pull']")!.click());
+  await openGit("Incoming");
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Pull']")!;
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   await act(async () =>
-    [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull")!.click(),
+    [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull & rebase")!.click(),
   );
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   await act(async () =>
@@ -3049,7 +3063,7 @@ test("a rescue stays on screen, because the branch name is the point", async () 
   );
   await act(async () => new Promise((r) => setTimeout(r, 1400)));
 
-  const still = document.querySelector("[role='dialog'][aria-label='Pull']");
+  const still = document.querySelector("[role='dialog'][aria-label='Source control']");
   expect(Boolean(still)).toBe(true);
   expect(still?.textContent).toContain("wikiview/2026-08-12-1430");
 });
@@ -3064,8 +3078,8 @@ test("staged work outside the bundle is named as work this will not touch", asyn
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
+  await openGit("Changes");
+  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!.textContent!;
   expect(text).toContain("2 staged files elsewhere in this repository");
   expect(text).toContain("will not be committed");
 });
@@ -3079,8 +3093,8 @@ test("a bundle that is the whole repository says nothing about elsewhere", async
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
+  await openGit("Changes");
+  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!.textContent!;
   expect(text).not.toContain("elsewhere in this repository");
 });
 
@@ -3097,8 +3111,8 @@ test("a busy button names the action it is busy with", async () => {
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!;
+  await openGit("Changes");
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   await act(async () =>
     [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!.click(),
   );
@@ -3128,16 +3142,16 @@ test("the fetch that opens a pull preview is not called pulling", async () => {
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Pull']")!.click());
-  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Pull']")!;
+  await openGit("Incoming");
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   expect(dialog.textContent).toContain("Asking the remote what it has");
   expect(dialog.textContent).not.toContain("Pulling…");
-  const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull")!;
+  const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Pull & rebase")!;
   expect(confirm.hasAttribute("disabled")).toBe(true);
 
   await act(async () => {
     release(
-      new Response(JSON.stringify({ status: { repo: true, branch: "main", remote: "origin/main", ahead: 0, behind: 3, changes: [], outside: 0 } }), {
+      new Response(JSON.stringify({ status: { repo: true, branch: "main", remote: "origin/main", ahead: 0, behind: 3, changes: [], outside: 0, incoming: [] } }), {
         headers: { "content-type": "application/json" },
       }),
     );
@@ -3156,8 +3170,8 @@ test("work outside the bundle is only mentioned when a commit is happening", asy
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  await act(async () => document.querySelector<HTMLElement>("[aria-label='Sync']")!.click());
-  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Sync']")!.textContent!;
+  await openGit("Changes");
+  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!.textContent!;
   expect(text).not.toContain("elsewhere in this repository");
 });
 
@@ -3343,8 +3357,8 @@ async function mountWithGraphs(graphs: BundleInfo["graphs"], served?: Graph) {
 // With graphs declared the icon goes to one, the one you were last on.
 test("the Graphs icon returns to the graph you were last on", async () => {
   await mountWithGraphs([
-    { path: "/notes", id: "notes", name: "Who links whom" },
-    { path: "/", id: "all", name: "Everything" },
+    { path: "/notes", id: "notes", name: "Who links whom", entries: 3 },
+    { path: "/", id: "all", name: "Everything", entries: 9 },
   ]);
   await act(async () => openSection("Graphs"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
@@ -3431,17 +3445,22 @@ test("a refused graph keeps you on the form and says why", async () => {
 // a disclosure.
 test("the graphs list can add another", async () => {
   await mountWithGraphs([
-    { path: "/notes", id: "notes", name: "Who links whom" },
-    { path: "/", id: "all", name: "Everything" },
+    { path: "/notes", id: "notes", name: "Who links whom", entries: 2 },
+    { path: "/", id: "all", name: "Everything", entries: 2 },
   ]);
   await act(async () => navigateTo("/graph/notes"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   const panel = document.querySelector("aside")!;
   expect(Boolean(panel.querySelector("form"))).toBe(false);
 
-  const add = [...panel.querySelectorAll("button")].find((b) => b.textContent === "+ New graph")!;
+  const add = [...panel.querySelectorAll("button")].find((b) => b.textContent === "New graph")!;
   await act(async () => add.click());
   expect(Boolean(panel.querySelector("input[aria-label='Graph id']"))).toBe(true);
+
+  // A form you opened is one you can put away, without writing anything.
+  const cancel = [...panel.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+  await act(async () => cancel.click());
+  expect(Boolean(panel.querySelector("form"))).toBe(false);
 });
 
 function openGraphSettings() {
@@ -3615,4 +3634,195 @@ test("opening the app lands on the front door, not an index.md that is not there
   } finally {
     tree.index = had;
   }
+});
+
+// ─── The source-control pill ────────────────────────────────────────────────
+
+/** Mounts with a repository in the given state, and waits for the pill. */
+async function mountWithGit(status: Partial<GitStatus>, onAction?: (path: string, body: unknown) => Response) {
+  await mountAt("/wiki/index.md");
+  const asked = stubGit(status, onAction);
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const pill = document.querySelector<HTMLElement>("[aria-label='Source control']")!;
+  return { asked, pill };
+}
+
+// The pill is the whole status at a glance, so each state has to be told apart
+// without opening anything.
+test("the pill says behind, ahead, changed — or synced when it is none of them", async () => {
+  let { pill } = await mountWithGit({});
+  expect(pill.textContent).toBe("mainsynced");
+
+  ({ pill } = await mountWithGit({
+    behind: 7,
+    ahead: 2,
+    changes: [{ path: "notes/a.md", code: " M" }],
+  }));
+  expect(pill.textContent).toContain("↓7");
+  expect(pill.textContent).toContain("↑2");
+  expect(pill.textContent).toContain("1");
+  expect(pill.textContent).not.toContain("synced");
+});
+
+// Commits rather than a count: what is coming, who wrote it and how long ago, and
+// an honest "more" when the server's list stops short of the count.
+test("incoming lists the commits a pull would take", async () => {
+  const commit = (n: number) => ({
+    sha: "abc123" + n,
+    subject: "Add scenario " + n,
+    author: "ana",
+    when: new Date(Date.now() - 3 * 3600_000).toISOString(),
+  });
+  const behind = { behind: 5, incoming: [commit(1), commit(2)] };
+  const { pill } = await mountWithGit(behind, () =>
+    new Response(JSON.stringify({ status: { ...gitDefaults, ...behind } }), {
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  await act(async () => pill.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const popover = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
+  const rows = [...popover.querySelectorAll("li")].map((li) => li.textContent);
+  expect(rows[0]).toBe("abc1231Add scenario 1ana · 3 h ago");
+  expect(rows).toContain("and 3 more");
+  expect(popover.textContent).toContain("5 commits to take");
+});
+
+// Only Incoming reads the network, and the popover opens where your own work is,
+// so opening it to push reaches nothing. Switching to Incoming asks once.
+test("the popover opens on your changes and fetches only for Incoming, once", async () => {
+  const { asked, pill } = await mountWithGit({ changes: [{ path: "notes/a.md", code: "??" }] });
+  await act(async () => pill.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const selected = () => document.querySelector("[role='tab'][aria-selected='true']")?.textContent;
+  expect(selected()).toStartWith("Changes");
+  expect(asked.filter((a) => a.path === "/api/git/fetch").length).toBe(0);
+
+  await openGit("Incoming");
+  await openGit("Changes");
+  await openGit("Incoming");
+  expect(asked.filter((a) => a.path === "/api/git/fetch").length).toBe(1);
+});
+
+// A popover that only closes by finding its button is one people leave open.
+test("the popover closes on Escape, on a press outside, and not on one inside", async () => {
+  const { pill } = await mountWithGit({});
+  const open = () => Boolean(document.querySelector("[role='dialog'][aria-label='Source control']"));
+
+  await act(async () => pill.click());
+  expect(open()).toBe(true);
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(open()).toBe(false);
+
+  await act(async () => pill.click());
+  const inside = document.querySelector("[role='dialog'][aria-label='Source control'] [role='tab']")!;
+  await act(async () => inside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  expect(open()).toBe(true);
+  await act(async () => document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  expect(open()).toBe(false);
+
+  // And the pill toggles it, rather than a press on it counting as outside.
+  await act(async () => pill.click());
+  await act(async () => pill.click());
+  expect(open()).toBe(false);
+});
+
+// ─── The rail and the tree, redrawn ─────────────────────────────────────────
+
+const railButton = (label: string) =>
+  document.querySelector<HTMLElement>(`nav[aria-label='Sections'] button[title='${label}']`)!;
+const folderRow = (label: string) =>
+  [...document.querySelectorAll<HTMLElement>("aside li > div")].find(
+    (row) => row.querySelector("a")?.textContent === label,
+  )!;
+
+// A folder is a place to go and a list to open, so its row has one control for
+// each. The chevron only opens and closes; the name goes to the folder.
+test("a folder's chevron toggles it where it stands, and its name opens it", async () => {
+  await mountAt("/wiki/index.md");
+  const chevron = () => folderRow("Notes").querySelector<HTMLButtonElement>("button")!;
+  const inTree = () => [...document.querySelectorAll("aside a")].map((a) => a.textContent);
+
+  expect(chevron().getAttribute("aria-expanded")).toBe("false");
+  await act(async () => chevron().click());
+  expect(chevron().getAttribute("aria-expanded")).toBe("true");
+  expect(inTree()).toContain("A");
+  expect(here).toBe("/wiki/index.md"); // nowhere: the chevron is not a link
+  await act(async () => chevron().click());
+  expect(inTree()).not.toContain("A");
+
+  // The name navigates — to the listing here, since /notes has no index.md —
+  // and opens the folder on the way, which is where you are now.
+  await act(async () => folderRow("Notes").querySelector("a")!.click());
+  expect(here).toBe("/wiki/notes/");
+  expect(chevron().getAttribute("aria-expanded")).toBe("true");
+  // And the row says you are on it.
+  expect(folderRow("Notes").className).toContain("bg-accent-bg");
+});
+
+// Clicking the name of a folder that is already open goes there, and does not
+// close the list you were using to get there.
+test("opening an open folder by name leaves it open", async () => {
+  await mountAt("/wiki/notes/a.md"); // opened for the entry you are on
+  const chevron = () => folderRow("Notes").querySelector<HTMLButtonElement>("button")!;
+  expect(chevron().getAttribute("aria-expanded")).toBe("true");
+  await act(async () => folderRow("Notes").querySelector("a")!.click());
+  expect(chevron().getAttribute("aria-expanded")).toBe("true");
+});
+
+// Top-level folders wear their group's colour, and deeper ones none: a group is
+// one level (backlog/8-design/003). The count is the folder's own children.
+test("top-level folders carry their group colour and a count", async () => {
+  await mountAt("/wiki/index.md");
+  const dot = folderRow("Notes").querySelector<HTMLElement>("a > span[aria-hidden]");
+  expect(dot?.style.background).toBe("var(--color-cat-0)");
+  expect(folderRow("Empty").querySelector<HTMLElement>("a > span[aria-hidden]")?.style.background).toBe(
+    "var(--color-cat-1)",
+  );
+  expect(folderRow("Notes").lastElementChild?.textContent).toBe("3");
+  expect(folderRow("Empty").lastElementChild?.textContent).toBe("0");
+});
+
+// The keyboard's way to the same toggle as the active rail icon.
+test("⌘\\ toggles the panel of the section you are in", async () => {
+  await mountAt("/wiki/index.md");
+  const panel = document.querySelector("aside")!;
+  const press = (init: KeyboardEventInit) =>
+    act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "\\", ...init })));
+  expect(panel.getAttribute("data-open")).toBe("true");
+  await press({ metaKey: true });
+  expect(panel.getAttribute("data-open")).toBe("false");
+  await press({ ctrlKey: true });
+  expect(panel.getAttribute("data-open")).toBe("true");
+  // A bare backslash is typing, not a shortcut.
+  await press({});
+  expect(panel.getAttribute("data-open")).toBe("true");
+});
+
+// A list you go to says how much is waiting in it, and says nothing when
+// nothing is.
+test("the rail counts what you saved to read later, and hides a zero", async () => {
+  await mountAt("/wiki/notes/a.md");
+  expect(railButton("Read later").getAttribute("aria-label")).toBe("Read later");
+  expect(railButton("Read later").textContent).toBe("");
+
+  const save = document.querySelector<HTMLElement>("[aria-label='Save to read later']")!;
+  await act(async () => save.click());
+  expect(railButton("Read later").getAttribute("aria-label")).toBe("Read later, 1");
+  expect(railButton("Read later").textContent).toBe("1");
+});
+
+// Each view in a list says what it covers and how much is in it, so two views
+// over one folder, or a board with nothing on it, can be told apart unopened.
+test("the boards and graphs lists say how big each view is", async () => {
+  await mountWithGraphs([
+    { path: "/notes", id: "notes", name: "Who links whom", entries: 3 },
+    { path: "/", id: "all", name: "Everything", entries: 1 },
+  ]);
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const rows = [...document.querySelectorAll("aside li a")].map((a) => a.textContent);
+  expect(rows).toEqual(["WWho links whom/notes · 3 entries", "EEverything/ · 1 entry"]);
 });

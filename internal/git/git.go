@@ -41,6 +41,10 @@ type Status struct {
 	// task exists to avoid.
 	Ahead  int `json:"ahead"`
 	Behind int `json:"behind"`
+	// Incoming are the commits a pull would take, newest first, as of the last
+	// fetch like Behind is — so a preview can say what is coming rather than
+	// only how much. Capped at IncomingLimit; Behind still carries the true count.
+	Incoming []Commit `json:"incoming"`
 	// Changes are the paths inside the bundle that a commit would include,
 	// named from the repository root the way git names them, so a preview reads
 	// the same as the commit it describes.
@@ -59,6 +63,21 @@ type Status struct {
 	// program is not showing, and the place to look at it is `git status`.
 	Outside int `json:"outside"`
 }
+
+// Commit is one commit, described the way a log line does.
+type Commit struct {
+	SHA     string `json:"sha"` // abbreviated, as git abbreviates it
+	Subject string `json:"subject"`
+	Author  string `json:"author"`
+	// When is the author date in RFC 3339, left for the client to phrase as an
+	// age, since "3 h ago" depends on when it is read.
+	When string `json:"when"`
+}
+
+// IncomingLimit caps the list of incoming commits. A branch hundreds of commits
+// behind is told how many by Behind; listing them all would be a log, and the
+// place to read a log is a terminal.
+const IncomingLimit = 50
 
 // Change is one path a commit would carry, and what happened to it.
 type Change struct {
@@ -86,7 +105,7 @@ func Available() bool {
 func Repo(dir string) Status {
 	// Always a list, never nil: a nil slice marshals as `null`, and a client
 	// reading a list it was promised has no reason to check first.
-	none := Status{Changes: []Change{}}
+	none := Status{Changes: []Change{}, Incoming: []Commit{}}
 	if !Available() {
 		return none
 	}
@@ -94,7 +113,7 @@ func Repo(dir string) Status {
 		return none
 	}
 
-	s := Status{Repo: true, Changes: []Change{}}
+	s := Status{Repo: true, Changes: []Change{}, Incoming: []Commit{}}
 	// A detached HEAD has no branch name, which is a state to report rather than
 	// an error: you can still see what changed, you just cannot push.
 	if branch, err := run(context.Background(), dir, "rev-parse", "--abbrev-ref", "HEAD"); err == nil && branch != "HEAD" {
@@ -103,6 +122,9 @@ func Repo(dir string) Status {
 	if remote, err := run(context.Background(), dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil {
 		s.Remote = remote
 		s.Ahead, s.Behind = counts(dir)
+		if s.Behind > 0 {
+			s.Incoming = incoming(dir)
+		}
 	}
 	s.Changes = changes(dir)
 	s.Outside = outside(dir)
@@ -146,6 +168,27 @@ func counts(dir string) (ahead, behind int) {
 	behind, _ = strconv.Atoi(fields[0])
 	ahead, _ = strconv.Atoi(fields[1])
 	return ahead, behind
+}
+
+// incoming lists the commits the upstream has and HEAD does not, newest first.
+//
+// Fields are split on the unit separator, which no subject or name contains,
+// rather than on a space or a tab that a commit message is free to.
+func incoming(dir string) []Commit {
+	out, err := run(context.Background(), dir, "log",
+		"--max-count="+strconv.Itoa(IncomingLimit), "--format=%h%x1f%s%x1f%an%x1f%aI", "HEAD..@{upstream}")
+	list := []Commit{}
+	if err != nil || out == "" {
+		return list
+	}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Split(strings.TrimRight(line, "\r"), "\x1f")
+		if len(f) != 4 {
+			continue
+		}
+		list = append(list, Commit{SHA: f[0], Subject: f[1], Author: f[2], When: f[3]})
+	}
+	return list
 }
 
 // changes lists what a commit would include, scoped to the bundle.

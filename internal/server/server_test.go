@@ -226,3 +226,40 @@ func TestBundleTagsAreAListWhenThereAreNone(t *testing.T) {
 		t.Errorf("body %s: want an empty tags list", rec.Body)
 	}
 }
+
+// A list of views says how big each one is, counted the way the view itself
+// counts: a board by the entries its filter admits, a graph by the entries it
+// is over, before any neighbours join them.
+func TestBundleCountsEachViewsEntries(t *testing.T) {
+	srv, _ := bundleServer(t, map[string]string{
+		"wiki.toml": "spec = \"0.1\"\n" +
+			"\n[[tool.wikiview.board]]\nid = \"work\"\npath = \"/work\"\n" +
+			"\n[[tool.wikiview.board]]\nid = \"all\"\npath = \"/\"\n" +
+			"\n[[tool.wikiview.graph]]\nid = \"work\"\npath = \"/work\"\n" +
+			"\n[[tool.wikiview.graph]]\nid = \"notes\"\npath = \"/work\"\nwhere = [\"type=note\"]\nneighbours = true\n",
+		"index.md":     "---\nokf_version: \"0.1\"\n---\n[a](./work/a.md)\n",
+		"work/a.md":    "---\ntype: task\nstatus: todo\n---\n",
+		"work/b.md":    "---\ntype: task\n---\nno status, still a card\n",
+		"work/n.md":    "---\ntype: note\n---\n[a](./a.md)\n",
+		"elsewhere.md": "---\ntype: task\nstatus: done\n---\n",
+	})
+	var got BundleInfo
+	get(t, srv, "/api/bundle", &got)
+	cards := map[string]int{}
+	for _, b := range got.Boards {
+		cards[b.ID] = b.Cards
+	}
+	// The default filter is type=task: two under /work, three in the bundle.
+	if cards["work"] != 2 || cards["all"] != 3 {
+		t.Errorf("cards = %v, want work=2 all=3", cards)
+	}
+	entries := map[string]int{}
+	for _, g := range got.Graphs {
+		entries[g.ID] = g.Entries
+	}
+	// No default filter on a graph: every entry under /work. The narrowed one
+	// is the single note, though its neighbour a.md is drawn beside it.
+	if entries["work"] != 3 || entries["notes"] != 1 {
+		t.Errorf("entries = %v, want work=3 notes=1", entries)
+	}
+}

@@ -53,6 +53,28 @@
   --color-warn: light-dark(#b7791f, #ffb547);
   --color-danger: light-dark(#d63b50, #ff7a8a);
 
+  /* Graph edges: a hairline that has to read over a dot grid. */
+  --color-edge: light-dark(rgb(40 40 90 / 0.24), rgb(170 170 215 / 0.32));
+
+  /* The one shadow, for everything that floats over the page: popovers,
+     dialogs, the palette, the peek, toasts, a dragged card. A wide soft drop
+     and a 1px ring, because in dark mode a drop alone is invisible and the
+     ring is what draws the edge. Only the inks change with the theme — a
+     whole shadow cannot go through `light-dark()`, which takes two colours. */
+  --shadow-float: 0 24px 60px -14px var(--ink-drop), 0 0 0 1px var(--ink-ring);
+
+  --animate-wv-in: wv-in 0.16s ease-out;
+  --animate-wv-peek: wv-peek 0.18s ease-out;
+  --animate-wv-fade: wv-fade 0.15s ease-out;
+  --animate-wv-spin: wv-spin 0.9s linear infinite;
+}
+
+/* Outside `@theme` on purpose. Tailwind emits a theme variable only when
+   something it scans references it, and these are referenced by name only at
+   runtime, from `colour.ts` — so inside `@theme` all but the ones a test file
+   happened to spell out were dropped from the build. They need no utility
+   classes, so a plain block keeps every one of them. */
+:root {
   /* Categorical colour, for telling things apart by where they are: a folder's
      group, a tag. Never by what a word means (backlog/8-design/003). Assigned by
      position in `colour.ts`; the light variants are darkened to read on paper. */
@@ -70,21 +92,6 @@
   --color-stage-1: light-dark(#2f6bd6, #5f9bff);
   --color-stage-2: light-dark(#b7791f, #ffb547);
   --color-stage-3: light-dark(#1f9d5c, #3dd68c);
-
-  /* Graph edges: a hairline that has to read over a dot grid. */
-  --color-edge: light-dark(rgb(40 40 90 / 0.24), rgb(170 170 215 / 0.32));
-
-  /* The one shadow, for everything that floats over the page: popovers,
-     dialogs, the palette, the peek, toasts, a dragged card. A wide soft drop
-     and a 1px ring, because in dark mode a drop alone is invisible and the
-     ring is what draws the edge. Only the inks change with the theme — a
-     whole shadow cannot go through `light-dark()`, which takes two colours. */
-  --shadow-float: 0 24px 60px -14px var(--ink-drop), 0 0 0 1px var(--ink-ring);
-
-  --animate-wv-in: wv-in 0.16s ease-out;
-  --animate-wv-peek: wv-peek 0.18s ease-out;
-  --animate-wv-fade: wv-fade 0.15s ease-out;
-  --animate-wv-spin: wv-spin 0.9s linear infinite;
 }
 
 :root {

@@ -55,3 +55,4 @@ No hue. `laneBars(index, count)` returns how many of the mock's three bars are l
 - **A root that shares a prefix with a folder does not claim it**: `/guides-old` is not under `/guides`. Pinned by test.
 - **Tag order is computed per request**, like the boards beside it, rather than cached with the index. It is one walk over the entries, and there is nothing to invalidate.
 - **Nothing draws with it yet.** The consumers arrive with 006 onwards, each task wiring the function it needs.
+- **The tokens live in a plain `:root`, not `@theme`** — found in 006: Tailwind drops theme variables no scanned file names, and these are named only at runtime.

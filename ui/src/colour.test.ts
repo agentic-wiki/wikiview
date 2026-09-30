@@ -137,10 +137,15 @@ test("lane bars rank by position: first three, last one", () => {
   expect([0, 1, 2, 3, 4].map((i) => laneBars(i, 5))).toEqual([3, 3, 2, 2, 1]);
 });
 
-// Every colour this module hands out is a token the stylesheet must define. A
-// misspelt name would pass every test above and paint nothing on screen.
-test("every token the module can emit is defined in the stylesheet", async () => {
-  const css = await Bun.file(new URL("./index.css", import.meta.url)).text();
+// Every colour this module hands out is a token the stylesheet must define, and
+// define outside `@theme`. A misspelt name would pass every test above and
+// paint nothing — and so would a correct one inside `@theme`, which Tailwind
+// drops from the build unless something it scans spells the name out. These are
+// only ever named at runtime, so the tree showed three folder colours of eight.
+test("every token the module can emit is defined where the build keeps it", async () => {
+  const source = await Bun.file(new URL("./index.css", import.meta.url)).text();
+  // The `@theme` blocks, removed: what is left is what ships regardless.
+  const css = source.replace(/@theme\s*\{[^}]*\}/g, "");
   const many = folder("/", Array.from({ length: 8 }, (_, i) => folder(`/f${i}`)));
   const cols = ["a", "b", "c", "d"];
   const emitted = [

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import type { BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
@@ -12,6 +12,8 @@ import { useBundleState } from "@/state";
 import { GitActions } from "@/shell/GitActions";
 import { NewView } from "@/views/NewView";
 import { frontDoor } from "@/tree";
+import { SectionLabel } from "@/ui/SectionLabel";
+import { count } from "@/views/listing";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -169,6 +171,21 @@ export function Shell({
     setOpenFor((was) => ({ ...was, [next]: true }));
   };
 
+  // ⌘\ (Ctrl+\ elsewhere) opens and closes the panel beside the view: the
+  // same toggle as clicking the active rail icon, for a hand already on the
+  // keyboard. Re-registered as the section changes, so it always toggles the
+  // panel you are looking at.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\" && hasPanel(section)) {
+        e.preventDefault();
+        toggle(section, !panelOpen);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   const crumbs = trail(location.pathname, path, tree, bundle, (s) => toggle(s, true));
 
   // The view area scrolls, not the document, so scroll restoration works from
@@ -217,22 +234,31 @@ export function Shell({
       </header>
 
       <div className="relative flex min-h-0 grow">
-        <Rail active={section} onSelect={pick} />
+        <Rail
+          active={section}
+          onSelect={pick}
+          counts={{ changed: unseen.size, later: saved.size }}
+        />
 
-        {/* Offset by the rail's collapsed width; the rail expands over this
-            rather than pushing it, so nothing here reflows. */}
+        {/* `data-open` is the state, so nothing has to read it off a width. */}
         <aside
           data-print="hide"
+          data-open={panelOpen}
           className={[
-            "border-line bg-panel ml-14 shrink-0 overflow-y-auto border-r",
+            "border-line bg-panel flex min-h-0 shrink-0 flex-col overflow-hidden border-r",
             animate ? "transition-[width] duration-200 ease-out" : "",
-            panelOpen ? "w-64" : "w-0 border-r-0",
+            panelOpen ? "w-67" : "w-0 border-r-0",
           ].join(" ")}
         >
           {panelOpen && section === "entries" && (
-            <div className="py-2">
-              <Tree node={tree} bundleId={bundle.id} unseen={unseen} saved={saved} />
-            </div>
+            <>
+              <SectionLabel count={bundle.entries} className="pt-3.5 pr-3.5 pb-2 pl-4">
+                Entries
+              </SectionLabel>
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+                <Tree node={tree} bundleId={bundle.id} unseen={unseen} saved={saved} />
+              </div>
+            </>
           )}
           {panelOpen && section === "boards" && (
             <ViewsPanel
@@ -349,89 +375,105 @@ function ViewsPanel({
   onPick: (id: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const label = kind === "board" ? "Boards" : "Graphs";
   if (!views?.length) {
     return (
-      <div className="space-y-3 p-3">
-        <p className="text-fg text-sm font-medium">Your first {kind}</p>
-        <p className="text-muted text-sm">{intro}</p>
-        <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
+      <div className="space-y-3 overflow-y-auto p-3.5">
+        <SectionLabel>Your first {kind}</SectionLabel>
+        <p className="text-muted text-[13px] leading-relaxed">{intro}</p>
+        <div className="border-line bg-panel-2 rounded-xl border p-3.5">
+          <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
+        </div>
       </div>
     );
   }
 
   return (
-    <>
-      <ViewList prefix={kind === "board" ? "/kanban" : "/graph"} views={views} onPick={onPick} />
+    <div className="min-h-0 overflow-y-auto">
+      <SectionLabel className="pt-3.5 pr-3.5 pb-2 pl-4">{label}</SectionLabel>
+      <ViewList prefix={kind === "board" ? "/kanban" : "/graph"} kind={kind} views={views} onPick={onPick} />
 
       {/* Behind a disclosure, because the list is what you came for and a form
           under every one of them is a form you scroll past. Without it, adding a
           second one means editing wiki.toml by hand, which is the dead end the
           empty state already avoids. */}
-      <div className="border-line border-t p-2">
+      <div className="p-2.5">
         {adding ? (
-          <div className="space-y-2 p-1">
-            <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
-            <button
-              type="button"
-              onClick={() => setAdding(false)}
-              className="text-muted hover:text-fg w-full text-xs"
-            >
-              Cancel
-            </button>
+          <div className="border-line bg-panel-2 animate-wv-in rounded-xl border p-3.5">
+            <p className="mb-2.5 font-semibold">New {kind}</p>
+            <NewView kind={kind} tree={tree} rootLabel={rootLabel} onCancel={() => setAdding(false)} />
           </div>
         ) : (
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="text-muted hover:text-fg hover:bg-fg/5 w-full rounded-md px-2 py-1.5 text-left text-sm"
+            className="border-line-2 text-muted hover:border-faint hover:text-fg flex h-9 w-full items-center gap-2 rounded-[9px] border border-dashed px-2.5"
           >
-            + New {kind}
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New {kind}
           </button>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
-/** A declared view over a folder: a board or a graph. */
-type Declared = { id: string; name: string; path: string };
+/** A declared view over a folder: a board or a graph, with how big it is. */
+type Declared = { id: string; name: string; path: string; cards?: number; entries?: number };
 
 /**
  * The declared views of one kind, as the panel lists them.
  *
  * Addressed by id rather than path, because two views can be over one folder
- * and only the id tells them apart.
+ * and only the id tells them apart. Two lines each, because a view's name and
+ * the folder it covers answer different questions; there are rarely more than a
+ * handful, so the space is affordable.
  */
 function ViewList({
   prefix,
+  kind,
   views,
   onPick,
 }: {
   prefix: string;
+  kind: "board" | "graph";
   views: Declared[];
   onPick: (id: string) => void;
 }) {
   return (
-    <ul className="p-2">
+    <ul className="flex flex-col gap-0.5 px-2">
       {views.map((v) => (
         <li key={v.id}>
-          {/* Two lines, because a view's name and the folder it covers answer
-              different questions and a one-line row makes you hover to get the
-              second. There are rarely more than a handful of these, so the
-              space is affordable. */}
           <NavLink
             to={prefix + "/" + encodeURIComponent(v.id)}
             onClick={() => onPick(v.id)}
             className={({ isActive }) =>
-              ["block rounded-md px-2 py-1.5", isActive ? "bg-accent-bg" : "hover:bg-fg/5"].join(" ")
+              [
+                "flex items-center gap-2.5 rounded-[9px] px-2.5 py-2",
+                isActive ? "bg-accent-bg" : "hover:bg-fg/5",
+              ].join(" ")
             }
           >
             {({ isActive }) => (
               <>
-                <span className={["block truncate text-sm", isActive ? "text-accent-ink" : "text-fg"].join(" ")}>
-                  {v.name}
+                <span
+                  aria-hidden
+                  className="bg-elev text-accent-ink grid size-7 shrink-0 place-items-center rounded-[7px] text-xs font-semibold"
+                >
+                  {(v.name.trim()[0] ?? "·").toUpperCase()}
                 </span>
-                <span className="text-faint block truncate font-mono text-xs">{v.path}</span>
+                <span className="min-w-0 flex-1">
+                  <span className={["block truncate font-medium", isActive ? "text-accent-ink" : "text-fg"].join(" ")}>
+                    {v.name}
+                  </span>
+                  <span className="text-faint block truncate font-mono text-[11.5px]">
+                    {v.path}
+                    {kind === "board" && v.cards !== undefined && " · " + count(v.cards, "card")}
+                    {kind === "graph" && v.entries !== undefined && " · " + count(v.entries, "entry", "entries")}
+                  </span>
+                </span>
               </>
             )}
           </NavLink>

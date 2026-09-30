@@ -161,7 +161,8 @@ GET  /api/board/{id}          one board as columns of cards, in the config's ord
 GET  /api/graph/{id}          one graph as nodes and edges, each edge saying which
                               way it points and whether it came from the body or a field
 GET  /api/git                 the bundle's repository: branch, upstream, ahead/behind,
-                              and everything a commit would carry
+                              the commits a pull would take (up to 50, as of the
+                              last fetch), and everything a commit would carry
 GET  /api/events              server-sent events carrying the current version
 GET  /raw/{path...}           a file as it is on disk, frontmatter and all
 PUT  /api/checkbox/{path...}  toggle a checkbox, guarded by the version you read

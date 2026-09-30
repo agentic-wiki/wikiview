@@ -97,15 +97,40 @@ type BundleInfo struct {
 	// Boards are the boards declared in `[tool.wikiview]`, with their defaults
 	// filled in. Only the ones with an id, since an id is what a board is
 	// addressed by and listing one without an address offers a dead link.
-	Boards []config.Board `json:"boards,omitempty"`
+	Boards []BoardInfo `json:"boards,omitempty"`
 	// Graphs are the graphs declared, named. There is no built-in one, so this
 	// is every graph there is.
-	Graphs []config.Graph `json:"graphs,omitempty"`
+	Graphs []GraphInfo `json:"graphs,omitempty"`
 	// Tags is every tag in the bundle, in the order they first appear: entries
 	// walked by path, each one's tags as written. A tag's colour is its
 	// position in this list, so one tag is one colour on every surface — and the
 	// list is the server's, so no client has to agree with another about it.
 	Tags []string `json:"tags"`
+}
+
+// BoardInfo is a declared board and how many cards it holds, so a list of
+// boards can say which is which without fetching each one.
+type BoardInfo struct {
+	config.Board
+	// Cards counts the entries the board's filter admits — every card, the
+	// no-status column included — computed the way the board itself is.
+	Cards int `json:"cards"`
+}
+
+// GraphInfo is a declared graph and how many entries it is over. Neighbours are
+// not counted: they are on a graph for context, and the count says what the
+// graph is of.
+type GraphInfo struct {
+	config.Graph
+	Entries int `json:"entries"`
+}
+
+// matching counts the entries under a view's folder that its filter admits.
+func matching(idx *index.Index, path string, filters []index.PropFilter) int {
+	if path == "/" {
+		path = "" // the whole bundle, which is what Filter reads an empty prefix as
+	}
+	return len(idx.Filter(path, filters))
 }
 
 // bundleID identifies a bundle by where it lives, which is the only thing
@@ -131,7 +156,7 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 	// the board you just declared. Problems are reported at startup rather than
 	// on every fetch; a malformed board is not a reason to fail this response.
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
-	boards := make([]config.Board, 0, len(cfg.Board))
+	boards := make([]BoardInfo, 0, len(cfg.Board))
 	for _, b := range cfg.Board {
 		// A board with no id has no address, so listing it would offer a link to
 		// `/kanban/` — which resolves to the root board and quietly shows the
@@ -139,13 +164,13 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		if b.ID == "" {
 			continue
 		}
-		boards = append(boards, named(b, v.Index.Bundle.Dir))
+		boards = append(boards, BoardInfo{named(b, v.Index.Bundle.Dir), matching(v.Index, b.Path, b.Filters)})
 	}
-	graphs := make([]config.Graph, 0, len(cfg.Graph))
+	graphs := make([]GraphInfo, 0, len(cfg.Graph))
 	for _, g := range cfg.Graph {
 		if servable(g) {
 			g.Name = viewName(g.Name, g.Path, v.Index.Bundle.Dir)
-			graphs = append(graphs, g)
+			graphs = append(graphs, GraphInfo{g, matching(v.Index, g.Path, g.Filters)})
 		}
 	}
 	writeJSON(w, http.StatusOK, BundleInfo{

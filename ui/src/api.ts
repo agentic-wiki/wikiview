@@ -14,10 +14,10 @@ export interface BundleInfo {
   version: number;
   /** Boards declared in `[tool.wikiview]`, with their defaults filled in.
    *  Absent when the bundle declares none, which is the common case. */
-  boards?: BoardConfig[];
+  boards?: (BoardConfig & { /** Every card on it. */ cards: number })[];
   /** Graphs declared in `[tool.wikiview]`. There is no built-in one, so absent
    *  means none. */
-  graphs?: GraphConfig[];
+  graphs?: (GraphConfig & { /** The entries it is over, neighbours not counted. */ entries: number })[];
   /** Every tag in the bundle, first appearance first. A tag's colour is its
    *  position here (`colour.ts`), so the order is the contract. */
   tags: string[];
@@ -463,12 +463,23 @@ export interface GitStatus {
    *  something fetches, which only happens when a preview is opened. */
   ahead: number;
   behind: number;
+  /** The commits a pull would take, newest first, as stale as `behind` and
+   *  capped server-side; `behind` is the true count. */
+  incoming: GitCommit[];
   /** Everything a commit would include, not only what wikiview wrote. */
   changes: GitChange[];
   /** Files staged elsewhere in the same repository, which a sync will not
    *  commit. Said out loud because it is not going to happen: staging work in a
    *  terminal and then pressing "commit and push" looks like it covers both. */
   outside: number;
+}
+
+/** One commit, as a log line describes it. `when` is RFC 3339. */
+export interface GitCommit {
+  sha: string;
+  subject: string;
+  author: string;
+  when: string;
 }
 
 export interface GitResult {

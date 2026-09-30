@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the rail, the tree and the view panels"
-status: todo
+status: done
 priority: high
 tags: [design, ui]
 blockers: [/8-design/004-header.md]
@@ -41,3 +41,14 @@ On a graph, under the list, a `GROUPS` section: each group of the graph's folder
 ## Tests
 
 The existing panel-width assertions move from `w-64`/`w-0` to the new classes. New: ⌘\\ toggles; chevron toggles without navigating; the label navigates to the index or the listing; badges show counts and hide at zero; the groups toggle hides nodes.
+
+## What building it settled
+
+- **The graph groups legend moved to [011](./011-graph.md).** On its own it would be a list of toggles that hide nothing until the canvas honours them. It lands with the canvas change that makes it mean something.
+- **The panel's state is `data-open`, not a width.** Eighteen assertions read `w-64` / `w-0` off the class list, so changing the panel's width meant changing the tests. They now read the attribute, and the panel is `w-67` (268px) as in the reference.
+- **Folder rows are three controls, not one button**: a chevron `<button aria-expanded>` that only toggles, a `<Link>` for the name that navigates and expands (and never collapses an open folder), and the count outside the link, so a row's link text stays its name.
+- **The rail's accessible name carries its count** ("Read later, 3") so a screen reader hears the number with its subject. The plain `title` is what tests and tooltips use.
+- **Found by looking, not by the tests: Tailwind drops `@theme` variables nothing references.** The categorical and stage colours are only ever named at runtime, so five of the eight folder dots rendered with no colour. They moved to a plain `:root` block, and `colour.test.ts` now checks that every token the module emits is defined *outside* `@theme` (verified to fail against the old layout).
+- **View counts on `/api/bundle`**: `BoardInfo.cards` (every card, the no-status column included) and `GraphInfo.entries` (neighbours not counted), embedded around the config so the JSON is flat and `config` stays about config.
+- **`NewView` takes an optional `onCancel`** and draws Cancel / Create side by side. Its submit now reads "Create board" / "Create graph", as in the reference.
+- **ENTRIES counts every entry**, tasks included. The mock counts documents only, and "entries" is the bundle's own word for all of them.

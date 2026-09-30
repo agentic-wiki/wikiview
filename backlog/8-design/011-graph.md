@@ -24,6 +24,10 @@ As the board's: the name, and `N entries · N links` in mono; spacer; a **Highli
 - Labels are 11px, painted over a `bg` halo stroke, and ellipsized at 30 characters until hovered.
 - Nodes hidden through the panel's groups legend ([006](./006-rail-and-panel.md)) are removed from the drawing along with their edges. The simulation keeps them, so showing them again does not re-layout.
 
+## Groups legend
+
+Moved here from [006](./006-rail-and-panel.md), so it ships with the canvas that honours it. On a graph, the panel gets a `GROUPS` section under the list of graphs: each group under the graph's `path`, with its colour dot, its label and a count. Clicking one hides or shows its nodes, and a hidden group's row is dimmed. The hidden set is view state, kept per graph in `useBundleState`.
+
 ## Overlays
 
 - **Zoom controls**, bottom-left: a vertical `elev` group holding +, − and fit. Fit frames the graph's bounds.
