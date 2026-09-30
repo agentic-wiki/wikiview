@@ -53,6 +53,9 @@ A folder and everything under it as one document, in reading order, printed by t
 **7 — Graphs** *(done)*
 A folder's entries as nodes and the links between them as edges, at `/graph/<id>`. Declared like a board and never built in, filtered by `path` and an optional `where`, with body and frontmatter links both counting as edges. Declared and edited from the UI through the writer boards use, which now takes the kind of table it is editing.
 
+**8 — Design** *(current)*
+The reference design (`wikiview-ui-ref/`) applied to every surface: its tokens and type, positional colour, a redrawn shell, reader, board, graph and lists, a side peek, a palette with commands, toasts, and narrow screens last. The look changes and the behaviour does not. The plan and the decisions behind it are in [the reference design, applied](./8-design/001-the-reference-design.md).
+
 ## Upstream
 
 Built on [`wiki` v0.9.0+](https://github.com/agentic-wiki/wiki), imported directly. Every rule lives there and none is reimplemented here: frontmatter reads and writes, link resolution both ways, checkbox toggling, `--where` parsing. Config is `[tool.wikiview]` inside the bundle's own `wiki.toml`, read through `bundle.DecodeTool`.
