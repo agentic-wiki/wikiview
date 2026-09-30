@@ -77,27 +77,27 @@ wikiview my-kb --host 0.0.0.0 --port 3000
 <table>
   <tr>
     <td width="50%"><img src="img/1-main.png" alt="The reader: the folder tree, an entry, and its heading map"></td>
-    <td width="50%"><img src="img/3-multiple-kanbans.png" alt="A board with lanes, and the form that adds another"></td>
+    <td width="50%"><img src="img/2-kanban.png" alt="A board of tasks, one of them open in the side panel"></td>
   </tr>
   <tr>
     <td><b>Read.</b> The folder as a tree and each entry as a page, with a heading map in the margin and a dot on what changed since you last looked.</td>
-    <td><b>Board.</b> Any folder's entries as columns and lanes, from their frontmatter. Drag a card and its file changes. A new board is one form.</td>
+    <td><b>Board.</b> Any folder's entries as columns and lanes, from their frontmatter. Drag a card and its file changes; open one and it reads beside the board.</td>
   </tr>
   <tr>
+    <td><img src="img/3-multiple-kanbans.png" alt="A board with lanes, and the form that adds another"></td>
     <td><img src="img/4-graph.png" alt="A graph of tasks, coloured by folder, with the groups legend open"></td>
-    <td><img src="img/5-subgraph.png" alt="Pointing at a node lights its links and shows which way they go"></td>
   </tr>
   <tr>
+    <td><b>Many views, one folder.</b> Boards and graphs are declared in <code>wiki.toml</code>, and a form writes that for you.</td>
     <td><b>Graph.</b> Entries as nodes and their links as edges, coloured by folder. Hide a group, or show only one.</td>
+  </tr>
+  <tr>
+    <td><img src="img/5-subgraph.png" alt="Pointing at a node lights its links and shows which way they go"></td>
+    <td><img src="img/7-read-later-and-git.png" alt="The read later list, with the source control popover open over it"></td>
+  </tr>
+  <tr>
     <td><b>Follow a thread.</b> Point at a node and its links light, with arrows for which way they go.</td>
-  </tr>
-  <tr>
-    <td><img src="img/6-multiple-graphs.png" alt="The graphs list, and the form that adds another"></td>
-    <td><img src="img/7-read-later-and-git.png" alt="The read later list, and the source control popover"></td>
-  </tr>
-  <tr>
-    <td><b>Many views, one folder.</b> Boards and graphs are declared in <code>wiki.toml</code>, and the UI writes that for you.</td>
-    <td><b>Read later, and git.</b> A queue of entries to come back to, and commit, pull and push without leaving the page.</td>
+    <td><b>Read later.</b> A queue of entries to come back to, in your own order.<br><b>Git.</b> The branch pill says what changed; commit, pull and push from its popover without leaving the page.</td>
   </tr>
 </table>
 
