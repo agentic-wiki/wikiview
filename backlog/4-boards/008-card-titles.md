@@ -18,3 +18,6 @@ A card's title is taken from the filename today, even when the entry has a `titl
 ## Why it matters
 
 The filename is an id and the title is a label, and a board is a wall of labels. When every card reads like a filename, the board stops saying what its cards are about and starts saying what they are called.
+## Progress
+
+The card face leads with the entry's frontmatter `title`, falling back to the filename, with the filename beneath when the two differ ([8-design/009](../8-design/009-board.md)). Still open: when there is no `title`, fall back to the body's first heading before the filename. That belongs on the server, in the same place `Card.Title` is read, so the board and the reader keep resolving a name by one rule.

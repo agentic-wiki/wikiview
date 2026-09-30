@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { api, type Board, type Card, type Column, type TreeNode } from "@/api";
 import { BoardSettings } from "@/views/BoardSettings";
 import { reordered, useDrag, type Drag as DragState } from "@/views/drag";
@@ -8,6 +8,16 @@ import { Loading } from "@/views/Loading";
 import { NewView } from "@/views/NewView";
 import { NotFound } from "@/views/NotFound";
 import type { Queue } from "@/queue";
+import { useBundle } from "@/bundle";
+import { useToast } from "@/ui/Toast";
+import { NARROW, useMedia } from "@/media";
+import { columnColour, isShelved, laneBars, tagColour } from "@/colour";
+import { useBundleState } from "@/state";
+import { SearchField } from "@/ui/SearchField";
+import { State, StateIcon } from "@/ui/State";
+import { Segmented } from "@/ui/Segmented";
+import { SettingsButton } from "@/ui/SettingsButton";
+import { count } from "@/count";
 
 /**
  * One folder as columns of cards.
@@ -44,6 +54,25 @@ export function BoardView({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { bundle } = useBundle();
+  const toast = useToast();
+  // On a narrow screen a column is most of the width and the board snaps
+  // column to column, since dragging a view sideways is what a thumb does.
+  const narrow = useMedia(NARROW);
+  // The filter lives in the address, so it survives a card opening over the
+  // board and a reload, and a filtered board is a link you can send.
+  const [params, setParams] = useSearchParams();
+  const query = params.get("q") ?? "";
+  const setQuery = (q: string) =>
+    setParams((p) => {
+      if (q) p.set("q", q);
+      else p.delete("q");
+      return p;
+    }, { replace: true });
+  // Flat is a way of reading this board, kept per board and per bundle, and
+  // never written to its config.
+  const [flat, setFlat] = useBundleState(bundle.id, "board:" + id + ":flat", false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -68,22 +97,36 @@ export function BoardView({
     current.current = board;
   }, [board]);
 
-  const { drag, handlers } = useDrag<Card>((card, to) => {
+  /**
+   * Moving a card: to a column, and to a lane, or "" to keep the one it has.
+   * The one way a card moves, whether it was dropped or chosen in its sheet.
+   *
+   * Optimistic, because a card that sits still for a round trip after you moved
+   * it reads as a move that failed. The write bumps the version, the refetch
+   * that follows is what the screen finally agrees with, and a card that snaps
+   * back is telling you the truth arrived.
+   */
+  const move = (card: Card, column: string, lane: string) => {
     const before = current.current;
     if (!before) return;
-    // A drop says where in both directions at once, and the lane half is only
-    // as good as the band it landed in: released over a column but not over one
-    // of its bands, it says nothing about lanes and the card keeps the one it
-    // had.
-    const lane = to.lane ?? "";
-    if (to.drop === columnOf(before, card) && lane === (card.lane ?? "")) return;
-    // Optimistic, because a card that sits still for a round trip after you
-    // dropped it reads as a drag that failed. The write bumps the version, the
-    // refetch that follows is what the screen finally agrees with, and a card
-    // that snaps back is telling you the truth arrived.
-    setBoard(moved(before, card, to.drop, lane));
-    api.moveCard(before.id, card.path, to.drop, lane, version).catch(() => setBoard(before));
-  });
+    // Nothing to write when nothing changes: the same column, and a lane that
+    // is the card's own or unnamed.
+    if (column === columnOf(before, card) && (lane === "" || lane === (card.lane ?? ""))) return;
+    setBoard(moved(before, card, column, lane));
+    const to = heading(column) + (lane && lane !== (card.lane ?? "") ? " · " + heading(lane) : "");
+    api
+      .moveCard(before.id, card.path, column, lane, version)
+      .then(() => toast("Moved to " + to))
+      .catch((e) => {
+        setBoard(before);
+        toast(String((e as Error).message ?? e), "danger");
+      });
+  };
+
+  // A drop says where in both directions at once, and the lane half is only as
+  // good as the band it landed in: released over a column but not over one of
+  // its bands, it says nothing about lanes and the card keeps the one it had.
+  const { drag, handlers } = useDrag<Card>((card, to) => move(card, to.drop, to.lane ?? ""));
 
   /**
    * Dragging a column header to reorder the columns.
@@ -122,22 +165,86 @@ export function BoardView({
 
   // Every lane on the board, in the order the server put them in.
   const axis = board.lanes ?? [];
+  const lanesOn = Boolean(board.lane) && !flat;
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? board.columns.map((c) => ({ ...c, cards: c.cards.filter((card) => matches(card, q)) }))
+    : board.columns;
+  const visible = shown.reduce((n, c) => n + c.cards.length, 0);
+  const values = board.columns.map((c) => c.value);
+  // The filter rides along into a card's address and back out of it, so opening
+  // a card does not throw away the narrowing you opened it from.
+  const search = location.search;
+
+  // The card open in the sheet, and its status and lane as controls there: the
+  // same move a drop makes, for when the board is not where your hands are.
+  const opened = card ? board.columns.flatMap((c) => c.cards).find((c) => c.path === card) : undefined;
+  const openedIn = opened ? (columnOf(board, opened) ?? "") : "";
+  const properties = opened
+    ? [
+        {
+          key: board.field,
+          value: openedIn,
+          node: (
+            <Choice
+              label={board.field}
+              options={values.filter((v) => v !== "").map((v) => ({ value: v, text: heading(v), colour: columnColour(v, values) }))}
+              value={openedIn}
+              onPick={(v) => move(opened, v, "")}
+            />
+          ),
+        },
+        ...(board.lane
+          ? [
+              {
+                key: board.lane,
+                value: opened.lane ?? "",
+                node: (
+                  <Choice
+                    label={board.lane}
+                    options={axis.filter((l) => l !== "").map((l) => ({ value: l, text: heading(l) }))}
+                    value={opened.lane ?? ""}
+                    // A card with no status has no column to stay in while its
+                    // lane changes, so its lane waits until it has one.
+                    disabled={openedIn === ""}
+                    onPick={(l) => move(opened, openedIn, l)}
+                  />
+                ),
+              },
+            ]
+          : []),
+      ]
+    : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* The board's own name, which nothing else on screen says: the breadcrumbs
-          follow the reader's path and a board's address is an id. */}
-      <header className="border-line flex shrink-0 items-center gap-2 border-b px-4 py-2">
-        <h1 className="text-fg truncate text-sm font-medium">{board.name}</h1>
-        <span className="text-faint shrink-0 font-mono text-xs">{board.path}</span>
-        <button
-          type="button"
-          data-print="hide"
-          onClick={() => setEditing(true)}
-          className="text-muted hover:text-fg hover:bg-fg/5 ml-auto shrink-0 rounded-md px-2 py-1 text-xs"
-        >
-          Settings
-        </button>
+      {/* The board's own name, which the trail says too, but here beside what
+          it covers and how much is on it. */}
+      <header className="border-line flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-3.5">
+        <div className="flex min-w-0 items-baseline gap-2.5">
+          <h1 className="text-fg truncate text-lg font-semibold tracking-tight">{board.name}</h1>
+          <span className="text-faint shrink-0 font-mono text-xs">
+            {board.path} · {q ? `${visible} of ${count(cards, "card")}` : count(cards, "card")}
+          </span>
+        </div>
+        <div className="flex-1" />
+        <div data-print="hide" className="flex flex-wrap items-center gap-2">
+          <SearchField label="Filter cards" placeholder="Filter cards or tags" value={query} onChange={setQuery} />
+          {/* Only a board with lanes has lanes to flatten. A reading of the
+              board, not a change to it: config is untouched. */}
+          {board.lane && (
+            <Segmented
+              label="Lanes"
+              options={[
+                ["lanes", "Lanes"],
+                ["flat", "Flat"],
+              ]}
+              value={flat ? "flat" : "lanes"}
+              onChange={(v) => setFlat(v === "flat")}
+            />
+          )}
+          <SettingsButton onClick={() => setEditing(true)} />
+        </div>
       </header>
 
       {/* Columns scroll sideways as a set while each scrolls its own cards, so a
@@ -146,48 +253,93 @@ export function BoardView({
 
           On paper, a card open over the board makes the board context you are
           not reading: what you are looking at is what prints. */}
-      <div
-        data-scroller
-        data-print={card ? "hide" : undefined}
-        className="bg-bg flex min-h-0 min-w-0 grow gap-3 overflow-x-auto p-4"
-      >
-        {board.columns.map((column) => (
-          <BoardColumn
-            key={column.value || " unset"}
-            board={board.id}
-            column={column}
-            field={board.field}
-            lane={board.lane}
-            handlers={handlers}
-            headerHandlers={reorder.handlers}
-            axis={axis}
-            dragging={drag?.item.path}
-            over={(drag ?? reorder.drag)?.over?.drop === column.value}
-            overLane={drag?.over?.drop === column.value ? drag.over.lane : null}
+      {/* The sheet floats over this area, below the view's header, so the
+          header's controls stay in reach while a card or node is open. */}
+      <div className="relative flex min-h-0 min-w-0 grow">
+        <div
+          data-scroller
+          data-print={card ? "hide" : undefined}
+          className={[
+          "bg-bg flex min-h-0 min-w-0 grow items-start gap-3.5 overflow-x-auto px-5 pt-4.5 pb-6",
+          narrow ? "snap-x snap-mandatory" : "",
+        ].join(" ")}
+        >
+          {shown.map((column) => (
+            <BoardColumn
+              key={column.value || " unset"}
+              board={board.id}
+              column={column}
+              field={board.field}
+              lane={lanesOn ? board.lane : undefined}
+              colour={columnColour(column.value, values)}
+            narrow={narrow}
+              share={visible ? column.cards.length / visible : 0}
+              filtering={q !== ""}
+              search={search}
+              open={card}
+              handlers={handlers}
+              headerHandlers={reorder.handlers}
+              axis={axis}
+              dragging={drag?.item.path}
+              // A card over this column: with lanes, the band it will land in
+              // (the one under the pointer, else its own), and not the column
+              // around it; without lanes, the column.
+              over={drag?.over?.drop === column.value && !lanesOn}
+              overLane={
+                drag?.over?.drop === column.value && lanesOn ? (drag.over.lane ?? drag.item.lane ?? "") : null
+              }
+              // A column being dragged: it stays where it was, dimmed, and the
+              // column it would land before carries a line on its left.
+              lifted={reorder.drag?.item === column.value}
+              landsBefore={reorder.drag !== null && reorder.drag.item !== column.value && reorder.drag.over?.drop === column.value}
+            />
+          ))}
+        </div>
+        {card && (
+          <CardSheet
+            path={card}
+            version={version}
+            refresh={refresh}
+            changedAt={changedAt[card]}
+            queue={queue}
+            // A link to something else in this board's folder opens that card and
+            // keeps the board. Anything else leaves for the reader, which is what
+            // makes an off-board link ordinary rather than decorated.
+            destination={(to) => (within(board.path, to) ? cardHref(board.id, to) + search : "/wiki" + to)}
+            hrefFor={(to) => cardHref(board.id, to) + search}
+            properties={properties}
+            hint="Changes write to the card's frontmatter"
+            // Replaced rather than pushed: closing a card should not leave a
+            // history entry you have to press back through twice.
+            onClose={() => navigate("/kanban/" + board.id + search, { replace: true })}
           />
-        ))}
+        )}
       </div>
 
       {drag && <Ghost card={drag.item} drag={drag} />}
-      {editing && <BoardSettings board={board} onClose={() => setEditing(false)} />}
-
-      {card && (
-        <CardSheet
-          path={card}
-          version={version}
-          refresh={refresh}
-          changedAt={changedAt[card]}
-          queue={queue}
-          // A link to something else in this board's folder opens that card and
-          // keeps the board. Anything else leaves for the reader, which is what
-          // makes an off-board link ordinary rather than decorated.
-          destination={(to) => (within(board.path, to) ? cardHref(board.id, to) : "/wiki" + to)}
-          // Replaced rather than pushed: closing a card should not leave a
-          // history entry you have to press back through twice.
-          onClose={() => navigate("/kanban/" + board.id, { replace: true })}
+      {reorder.drag && (
+        <ColumnGhost
+          column={column(board, reorder.drag.item)}
+          colour={columnColour(reorder.drag.item, values)}
+          drag={reorder.drag}
         />
       )}
+      {editing && <BoardSettings board={board} onClose={() => setEditing(false)} />}
+
     </div>
+  );
+}
+
+/**
+ * Whether a card answers to a filter: its title, its filename, or one of its
+ * tags, containing the text. Client-side and plain, because it narrows what is
+ * already on screen — the board's own `where` is the query language.
+ */
+function matches(card: Card, q: string): boolean {
+  return (
+    (card.title ?? "").toLowerCase().includes(q) ||
+    card.label.toLowerCase().includes(q) ||
+    (card.tags ?? []).some((t) => t.toLowerCase().includes(q))
   );
 }
 
@@ -212,22 +364,22 @@ function EmptyBoard({
   rootLabel: string;
 }) {
   return (
-    <div className="grid h-full place-items-center p-8">
-      <div className="w-full max-w-sm space-y-4">
-        <div className="text-center">
-          <p className="text-fg font-medium">Nothing on this board</p>
-          <p className="text-muted mt-1 text-sm">
-            No entry under <code>{board.path}</code> is a <code>type: task</code> with a{" "}
-            <code>{board.field}</code>.
-          </p>
-        </div>
-        {/* A form is a control, and paper takes no input. */}
-        <div data-print="hide" className="border-line rounded-lg border p-4">
-          <p className="text-muted mb-3 text-sm">Point a board at a folder that has some:</p>
+    <State
+      icon={StateIcon.board}
+      title="Nothing on this board"
+      detail={
+        <>
+          No entry under <code>{board.path}</code> is a <code>type: task</code> with a <code>{board.field}</code>.
+        </>
+      }
+      action={
+        // A form is a control, and paper takes no input.
+        <div data-print="hide" className="border-line bg-panel-2 rounded-xl border p-4 text-left">
+          <p className="text-muted mb-3 text-[13px]">Point a board at a folder that has some:</p>
           <NewView kind="board" tree={tree} rootLabel={rootLabel} />
         </div>
-      </div>
-    </div>
+      }
+    />
   );
 }
 
@@ -236,18 +388,43 @@ function BoardColumn({
   column,
   field,
   lane,
+  colour,
+  share,
+  filtering,
+  search,
+  open,
   handlers,
   headerHandlers,
   axis,
   dragging,
   over,
   overLane,
+  narrow,
+  lifted,
+  landsBefore,
 }: {
+  /** This column is the one being dragged to a new place. */
+  lifted: boolean;
+  /** Dropping the column being dragged would put it just before this one. */
+  landsBefore: boolean;
+  /** Most of the screen wide, and a place a sideways swipe stops at. */
+  narrow: boolean;
   /** The board id, which every card address starts with. */
   board: string;
   column: Column;
   field: string;
+  /** The lane field, when lanes are being drawn: absent on a flat reading. */
   lane?: string;
+  /** Its place on the board, as a colour (backlog/8-design/003). */
+  colour: string;
+  /** Its share of the cards on screen, for the bar in its header. */
+  share: number;
+  /** Whether a filter is narrowing the board, which changes what empty means. */
+  filtering: boolean;
+  /** The query string, carried into each card's address. */
+  search: string;
+  /** The card open over the board, "" for none. */
+  open: string;
   handlers: (card: Card) => Record<string, unknown>;
   /** Dragging the header, which reorders the columns rather than moving a card. */
   headerHandlers: (value: string) => Record<string, unknown>;
@@ -255,24 +432,25 @@ function BoardColumn({
   axis: string[];
   /** The path of the card being dragged, so its place is left showing. */
   dragging?: string;
-  /** Whether a drop here is what would happen if the pointer let go now. */
+  /** A card dropped now would land in this column, on a board without lanes. */
   over: boolean;
-  /** The band within this column a drop would land in, when it would land in
-   *  one, so a diagonal drag shows both halves of where it is going. */
+  /** The band a card dropped now would land in, on a board with lanes ("" is
+   *  the band of cards with none); null when it would not land here. */
   overLane?: string | null;
 }) {
   // Grouped here rather than by the server, because a lane is a way of reading
-  // one column rather than a property of the board's contents: the cards and
-  // their lane values are the data, and this is an arrangement of them.
+  // one column rather than a property of the board's contents.
   //
   // Condensed while nothing is being dragged: a band with no cards is only there
-  // to be dropped into, and a board of five lanes by five columns is otherwise
-  // mostly headings for rows that hold nothing. They appear the moment a card is
-  // in the air, which is the moment they mean something.
+  // to be dropped into. They appear the moment a card is in the air, which is
+  // the moment they mean something.
   const lanes = useMemo(
     () => groupByLane(column.cards, lane, axis).filter(([, cards]) => cards.length > 0 || dragging),
     [column.cards, lane, axis, dragging],
   );
+  // Rank by position among the named lanes; the band of cards with no lane has
+  // no rank, so none of its bars are lit.
+  const named = axis.filter((l) => l !== "");
 
   return (
     <section
@@ -282,8 +460,11 @@ function BoardColumn({
       // different operation wearing the same gesture.
       data-drop={column.value || undefined}
       className={[
-        "flex w-72 shrink-0 flex-col rounded-lg border",
-        over ? "border-accent bg-accent-bg" : "bg-panel-2 border-line",
+        "bg-panel-2 flex max-h-full shrink-0 flex-col rounded-[14px] border",
+        narrow ? "w-[84vw] snap-start" : "w-[316px]",
+        over ? "border-accent" : "border-line",
+        lifted ? "opacity-40" : "",
+        landsBefore ? "shadow-[-8px_0_0_-5px_var(--color-accent)]" : "",
       ].join(" ")}
     >
       {/* Drag to reorder, except the unnamed column: it is not a status anybody
@@ -298,80 +479,170 @@ function BoardColumn({
             : undefined
         }
         className={[
-          "border-line bg-fg/2 flex items-baseline gap-2 rounded-t-lg border-b px-3 py-2",
+          "flex items-center gap-2.5 rounded-t-[14px] px-3.5 pt-3 pb-2.5",
           column.value ? "cursor-grab touch-none select-none" : "",
         ].join(" ")}
       >
-        {/* An unnamed column is the one holding cards with no such field, which
-            is a fact about them rather than a status anybody wrote. */}
-        <h2 className="text-fg caps truncate text-xs font-semibold">
+        {/* The colour as a custom property, which the dot, its halo and the
+            share bar all read: one value, however it is spelt. */}
+        <span
+          aria-hidden
+          className="size-[9px] shrink-0 rounded-full bg-(--c) shadow-[0_0_0_3px_color-mix(in_oklch,var(--c)_20%,transparent)]"
+          style={{ "--c": colour } as React.CSSProperties}
+        />
+        {/* The value as entries spell it, sentence-cased by CSS alone: the text
+            is still the value, which is what gets written back. */}
+        <h2 className="text-fg truncate text-[13.5px] font-semibold first-letter:uppercase">
           {column.value ? heading(column.value) : <span className="text-muted italic">no {field}</span>}
         </h2>
         {/* A pinned column stays when its status stops being used; an inferred
             one vanishes with the last entry that had it. Showing them the same
             is what makes config feel haunted. */}
         {column.pinned && (
-          <span className="text-accent-ink shrink-0 text-xs" title="Pinned in wiki.toml">
+          <span className="text-faint shrink-0 text-[9px]" title="Pinned in wiki.toml">
             ●
           </span>
         )}
-        <span className="text-muted ml-auto shrink-0 text-xs">{column.cards.length}</span>
+        <span className="text-faint shrink-0 font-mono text-[11.5px]">{column.cards.length}</span>
+        <div className="flex-1" />
+        {/* How much of the board sits here, at a glance across the columns. */}
+        <div className="bg-line h-1 w-11 shrink-0 overflow-hidden rounded-sm" aria-hidden>
+          <div className="h-full bg-(--c)" style={{ width: `${Math.round(share * 100)}%`, "--c": colour } as React.CSSProperties} />
+        </div>
       </header>
 
-      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-2">
-        {column.cards.length === 0 && (
+      <div className="flex min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-2">
+        {column.cards.length === 0 && !dragging && (
           // A declared column with nothing in it is the point of declaring it,
           // so it says so rather than looking broken.
-          <p className="text-muted px-1 py-2 text-xs">Empty</p>
+          <p className="text-faint px-1.5 py-2 text-xs">{filtering ? "No cards match" : "Empty"}</p>
         )}
-        {lanes.map(([name, cards]) => (
-          <div
-            key={name || " unset"}
-            // A band is a drop target of its own, so one diagonal drag says both
-            // which column and which lane. The unnamed band carries none, for
-            // the same reason the unnamed column does: dropping into it would
-            // mean removing the field.
-            data-lane={lane && name ? name : undefined}
-            className={[
-              "flex shrink-0 flex-col gap-2 rounded-md",
-              lane ? "p-1" : "",
-              // An empty band is only there to be aimed at, so it is drawn as a
-              // place rather than as a row that happens to hold nothing.
-              lane && cards.length === 0 ? "border-line-2 min-h-10 border border-dashed" : "",
-              lane && name && overLane === name ? "bg-accent-bg" : "",
-            ].join(" ")}
-          >
-            {lane && (
-              <h3 className="text-muted caps px-1 pt-1 text-xs font-medium">
-                {name ? heading(name) : "none"}
-              </h3>
-            )}
-            {cards.map((card) => (
-              <BoardCard
-                key={card.path}
-                board={board}
-                card={card}
-                handlers={handlers}
-                dragging={card.path === dragging}
-              />
-            ))}
-          </div>
-        ))}
+        {lanes.map(([name, cards]) => {
+          const target = Boolean(lane && name);
+          return (
+            <div
+              key={name || " unset"}
+              // A band is a drop target of its own, so one diagonal drag says
+              // both which column and which lane. The unnamed band carries none,
+              // for the same reason the unnamed column does.
+              data-lane={target ? name : undefined}
+              className={[
+                "flex shrink-0 flex-col gap-1.5 rounded-[10px] p-1 outline-[1.5px] -outline-offset-1",
+                lane && overLane === name ? "bg-accent-bg outline-accent outline-dashed" : "outline-transparent",
+              ].join(" ")}
+            >
+              {lane && (
+                <div className="text-faint flex items-center gap-2 px-1.5 pt-1.5 text-[10.5px]">
+                  <Bars lit={name ? laneBars(named.indexOf(name), named.length) : 0} />
+                  <h3 className="caps font-semibold">{name ? heading(name) : "none"}</h3>
+                  <span className="font-mono">{cards.length}</span>
+                </div>
+              )}
+              {cards.map((card) => (
+                <BoardCard
+                  key={card.path}
+                  board={board}
+                  card={card}
+                  search={search}
+                  handlers={handlers}
+                  dragging={card.path === dragging}
+                  open={card.path === open}
+                  shelved={isShelved(column.value)}
+                />
+              ))}
+              {/* An empty band is only there to be aimed at, so it is drawn as a
+                  place rather than as a row that happens to hold nothing. */}
+              {cards.length === 0 && (
+                <div className="border-line-2 text-faint grid h-9.5 place-items-center rounded-lg border border-dashed text-xs">
+                  Drop here
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
+  );
+}
+
+/**
+ * One of a few values, as a row of small buttons with the current one raised:
+ * a card's status or lane in its sheet. Choosing one moves the card.
+ */
+function Choice({
+  label,
+  options,
+  value,
+  onPick,
+  disabled = false,
+}: {
+  label: string;
+  options: { value: string; text: string; colour?: string }[];
+  value: string;
+  onPick: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          disabled={disabled}
+          onClick={() => value !== o.value && onPick(o.value)}
+          className={[
+            "text-fg flex h-6.5 items-center gap-1.5 rounded-[7px] border px-2.5 text-[12.5px] first-letter:uppercase disabled:opacity-40",
+            value === o.value ? "bg-elev border-line-2" : "hover:bg-fg/5 border-transparent",
+          ].join(" ")}
+        >
+          {o.colour && (
+            <span
+              aria-hidden
+              className="size-[7px] rounded-full bg-(--c)"
+              style={{ "--c": o.colour } as React.CSSProperties}
+            />
+          )}
+          {o.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The reference's rank glyph: three bars, the first `lit` of them drawn. */
+function Bars({ lit }: { lit: number }) {
+  // Strongest lanes in the text colour, the middle in muted, the last in faint:
+  // a rank you read at a glance down the column, without a hue.
+  const ink = lit === 3 ? "bg-fg" : lit === 2 ? "bg-muted" : "bg-faint";
+  return (
+    <span className="flex gap-0.5" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <span key={i} className={["h-2.5 w-[3px] rounded-[1px]", i < lit ? ink : "bg-line-2"].join(" ")} />
+      ))}
+    </span>
   );
 }
 
 function BoardCard({
   board,
   card,
+  search,
   handlers,
   dragging,
+  open,
+  shelved,
 }: {
+  /** In a shelved column, where what a card waits on no longer matters. */
+  shelved: boolean;
   board: string;
   card: Card;
+  search: string;
   handlers: (card: Card) => Record<string, unknown>;
   dragging: boolean;
+  /** Open in the sheet over the board, so it is the card you are reading. */
+  open: boolean;
 }) {
   return (
     // Opens beside the board rather than navigating away from it. A card is
@@ -379,117 +650,105 @@ function BoardCard({
     //
     // `draggable={false}` because this is an anchor, and an anchor is draggable
     // by default: the browser starts its own link-drag on the first movement and
-    // stops sending pointer events, so no drag of ours ever began. Invisible to
-    // a test, since a DOM without a renderer has no native drag to start.
+    // stops sending pointer events, so no drag of ours ever began.
     //
     // `shrink-0` because a flex child shrinks below its content by default, and
     // a column with more cards than height then draws them over each other.
     <Link
       {...handlers(card)}
       draggable={false}
-      to={cardHref(board, card.path)}
+      to={cardHref(board, card.path) + search}
+      aria-current={open ? "true" : undefined}
       className={[
-        "border-line bg-elev transition-transform hover:-translate-y-px hover:border-line-2 block shrink-0 rounded-md border p-2",
+        "bg-elev border-line hover:border-line-2 block shrink-0 rounded-[10px] border px-3 pt-[11px] pb-2.5 transition-[border-color,transform] hover:-translate-y-px",
+        open ? "ring-accent ring-[1.5px]" : "",
         // Left in place rather than removed, so the column does not reflow under
         // the pointer while you are deciding where to drop.
-        dragging ? "opacity-40" : "",
+        dragging ? "opacity-35" : "",
       ].join(" ")}
     >
-      <CardFace card={card} />
+      <CardFace card={card} shelved={shelved} />
     </Link>
   );
 }
 
-function CardFace({ card }: { card: Card }) {
+function CardFace({ card, shelved = false }: { card: Card; shelved?: boolean }) {
+  const { bundle } = useBundle();
   const blockedBy = card.blockedBy ?? 0;
   const blocks = card.blocks ?? 0;
+  const links = card.links ?? 0;
   // Capped, because a card is a glance and a tag cloud is not one. The rest are
   // counted rather than dropped, so a card never understates what it carries.
   const tags = card.tags ?? [];
   const shown = tags.slice(0, 3);
   return (
     <>
-      <span className="text-fg block truncate text-sm">{card.label}</span>
-      {/* What the entry calls itself, under the filename, when it says something
-          the filename does not. */}
+      {/* What the entry calls itself, and the filename under it when that says
+          something else: a board is a wall of labels, and a label is what the
+          entry gives itself (backlog/4-boards/008). */}
+      <span className="text-fg mb-0.5 block text-[13.5px] leading-[1.35] font-medium">
+        {card.title || card.label}
+      </span>
       {card.title && card.title !== card.label && (
-        <span className="text-muted mt-0.5 block truncate text-xs">{card.title}</span>
+        <span className="text-muted line-clamp-2 block text-[12.5px] leading-[1.45]">{card.label}</span>
       )}
-      {/* Two opposite facts, so two badges: being blocked is a reason not to
-          start and blocking others is a reason to, and one mark would say
-          neither. Absent at zero, since a card with no edges has nothing to
-          report and a row of noughts on every card says nothing. */}
-      {(blockedBy > 0 || blocks > 0 || tags.length > 0) && (
-        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          {blockedBy > 0 && (
-            <Badge
-              count={blockedBy}
-              className="text-warn"
-              title={`Waiting on ${blockedBy} ${blockedBy === 1 ? "entry" : "entries"}`}
-            >
-              {/* A barred circle: the universal "blocked" mark. */}
-              <circle cx="8" cy="8" r="6.25" />
-              <path d="M3.75 12.25 12.25 3.75" />
-            </Badge>
-          )}
-          {blocks > 0 && (
-            <Badge
-              count={blocks}
-              className="text-accent-ink"
-              title={`Holding up ${blocks} ${blocks === 1 ? "entry" : "entries"}`}
-            >
-              {/* An arrow branching outward, pointing away rather than at, so the
-                  two read as opposites at a glance. */}
-              <path d="M2.75 8h6.5m0 0L6.5 5.25M9.25 8 6.5 10.75M12.5 3.25v9.5" />
-            </Badge>
-          )}
+      {/* What it waits on, by name: the first blocker the field lists, and how
+          many more. The same edges the count always reported, no verdict about
+          whether they are finished — nothing here knows which status means
+          done. */}
+      {/* Amber, not red: waiting is a state to notice, not a failure. Not on a
+          shelf — archived or parked, what it waits on no longer matters. */}
+      {blockedBy > 0 && !shelved && (
+        <span
+          className="text-warn mt-2 flex min-w-0 items-center gap-1.5 text-[11.5px]"
+          title={`Waiting on ${blockedBy} ${blockedBy === 1 ? "entry" : "entries"}`}
+        >
+          <svg viewBox="0 0 24 24" width="12" height="12" className="shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M5.6 5.6l12.8 12.8" />
+          </svg>
+          <span className="truncate">Waiting on {card.blocker || count(blockedBy, "entry", "entries")}</span>
+          {blockedBy > 1 && card.blocker && <span className="shrink-0">+{blockedBy - 1}</span>}
+        </span>
+      )}
+      {(tags.length > 0 || blocks > 0 || links > 0) && (
+        <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
           {shown.map((tag) => (
             <span
               key={tag}
-              className="border-line text-muted rounded border px-1.5 py-0.5 text-xs"
+              className="bg-panel-2 text-muted inline-flex h-5 items-center gap-1.5 rounded-[5px] px-1.5 text-[11.5px]"
             >
+              <span className="size-1.5 rounded-full" style={{ background: tagColour(tag, bundle.tags) }} aria-hidden />
               {tag}
             </span>
           ))}
-          {tags.length > shown.length && (
-            <span className="text-muted text-xs">+{tags.length - shown.length}</span>
+          {tags.length > shown.length && <span className="text-faint text-xs">+{tags.length - shown.length}</span>}
+          <span className="flex-1" />
+          {/* The opposite fact to waiting: others wait on this one, a reason
+              to start it. An arrow branching outward, pointing away. */}
+          {blocks > 0 && (
+            <span
+              className="text-accent-ink flex items-center gap-1 font-mono text-[11px]"
+              title={`Holding up ${blocks} ${blocks === 1 ? "entry" : "entries"}`}
+            >
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M2.75 8h6.5m0 0L6.5 5.25M9.25 8 6.5 10.75M12.5 3.25v9.5" />
+              </svg>
+              {blocks}
+            </span>
+          )}
+          {links > 0 && (
+            <span className="text-faint flex items-center gap-1 font-mono text-[11px]" title={count(links, "linked entry", "linked entries")}>
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+                <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+              </svg>
+              {links}
+            </span>
           )}
         </span>
       )}
     </>
-  );
-}
-
-function Badge({
-  count,
-  title,
-  className,
-  children,
-}: {
-  count: number;
-  title: string;
-  className: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      title={title}
-      className={["bg-fg/5 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs", className].join(" ")}
-    >
-      <svg
-        viewBox="0 0 16 16"
-        className="size-2.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        {children}
-      </svg>
-      {count}
-    </span>
   );
 }
 
@@ -509,9 +768,44 @@ function Ghost({ card, drag }: { card: Card; drag: DragState<Card> }) {
       // a corner the moment it lifts.
       style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
       data-print="hide"
-      className="border-accent bg-elev shadow-float pointer-events-none fixed z-50 rotate-2 rounded-md border p-2"
+      className="border-accent bg-elev shadow-float pointer-events-none fixed z-50 rotate-2 rounded-[10px] border px-3 pt-[11px] pb-2.5"
     >
       <CardFace card={card} />
+    </div>
+  );
+}
+
+/**
+ * The column under the pointer while it is being dragged: its header, and
+ * enough of a column under it to read as one, so the gesture has weight the
+ * way a dragged card does.
+ */
+function ColumnGhost({ column, colour, drag }: { column: Column; colour: string; drag: DragState<string> }) {
+  return (
+    <div
+      style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
+      data-print="hide"
+      className="border-accent bg-panel-2 shadow-float pointer-events-none fixed z-50 rotate-1 rounded-[14px] border"
+    >
+      <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-2.5">
+        <span
+          aria-hidden
+          className="size-[9px] shrink-0 rounded-full bg-(--c)"
+          style={{ "--c": colour } as React.CSSProperties}
+        />
+        <span className="text-fg truncate text-[13.5px] font-semibold first-letter:uppercase">{heading(column.value)}</span>
+        <span className="text-faint font-mono text-[11.5px]">{column.cards.length}</span>
+      </div>
+      <div className="flex flex-col gap-1 px-2 pb-2">
+        {column.cards.slice(0, 3).map((c) => (
+          <div key={c.path} className="bg-elev border-line truncate rounded-[10px] border px-3 py-2 text-[13px]">
+            {c.title || c.label}
+          </div>
+        ))}
+        {column.cards.length > 3 && (
+          <div className="text-faint px-1 text-xs">+{column.cards.length - 3} more</div>
+        )}
+      </div>
     </div>
   );
 }

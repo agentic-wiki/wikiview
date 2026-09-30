@@ -4,7 +4,7 @@ import { frontDoor } from "@/tree";
 
 function stub(path: string): EntryStub {
   const name = path.split("/").pop()!;
-  return { path, name, type: "", label: name, changedAt: 0 };
+  return { path, name, type: "", label: name, changedAt: 0, links: 0 };
 }
 
 function root(entries: string[], index?: string): TreeNode {

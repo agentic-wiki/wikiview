@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { State, StateIcon } from "@/ui/State";
 
 /**
  * A loading state that only appears if loading actually takes a moment.
@@ -25,9 +26,5 @@ export function Loading() {
 
   if (!visible) return null;
 
-  return (
-    <div className="text-muted grid h-full place-items-center text-sm" role="status" aria-live="polite">
-      Loading…
-    </div>
-  );
+  return <State icon={StateIcon.loading} spinning live title="Loading…" />;
 }

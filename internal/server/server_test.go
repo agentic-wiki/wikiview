@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentic-wiki/wikiview/internal/store"
 )
@@ -160,6 +161,12 @@ func TestUnknownRoutes(t *testing.T) {
 // bundleServer serves a bundle made of exactly these files, and returns the
 // folder so a test can change it afterwards.
 func bundleServer(t *testing.T, files map[string]string) (*Server, func(name, content string)) {
+	srv, write, _ := bundleServerIn(t, files)
+	return srv, write
+}
+
+// bundleServerIn is bundleServer, also returning the folder.
+func bundleServerIn(t *testing.T, files map[string]string) (*Server, func(name, content string), string) {
 	t.Helper()
 	dir := t.TempDir()
 	write := func(name, content string) {
@@ -179,7 +186,7 @@ func bundleServer(t *testing.T, files map[string]string) (*Server, func(name, co
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil), write
+	return New(s, nil), write, dir
 }
 
 // Tag colour is a tag's position in this list, so the order is the contract:
@@ -261,5 +268,80 @@ func TestBundleCountsEachViewsEntries(t *testing.T) {
 	// is the single note, though its neighbour a.md is drawn beside it.
 	if entries["work"] != 3 || entries["notes"] != 1 {
 		t.Errorf("entries = %v, want work=3 notes=1", entries)
+	}
+}
+
+// "Updated" is the engine's rule, not one of ours: a curated `timestamp` wins,
+// and the file's modification time stands in without one. The tree and the
+// entry say the same thing, since a listing and a page disagreeing about when
+// something changed would leave you not trusting either.
+func TestUpdatedIsTheEnginesTime(t *testing.T) {
+	srv, _, dir := bundleServerIn(t, map[string]string{
+		"wiki.toml":  "spec = \"0.1\"\n",
+		"index.md":   "---\nokf_version: \"0.1\"\n---\nhome\n",
+		"curated.md": "---\ntimestamp: \"2025-03-04T10:00:00Z\"\n---\n",
+		"dated.md":   "---\ntimestamp: \"2025-03-05\"\n---\n",
+		"bare.md":    "---\ntimestamp: 2025-03-06\n---\n",
+		"plain.md":   "---\ntype: note\n---\n",
+	})
+	mtime := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, name := range []string{"plain.md", "curated.md"} {
+		if err := os.Chtimes(filepath.Join(dir, name), mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	want := map[string]string{
+		"/curated.md": "2025-03-04T10:00:00Z", // the timestamp, though the file is newer
+		"/dated.md":   "2025-03-05T00:00:00Z", // a date alone is midnight UTC
+		"/bare.md":    "2025-03-06T00:00:00Z", // unquoted, which YAML reads as a date
+		"/plain.md":   "2026-01-02T03:04:05Z", // no timestamp: the mtime
+	}
+	var tree TreeNode
+	get(t, srv, "/api/tree", &tree)
+	for _, e := range tree.Entries {
+		if w, ok := want[e.Path]; ok && e.Updated != w {
+			t.Errorf("tree %s updated=%q, want %q", e.Path, e.Updated, w)
+		}
+	}
+	for p, w := range want {
+		var e EntryView
+		get(t, srv, "/api/entry"+p, &e)
+		if e.Updated != w {
+			t.Errorf("entry %s updated=%q, want %q", p, e.Updated, w)
+		}
+	}
+}
+
+// A listing's link count is an entry's degree on a graph: the distinct entries
+// it is linked with, whichever way the link points and whether it is written
+// in the body or a frontmatter field. A pair linked both ways is one
+// connection; a link to itself, or to an entry nobody wrote, is none.
+func TestTreeCountsEachEntrysConnections(t *testing.T) {
+	srv, _ := bundleServer(t, map[string]string{
+		"wiki.toml": "spec = \"0.1\"\n",
+		"index.md":  "---\nokf_version: \"0.1\"\n---\n[a](./a.md) [b](./b.md)\n",
+		"a.md":      "---\ntype: note\n---\n[b](./b.md) [me](./a.md) [gone](./gone.md)\n",
+		"b.md":      "---\ntype: note\nblockers: [/c.md]\n---\n[a](./a.md)\n",
+		"c.md":      "---\ntype: note\n---\nnothing out\n",
+		"alone.md":  "---\ntype: note\n---\n",
+	})
+	var tree TreeNode
+	get(t, srv, "/api/tree", &tree)
+	got := map[string]int{}
+	for _, e := range tree.Entries {
+		got[e.Path] = e.Links
+	}
+	want := map[string]int{
+		"/index.md": 2, // a, b
+		"/a.md":     2, // index (in), b (both ways, once); not itself, not gone
+		"/b.md":     3, // index, a, and c through a frontmatter field
+		"/c.md":     1, // b, which names it; c links out to nothing
+		"/alone.md": 0,
+	}
+	for p, w := range want {
+		if got[p] != w {
+			t.Errorf("%s links=%d, want %d", p, got[p], w)
+		}
 	}
 }

@@ -56,3 +56,4 @@ No hue. `laneBars(index, count)` returns how many of the mock's three bars are l
 - **Tag order is computed per request**, like the boards beside it, rather than cached with the index. It is one walk over the entries, and there is nothing to invalidate.
 - **Nothing draws with it yet.** The consumers arrive with 006 onwards, each task wiring the function it needs.
 - **The tokens live in a plain `:root`, not `@theme`** — found in 006: Tailwind drops theme variables no scanned file names, and these are named only at runtime.
+- **Columns snap to the nearest stop** (found in [009](./009-board.md)): a `color-mix` between blue and amber is pink in oklch and beige in oklab, so there is no blending at all.

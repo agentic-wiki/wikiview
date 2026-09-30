@@ -1,7 +1,7 @@
 ---
 type: task
 title: "Recently changed and Read later, redrawn"
-status: todo
+status: done
 priority: medium
 tags: [design, ui, reader]
 blockers: [/8-design/008-folder.md]
@@ -28,3 +28,16 @@ Styled as the mock's *Recent*:
 - The empty state is a dashed box: "Nothing saved. Use the bookmark on any entry."
 
 **Tests:** the existing list tests keep passing against the new markup. New tests cover age shown per row, the hover-revealed action still reachable by keyboard, and both empty states.
+
+## What building it settled
+
+- **A changed row names its folder, not its path.** The reference shows a raw mono path under the title, but this list already decided, and pins by test, that a row names where an entry lives "the way the tree names it". There was no reason to undo that, so the second line is the readable folder in `faint`.
+- **The per-row "mark seen" tick is hidden by opacity, never removed**, and shown on hover and on keyboard focus, so it stays reachable without a mouse.
+- **No empty state says the same thing twice.** The sentence under the heading says what the page is for, and the dashed box says there is nothing in it.
+- **`listing.tsx` is gone.** `Row`, `FileIcon` and `FolderIcon` have no users left. `count` moved to `ui/src/count.ts`, and `GraphView`'s private copy of it went with the move.
+- **The drop line** is the reference's `0 -3px 0 -1px accent` shadow on the row a drop would land before, and the dragged row stays in place, dimmed.
+- **The handle** keeps its arrow-key reordering. Only its glyph and size follow the reference.
+
+## Revised after use (2026-09-30)
+
+- **The whole row drags**, as in the reference and as a board card does. A press that does not move is still a click, so the title link and "Done" keep working, and the link is `draggable={false}` so the browser's own link-drag cannot start instead. The ghost is the full row at its own width. The grip stays, easier to see (`muted`, not `faint`), as the cue and as the keyboard's arrow-key reordering. With one saved entry there is still nothing to reorder, so no grip, which is why the user found no handle at all.

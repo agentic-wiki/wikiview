@@ -13,6 +13,7 @@ function treeAt(changed: Record<string, number>): TreeNode {
     type: "note",
     label,
     changedAt: changed[path] ?? 1,
+    links: 0,
   });
   return {
     path: "/",

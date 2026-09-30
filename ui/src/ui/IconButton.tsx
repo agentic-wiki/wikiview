@@ -13,12 +13,17 @@ const SIZE = { md: "size-8.5 rounded-lg", sm: "size-8 rounded-lg", xs: "size-7.5
 export function IconButton({
   label,
   size = "md",
+  active = false,
   className = "",
   children,
   ...rest
 }: {
   label: string;
   size?: keyof typeof SIZE;
+  /** On: a saved bookmark, a pressed toggle. Its own prop rather than a colour
+   *  class passed in, because two text colours in one class list are decided by
+   *  stylesheet order, not by which was meant. */
+  active?: boolean;
   children: ReactNode;
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
   return (
@@ -28,7 +33,8 @@ export function IconButton({
       title={label}
       {...rest}
       className={[
-        "text-muted hover:bg-fg/5 hover:text-fg relative grid shrink-0 place-items-center disabled:opacity-40",
+        "hover:bg-fg/5 relative grid shrink-0 place-items-center disabled:opacity-40",
+        active ? "text-accent-ink" : "text-muted hover:text-fg",
         SIZE[size],
         className,
       ].join(" ")}

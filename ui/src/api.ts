@@ -118,6 +118,9 @@ export interface Entry {
   backlinks: Backlink[];
   headings: Heading[];
   checkboxes: Checkbox[];
+  /** When it last changed, RFC 3339, by the engine's rule (a `timestamp`,
+   *  else the file's mtime). Absent when it has neither. */
+  updated?: string;
 }
 
 export interface EntryStub {
@@ -138,6 +141,10 @@ export interface EntryStub {
   /** The bundle version this entry's content last moved at. Compared against the
    *  version you last saw it at, which is what marks it as changed. */
   changedAt: number;
+  /** Wall-clock time of the last change, as on `Entry`. */
+  updated?: string;
+  /** The distinct entries it is linked with, either way: its degree on a graph. */
+  links: number;
 }
 
 export interface TreeNode {
@@ -179,6 +186,10 @@ export interface Card {
    *  zero: two opposite facts, and a card with no edges reports neither. */
   blockedBy?: number;
   blocks?: number;
+  /** The first entry it waits on, named; present exactly when `blockedBy` is. */
+  blocker?: string;
+  /** Its degree on a graph, as on a tree stub. */
+  links?: number;
   /** The entry's own tags. Not a configurable key: `tags` is the conventional
    *  name rather than one workflow's word for something. */
   tags?: string[];

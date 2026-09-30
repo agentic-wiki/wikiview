@@ -1,7 +1,7 @@
 ---
 type: task
 title: "board and graph settings, redrawn"
-status: todo
+status: done
 priority: medium
 tags: [design, ui, config]
 blockers: [/8-design/009-board.md]
@@ -26,3 +26,17 @@ Mock lines 582–638. The fields and what gets written to `wiki.toml` stay as th
 - **Graph settings** use the same frame and the same where-chips, with the neighbours toggle as a switch.
 
 **Tests:** the existing settings tests keep passing. New tests cover adding and removing a where chip, reordering with ↑ and ↓ (disabled at either end), the no-lanes option clearing the lane, and Save writing the same payload the old form did.
+
+## What building it settled
+
+- **Mostly a restyle**: the dialog was already the reference's form, field for field. The frame is centred at `min(560px, 100%)` with the float shadow, and fields, lists and footer follow the reference.
+- ~~**The where-rules stay editable rows**~~ (replaced by chips that open for editing: see "Revised after use"), not the reference's remove-only chips. Each rule's key, operator and value can be changed in place, which the chips cannot do. They sit in the reference's `panel-2` box, and "Add filter" is the dashed button.
+- **Columns and Lanes stay tabs** (now a segmented switch), not two stacked lists. That is the earlier, stated decision: side by side, each list would get half the width for a value like `in-progress`. The reference shows only the columns list.
+- **A pinned column wears its board colour** (`columnColour` over the pinned order), so the list reads as the board's columns. Pinned by test against the board's own dot.
+- A test helper that read "the first span" as a row's value now asks for the value span itself.
+
+## Revised after use (2026-09-30)
+
+- **The filter is chips**, as in the reference: each condition reads as a sentence (`type is task`, with an empty value shown as "(nothing)"), and its ✕ removes it. There are no inputs until you ask for them. Clicking a chip opens it in one editor under the chips (key, is / is not, value with suggestions, Done), and the chip being edited is outlined. "+ Filter" adds a condition and opens it there. A condition the dialog cannot read keeps its raw text, in `warn`, and can only be removed.
+- **Edits apply as they are made.** The editor has no Add or Cancel, so there is never a draft for the dialog's Save to miss. Enter and Escape finish the condition. Enter's default (submitting the dialog's form) is prevented, and Escape goes to the editor's own layer on the escape stack, so the dialog stays open.
+- **Removing a chip while one is open** keeps the editor on the same condition, or closes it when that condition is the one removed.

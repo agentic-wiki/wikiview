@@ -40,14 +40,12 @@ const LABEL: Record<Theme, string> = {
 };
 
 /**
- * Cycles auto → light → dark.
+ * The theme, and the step to the next one: auto → light → dark.
  *
- * One button rather than three, because this is a setting people touch rarely
- * and a segmented control would take permanent header width for it. The icon
- * shows the current state and the tooltip names the next one, so the cycle is
- * discoverable without being explained.
+ * A hook the shell holds, so the header button and the palette's "Toggle
+ * theme" are one state rather than two that agree only after a reload.
  */
-export function ThemeToggle() {
+export function useTheme(): { theme: Theme; next: Theme; cycle: () => void } {
   const [theme, setTheme] = useState<Theme>(readTheme);
 
   useEffect(() => {
@@ -56,11 +54,31 @@ export function ThemeToggle() {
     else localStorage.setItem(KEY, theme);
   }, [theme]);
 
-  const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length]!;
+  const next = nextTheme(theme);
+  return { theme, next, cycle: () => setTheme(nextTheme) };
+}
 
+function nextTheme(theme: Theme): Theme {
+  return ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length]!;
+}
+
+/** What each theme is called on screen, for the button and the palette. */
+export function themeLabel(theme: Theme): string {
+  return LABEL[theme];
+}
+
+/**
+ * The header's theme button.
+ *
+ * One button rather than three, because this is a setting people touch rarely
+ * and a segmented control would take permanent header width for it. The icon
+ * shows the current state and the label names the next one, so the cycle is
+ * discoverable without being explained.
+ */
+export function ThemeToggle({ theme, next, onCycle }: { theme: Theme; next: Theme; onCycle: () => void }) {
   return (
     <IconButton
-      onClick={() => setTheme(next)}
+      onClick={onCycle}
       label={`Theme: ${LABEL[theme]}. Switch to ${LABEL[next].toLowerCase()}`}
     >
       <Glyph>

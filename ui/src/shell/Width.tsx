@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Glyph, IconButton } from "@/ui/IconButton";
 
 export type Width = "normal" | "wide";
 
@@ -28,56 +29,41 @@ export function applyWidth(width: Width) {
 }
 
 /**
- * Reading width or wide. The icon stretches with the state and the tooltip
- * names the next one, so the pair is discoverable on the first hover.
+ * The page width, and the way to change it. A hook, so the reader knows which
+ * it is — a wide page gives its "On this page" column to the text.
  */
-export function WidthToggle() {
+export function useWidth(): [Width, (width: Width) => void] {
   const [width, setWidth] = useState<Width>(readWidth);
-  const wide = width === "wide";
-
   useEffect(() => {
     applyWidth(width);
     if (width === "wide") localStorage.setItem(KEY, "wide");
     else localStorage.removeItem(KEY);
   }, [width]);
+  return [width, setWidth];
+}
 
+/**
+ * Reading width or wide. The icon stretches with the state and the label
+ * names the next one, so the pair is discoverable on the first hover.
+ */
+export function WidthToggle({ width, onChange }: { width: Width; onChange: (width: Width) => void }) {
+  const wide = width === "wide";
   const label = wide ? "wide" : "normal";
   const other = wide ? "normal" : "wide";
 
   return (
-    <button
-      type="button"
+    <IconButton
+      label={`Page width: ${label}. Switch to ${other}`}
+      size="sm"
       data-print="hide"
-      onClick={() => setWidth(wide ? "normal" : "wide")}
+      onClick={() => onChange(wide ? "normal" : "wide")}
       aria-pressed={wide}
-      aria-label={`Page width: ${label}. Switch to ${other}`}
-      title={`Page width: ${label}`}
-      className="text-muted hover:text-fg hover:bg-fg/5 float-right ml-3 rounded-md p-1.5"
+      active={wide}
     >
-      <svg
-        viewBox="0 0 24 24"
-        className="size-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        {wide ? (
-          <>
-            <path d="M2.5 5v14M21.5 5v14" />
-            <path d="M5 12h14" />
-            <path d="M8 9 5 12l3 3M16 9l3 3-3 3" />
-          </>
-        ) : (
-          <>
-            <path d="M7 5v14M17 5v14" />
-            <path d="M9.5 12h5" />
-            <path d="M11.5 10 9.5 12l2 2M12.5 10l2 2-2 2" />
-          </>
-        )}
-      </svg>
-    </button>
+      {/* Arrows pointing out, the reference's glyph; lit when wide. */}
+      <Glyph size={16}>
+        <path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4" />
+      </Glyph>
+    </IconButton>
   );
 }

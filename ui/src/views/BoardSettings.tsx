@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { api, type Board, type BoardSettings as Settings, type Field as FieldInfo } from "@/api";
+import { columnColour } from "@/colour";
+import { useToast } from "@/ui/Toast";
 import { Filters, parseRule, ruleText } from "@/views/filters";
 import { Field, SettingsDialog, saving } from "@/views/SettingsDialog";
 
@@ -21,6 +23,7 @@ export function BoardSettings({
   const [tab, setTab] = useState<"columns" | "lanes">("columns");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
 
   const set = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
 
@@ -42,14 +45,19 @@ export function BoardSettings({
       busy={busy}
       error={error}
       onClose={onClose}
-      onSubmit={() => saving(() => api.boardSettings(board.id, settings), setBusy, setError, onClose)}
+      onSubmit={() =>
+        saving(() => api.boardSettings(board.id, settings), setBusy, setError, () => {
+          toast("Board saved to wiki.toml");
+          onClose();
+        })
+      }
     >
       <Field label="Name">
         <input
           value={settings.name}
           onChange={(e) => set({ name: e.target.value })}
           placeholder={board.name}
-          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel-2 text-fg focus:border-accent h-9.5 w-full rounded-[9px] border px-3 text-sm outline-none"
         />
       </Field>
 
@@ -97,8 +105,8 @@ export function BoardSettings({
           rather than stacked because they are alternatives to look at, not
           two things to fill in, and side by side they would halve the width
           each has for a value like `in-progress`. */}
-      <div className="space-y-2">
-        <div role="tablist" className="border-line flex gap-1 border-b">
+      <div className="flex flex-col gap-2">
+        <div role="tablist" className="bg-panel-2 border-line flex gap-0.5 self-start rounded-[9px] border p-[3px]">
           {(["columns", "lanes"] as const).map((axis) => (
             <button
               key={axis}
@@ -107,10 +115,8 @@ export function BoardSettings({
               aria-selected={tab === axis}
               onClick={() => setTab(axis)}
               className={[
-                "-mb-px border-b-2 px-3 py-1.5 text-xs font-medium capitalize",
-                tab === axis
-                  ? "border-accent text-fg"
-                  : "text-muted hover:text-fg border-transparent",
+                "h-6.5 rounded-md px-2.5 text-[12.5px] font-medium capitalize",
+                tab === axis ? "bg-elev text-fg" : "text-muted hover:text-fg",
               ].join(" ")}
             >
               {axis}
@@ -185,10 +191,19 @@ function Axis({
           Nothing pinned, so the order is the one wikiview infers.
         </p>
       ) : (
-        <ul aria-label={`Pinned ${label}s`} className="max-h-40 space-y-1 overflow-y-auto">
+        <ul aria-label={`Pinned ${label}s`} className="border-line max-h-56 overflow-y-auto rounded-[10px] border">
           {values.map((value, i) => (
-            <li key={value} className="hover:bg-fg/5 flex items-center gap-1 rounded-md px-1 py-1">
-              <span className="text-fg grow truncate font-mono text-xs">{value}</span>
+            <li key={value} className="border-line flex items-center gap-2.5 border-b py-1.5 pr-2 pl-3 last:border-b-0">
+              {/* A column wears the colour the board draws it in, so this list
+                  reads as the board's columns, in the board's order. */}
+              {label === "column" && (
+                <span
+                  aria-hidden
+                  className="size-[9px] shrink-0 rounded-full bg-(--c)"
+                  style={{ "--c": columnColour(value, values) } as React.CSSProperties}
+                />
+              )}
+              <span className="text-fg grow truncate font-mono text-[13px]">{value}</span>
               {!present.includes(value) && (
                 <span className="text-muted shrink-0 text-xs">nothing has it yet</span>
               )}
@@ -251,13 +266,13 @@ function Axis({
           }}
           placeholder={label === "column" ? "in-progress" : "urgent"}
           aria-label={`New ${label}`}
-          className="border-line-2 bg-panel-2 text-fg min-w-0 grow rounded-md border px-2 py-1 font-mono text-xs"
+          className="border-line-2 bg-panel-2 text-fg focus:border-accent h-8 min-w-0 grow rounded-[7px] border px-2.5 font-mono text-[12.5px] outline-none"
         />
         <button
           type="button"
           disabled={!canAdd}
           onClick={() => add(adding)}
-          className="border-line text-muted hover:text-fg shrink-0 rounded-md border px-2 py-1 text-xs capitalize disabled:opacity-50"
+          className="border-line-2 text-muted hover:text-fg h-8 shrink-0 rounded-[7px] border px-3 text-[12.5px] capitalize disabled:opacity-50"
         >
           Add {label}
         </button>
@@ -284,7 +299,7 @@ function Nudge({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="text-muted hover:text-fg hover:bg-fg/10 shrink-0 rounded p-0.5 disabled:opacity-30"
+      className="text-muted hover:text-fg hover:bg-fg/5 grid size-7 shrink-0 place-items-center rounded-md disabled:opacity-30"
     >
       <svg
         viewBox="0 0 24 24"
@@ -331,7 +346,7 @@ function KeyPicker({
       value={value}
       aria-label={label}
       onChange={(e) => onChange(e.target.value)}
-      className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1 font-mono text-xs"
+      className="border-line-2 bg-panel-2 text-fg focus:border-accent h-9.5 w-full rounded-[9px] border px-2.5 font-mono text-[13px] outline-none"
     >
       {none !== undefined && <option value="">{none}</option>}
       {value !== "" && !keys.includes(value) && <option value={value}>{value} (nothing has it)</option>}

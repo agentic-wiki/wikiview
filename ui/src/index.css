@@ -194,21 +194,30 @@ body {
    Written out rather than pulled from a typography plugin: the set of elements
    a markdown entry produces is small and known, and owning it avoids fighting
    a plugin's opinions about colour and spacing at every turn. */
-.markdown { line-height: 1.7; }
+/* The reference's reading size: 16.5px on 1.72, a size meant for long
+   passages rather than the 14px the chrome is set in. */
+.markdown { font-size: 16.5px; line-height: 1.72; }
 .markdown > * + * { margin-top: 1rem; }
+.markdown p { text-wrap: pretty; }
+.markdown strong { color: var(--color-fg); font-weight: 600; }
 
 .markdown h1, .markdown h2, .markdown h3,
 .markdown h4, .markdown h5, .markdown h6 {
   font-weight: 600;
-  letter-spacing: -0.011em;
+  letter-spacing: -0.02em;
   line-height: 1.3;
 }
-.markdown > h1 + *, .markdown > h2 + *, .markdown > h3 + * { margin-top: 0.5rem; }
+.markdown > h1 + *, .markdown > h2 + *, .markdown > h3 + * { margin-top: 0.75rem; }
+/* A section starts with air above it: 36px, the reference's gap between one
+   topic and the next, against 16px between paragraphs of the same one. */
 .markdown > * + h1, .markdown > * + h2, .markdown > * + h3,
-.markdown > * + h4, .markdown > * + h5, .markdown > * + h6 { margin-top: 2rem; }
-.markdown h1 { font-size: 1.5rem; }
-.markdown h2 { font-size: 1.25rem; }
-.markdown h3 { font-size: 1.0625rem; }
+.markdown > * + h4, .markdown > * + h5, .markdown > * + h6 { margin-top: 2.25rem; }
+/* A heading in the body is a section. The page's title is drawn above the
+   body by the reader, so an h1 here is a second one and is sized as a section
+   a notch above h2 rather than as a title. */
+.markdown h1 { font-size: 26px; }
+.markdown h2 { font-size: 22px; }
+.markdown h3 { font-size: 18px; }
 .markdown h4, .markdown h5, .markdown h6 { font-size: 1rem; color: var(--color-muted); }
 
 .markdown ul, .markdown ol { padding-left: 1.5rem; }
@@ -301,16 +310,16 @@ body {
 
 /* Width, a preference.
  *
- * Wide releases the column but not the line: paragraphs hold at `--measure`
- * (48rem less the page's 1.5rem padding each side) so turning wide moves the
- * tables, code and images — not the text you were already reading. Stamped on
- * the root by `shell/Width.tsx`; restored before the first paint by the inline
- * script in `index.html`. */
+ * 680px (about 80 characters of prose), or 1040px wide, and everything in the
+ * column follows, prose included. (It used to hold paragraphs at the normal
+ * measure and widen only tables, code and images, which on an entry of prose
+ * read as a button that did nothing.) Stamped on the root by
+ * `shell/Width.tsx`; restored before the first paint by the inline script in
+ * `index.html`. */
 :root {
-  --column-width: 48rem;
-  --measure: 45rem;
+  --column-width: 42.5rem;
 }
-:root[data-width="wide"] { --column-width: none; }
+:root[data-width="wide"] { --column-width: 65rem; }
 
 /* The entry's article. Only the reader participates in the width toggle —
    folder listings, changed and read-later hold their own reading width. */
@@ -319,9 +328,7 @@ body {
   max-width: var(--column-width);
 }
 
-:root[data-width="wide"] .markdown > :is(p, blockquote, ul, ol, h1, h2, h3, h4, h5, h6) {
-  max-width: var(--measure);
-}
+
 
 /* Syntax highlighting, driven by the theme tokens rather than a shipped theme,
    so code follows light and dark with everything else. One lightness for paper
@@ -427,15 +434,17 @@ body {
   }
 }
 
-/* The card sheet, which on screen is a fixed dialog over a backdrop. Printed as
- * it stands, the backdrop is a grey rectangle and the fixed box yields one
- * clipped page, so it stops being a sheet and becomes the page. */
+/* The card sheet, which on screen is a panel floating over the view's right
+ * edge. Printed as it stands it would be one clipped, narrow page, so it stops
+ * being a sheet and becomes the page. */
 @media print {
   [data-print="sheet"] {
     position: static !important;
     display: block !important;
     background: none !important;
     padding: 0 !important;
+    /* On screen it is a 440px panel; on paper it is the page. */
+    width: auto !important;
   }
   [data-print="sheet"] > [role="dialog"] {
     height: auto !important;

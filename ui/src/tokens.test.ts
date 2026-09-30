@@ -28,3 +28,11 @@ test("the stylesheet references only colours it defines", async () => {
   const used = [...css.matchAll(/var\(--color-([\w-]+)\)/g)].map((m) => m[1]!);
   expect(used.filter((name) => !defined.has(name))).toEqual([]);
 });
+
+// The reader decides what to offer from the article's width in pixels; the
+// stylesheet draws it. One number, written twice, held together here.
+test("the reader's reading width is the stylesheet's", async () => {
+  const { READING } = await import("@/views/EntryView");
+  const css = await Bun.file(new URL("./index.css", import.meta.url)).text();
+  expect(css).toMatch(new RegExp(`--column-width:\\s*${READING / 16}rem;`));
+});

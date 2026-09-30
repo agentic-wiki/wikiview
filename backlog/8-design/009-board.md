@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the board, redrawn"
-status: todo
+status: done
 priority: high
 tags: [design, ui, boards, api]
 blockers: [/8-design/006-rail-and-panel.md]
@@ -40,3 +40,22 @@ The dragged card stays in place at 35% opacity; the ghost is the card in `elev` 
 `Card` gains `blocker` (the first unfinished blocker's title) and `links` (as on a stub).
 
 **Tests:** the filter over label, title and tags, in the URL, counts following it; Flat persisted and hiding bands; column colours from the gradient with `archived` gray; the waiting-on line only for unfinished blockers, with "+N"; progress bar share. Every existing drag test still passes.
+
+## What building it settled
+
+- **Columns snap to the nearest stop, never a blend**, decided with the user after seeing it. The oklch midpoint of blue and amber came out **pink** (the short way round the hue wheel), and a straight oklab blend is beige. Neither is in the gradient. Three live columns are now gray, amber, green; five are gray, blue, amber, amber, green. Pinned in `colour.test.ts` for 1–12 columns, including "only the four stops ever appear". The first test only pinned the CSS string, which is why the pink got past it; the screenshot caught it.
+- **The first blocker is the first listed, not the first unfinished.** The server reports blocker edges without verdicts because nothing in wikiview knows which status means done. "Waiting on …" appears exactly when the old count badge did, names `Card.blocker`, and adds "+N". An unwritten blocker is named from its filename.
+- **Title first on the face** (`title`, else the filename label), the filename beneath when it differs. That settles most of [4-boards/008](../4-boards/008-card-titles.md); what it still asks for is a server-side fallback to the body's first heading.
+- **The filter lives in `?q=`** and rides into card addresses and back out on close, so opening a card keeps the narrowing. The header says "N of M cards" while filtering, and a column the filter empties says "No cards match".
+- **Flat** is per board, per bundle (`board:<id>:flat`), and never touches config. Dropping onto a flat column names no lane, so a card keeps its own, by the existing `moved()` rule.
+- **The column colour is a CSS custom property** (`--c`), read by the dot, its halo and the share bar. That is one value, and it is also what happy-dom can parse (it drops `color-mix()` from an inline `background`).
+- **Column names are sentence-cased by CSS** (`first-letter:uppercase`), so the text is still the value written back. Lane names stay in capitals. The lane count moved beside its `h3`, so a heading's text is only its name.
+- **`Card.links`** is the same degree as on a tree stub, from `connections()`.
+
+## Revised after use (2026-09-30)
+
+- **"Waiting on …" is amber** (`warn`), not red: waiting is a state to notice, not a failure.
+- **Not on a shelf.** A card in an `archived` or `parked` column (the words `SHELVED` names) does not say what it waits on. There, it no longer matters.
+- **With lanes on, a dragged card lights only the band it would land in**, never the column. Over a column but no band (its header, say), the drop keeps the card's own lane, so that band is the one lit. With lanes off, the column lights, as before.
+- **A dragged column has weight like a card.** A `ColumnGhost` (its header and first cards) follows the pointer, the original stays in place at 40%, and the column it would land before carries an accent line on its left edge.
+- Checked mid-drag in a real browser, each drag returned to where it began before release, so nothing was written.

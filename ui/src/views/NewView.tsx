@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, type TreeNode } from "@/api";
+import { useToast } from "@/ui/Toast";
 
 /**
  * What differs between declaring one kind of view and another: where it lives,
@@ -43,6 +44,7 @@ export function NewView({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const toast = useToast();
   const { prefix, noun, idLabel, declare } = KINDS[kind];
 
   // Choosing a folder refills both, because at that moment neither has been
@@ -63,6 +65,7 @@ export function NewView({
       // the bundle's version, and the stream is what tells every client to
       // refetch — the same path every other write here takes.
       await declare({ id, path, name });
+      toast(`Created ${noun} ${name || id}`);
       navigate(prefix + "/" + encodeURIComponent(id));
     } catch (err) {
       // The server owns what a valid id is and which ones are taken, so its

@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import type { BundleInfo, TreeNode } from "@/api";
-import { Rail, type RailSection } from "@/shell/Rail";
+import { Rail, TabBar, type RailSection } from "@/shell/Rail";
 import { Breadcrumbs, readerCrumbs, type Crumb } from "@/shell/Breadcrumbs";
 import { Tree } from "@/shell/Tree";
-import { Omnibar } from "@/shell/Omnibar";
+import { Omnibar, type Command } from "@/shell/Omnibar";
 import { DocumentTitle } from "@/shell/DocumentTitle";
 import { ScrollRestoration } from "@/shell/ScrollRestoration";
-import { ThemeToggle } from "@/shell/Theme";
+import { ThemeToggle, themeLabel, useTheme } from "@/shell/Theme";
 import { useBundleState } from "@/state";
-import { GitActions } from "@/shell/GitActions";
+import { GitActions, useGitStatus, type GitTab } from "@/shell/GitActions";
 import { NewView } from "@/views/NewView";
 import { frontDoor } from "@/tree";
 import { SectionLabel } from "@/ui/SectionLabel";
-import { count } from "@/views/listing";
+import { NARROW, useMedia } from "@/media";
+import { useEscape } from "@/ui/escape";
+import { Glyph, IconButton } from "@/ui/IconButton";
+import { count } from "@/count";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -81,6 +84,13 @@ export function Shell({
   // earns its width, a list of one board does not — so one shared flag meant
   // switching section argued with what you last did to the panel you left.
   const [openFor, setOpenFor] = useState<Partial<Record<RailSection, boolean>>>({});
+  // Below 780px the rail becomes a tab bar and the panel a drawer
+  // (backlog/8-design/017). Read live, so a window resized or a phone turned
+  // gets the layout for the width it now has.
+  const narrow = useMedia(NARROW);
+  const [drawer, setDrawer] = useState(false);
+  // Going somewhere is done with the drawer.
+  useEffect(() => setDrawer(false), [location.pathname]);
   const navigate = useNavigate();
   // Only a reader route has a bundle path in it. On a board the pathname is an
   // id, and treating it as a path built links like `/wiki/kanban` — a trail
@@ -106,7 +116,7 @@ export function Shell({
       ? (bundle.boards?.length ?? 0) > 1
       : s === "graphs"
         ? (bundle.graphs?.length ?? 0) > 1
-        : wideEnough;
+        : !narrow;
   const panelOpen = hasPanel(section) && (openFor[section] ?? openByDefault(section));
 
   /** Opening or closing a panel, which is a thing you did and so animates. */
@@ -186,7 +196,116 @@ export function Shell({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // What the header's controls act on, held here so the palette can act on
+  // it too: one theme, one repository status, one open popover.
+  const theme = useTheme();
+  const [git, setGit] = useGitStatus(refresh);
+  const [gitTab, setGitTab] = useState<GitTab | null>(null);
+
+  // The palette's commands. Git only where there is an upstream to pull from
+  // and push to, as with the pill; one per declared board and graph.
+  const commands: Command[] = [
+    ...(git?.repo && git.remote
+      ? [
+          {
+            title: git.behind > 0 ? `Pull ${count(git.behind, "commit")}` : "Pull",
+            sub: `git · ${git.remote} → ${git.branch || "detached"}`,
+            kind: "Git",
+            run: () => setGitTab("incoming"),
+          },
+          {
+            title: "Commit & push…",
+            sub: `git · ${count(git.changes.length, "file")} changed`,
+            kind: "Git",
+            run: () => setGitTab("changes"),
+          },
+        ]
+      : []),
+    {
+      title: "Toggle theme",
+      sub: `appearance · ${themeLabel(theme.theme)} → ${themeLabel(theme.next).toLowerCase()}`,
+      kind: "Action",
+      run: theme.cycle,
+    },
+    ...(bundle.boards ?? []).map((b) => ({
+      title: "Open board · " + b.name,
+      sub: b.path,
+      kind: "Board",
+      run: () => {
+        setLastBoard(b.id);
+        navigate("/kanban/" + encodeURIComponent(b.id));
+      },
+    })),
+    ...(bundle.graphs ?? []).map((g) => ({
+      title: "Open graph · " + g.name,
+      sub: g.path,
+      kind: "Graph",
+      run: () => {
+        setLastGraph(g.id);
+        navigate("/graph/" + encodeURIComponent(g.id));
+      },
+    })),
+    { title: "Recently changed", sub: `${unseen.size} unseen`, kind: "View", run: () => navigate("/changed") },
+    { title: "Read later", sub: `${saved.size} saved`, kind: "View", run: () => navigate("/read-later") },
+  ];
+
   const crumbs = trail(location.pathname, path, tree, bundle, (s) => toggle(s, true));
+
+  /** What a section's panel holds, wherever it is drawn. */
+  const panelFor = (s: RailSection) =>
+    s === "boards" ? (
+      <ViewsPanel
+        kind="board"
+        views={bundle.boards}
+        tree={tree}
+        rootLabel={bundle.label}
+        intro={
+          <>
+            A board is a folder's tasks, in columns by <code>status</code>.
+          </>
+        }
+        // Choosing from the list is done with the list, so it gives the width
+        // back — and animates, because that close is something you did rather
+        // than something that happened around you.
+        onPick={(picked) => {
+          setLastBoard(picked);
+          toggle("boards", false);
+        }}
+      />
+    ) : s === "graphs" ? (
+      <ViewsPanel
+        kind="graph"
+        views={bundle.graphs}
+        tree={tree}
+        rootLabel={bundle.label}
+        intro="A graph is a folder's entries and the links between them. Narrow it with a filter afterwards, in its settings."
+        onPick={(picked) => {
+          setLastGraph(picked);
+          toggle("graphs", false);
+        }}
+      />
+    ) : (
+      <>
+        <SectionLabel count={bundle.entries} className="pt-3.5 pr-3.5 pb-2 pl-4">
+          Entries
+        </SectionLabel>
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+          <Tree node={tree} bundleId={bundle.id} unseen={unseen} saved={saved} />
+        </div>
+      </>
+    );
+
+  /**
+   * A tab on a narrow screen: the section it names, and — tapped again where
+   * you already are — the drawer with that section's panel, since there is no
+   * panel beside the view to toggle.
+   */
+  const pickTab = (next: RailSection) => {
+    const prefix = PREFIX[next];
+    const showing = prefix === undefined || location.pathname.startsWith(prefix);
+    if (next === section && showing && hasPanel(next)) setDrawer(true);
+    else pick(next);
+  };
 
   // The view area scrolls, not the document, so scroll restoration works from
   // this element rather than from the window.
@@ -199,118 +318,117 @@ export function Shell({
           control, and a hamburger beside it was a second way to do one thing —
           the vaguer of the two, since it could only ever mean "whichever panel
           is showing" while the icon names the section it hides. */}
-      <header className="border-line bg-panel relative z-10 flex h-13 shrink-0 items-center gap-2.5 border-b pr-3 pl-2.5">
+      <header
+        className={[
+          "border-line bg-panel relative z-10 flex h-13 shrink-0 items-center border-b",
+          narrow ? "gap-1 pr-2 pl-1.5" : "gap-2.5 pr-3 pl-2.5",
+        ].join(" ")}
+      >
+        {narrow && (
+          <IconButton label="Open the panel" onClick={() => setDrawer(true)} data-print="hide">
+            <Glyph size={18}>
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </Glyph>
+          </IconButton>
+        )}
         {/* The bundle, named once: the tile and the label are one link to the
             front door, and the trail beside it starts inside the bundle. */}
         <Link
           to={frontDoor(tree)}
           title="Go to the bundle's front door"
-          className="hover:bg-fg/5 flex shrink-0 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1"
+          // The one thing in the header that can give way: on a phone the name
+          // ellipsizes before any control is pushed off the edge.
+          className="hover:bg-fg/5 flex min-w-0 shrink items-center gap-2.5 rounded-lg py-1 pr-2 pl-1"
         >
           <span
             aria-hidden
-            className="bg-accent text-on-accent grid size-6.5 place-items-center rounded-[7px] text-[13px] font-bold tracking-tight"
+            className="bg-accent text-on-accent grid size-6.5 shrink-0 place-items-center rounded-[7px] text-[13px] font-bold tracking-tight"
           >
             {initial(bundle.label)}
           </span>
-          <span className="font-semibold tracking-tight whitespace-nowrap">{bundle.label}</span>
+          <span className="truncate font-semibold tracking-tight whitespace-nowrap">{bundle.label}</span>
         </Link>
 
         {/* The trail shrinks and ellipsizes; the search trigger keeps a workable
             width. The path orients you, the search moves you. */}
-        <div className="min-w-0 flex-1">
-          <Breadcrumbs crumbs={crumbs} />
+        <div className={narrow ? "flex-1" : "min-w-0 flex-1"}>{!narrow && <Breadcrumbs crumbs={crumbs} />}</div>
+
+        <div data-print="hide" className="flex shrink">
+          <Omnibar tree={tree} unseen={unseen} commands={commands} compact={narrow} />
         </div>
 
-        <div data-print="hide" className="hidden shrink sm:flex">
-          <Omnibar tree={tree} unseen={unseen} />
-        </div>
-
-        <GitActions refresh={refresh} />
+        <GitActions status={git} onStatus={setGit} open={gitTab} onOpen={setGitTab} compact={narrow} />
 
         <span data-print="hide">
-          <ThemeToggle />
+          <ThemeToggle theme={theme.theme} next={theme.next} onCycle={theme.cycle} />
         </span>
       </header>
 
       <div className="relative flex min-h-0 grow">
-        <Rail
-          active={section}
-          onSelect={pick}
-          counts={{ changed: unseen.size, later: saved.size }}
-        />
+        {!narrow && (
+          <>
+            <Rail
+              active={section}
+              onSelect={pick}
+              counts={{ changed: unseen.size, later: saved.size }}
+            />
 
-        {/* `data-open` is the state, so nothing has to read it off a width. */}
-        <aside
-          data-print="hide"
-          data-open={panelOpen}
-          className={[
-            "border-line bg-panel flex min-h-0 shrink-0 flex-col overflow-hidden border-r",
-            animate ? "transition-[width] duration-200 ease-out" : "",
-            panelOpen ? "w-67" : "w-0 border-r-0",
-          ].join(" ")}
-        >
-          {panelOpen && section === "entries" && (
-            <>
-              <SectionLabel count={bundle.entries} className="pt-3.5 pr-3.5 pb-2 pl-4">
-                Entries
-              </SectionLabel>
-              <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-                <Tree node={tree} bundleId={bundle.id} unseen={unseen} saved={saved} />
-              </div>
-            </>
-          )}
-          {panelOpen && section === "boards" && (
-            <ViewsPanel
-              kind="board"
-              views={bundle.boards}
-              tree={tree}
-              rootLabel={bundle.label}
-              intro={
-                <>
-                  A board is a folder's tasks, in columns by <code>status</code>.
-                </>
-              }
-              // Choosing from the list is done with the list, so it gives the
-              // width back — and animates, because that close is something you
-              // did rather than something that happened around you.
-              onPick={(picked) => {
-                setLastBoard(picked);
-                toggle("boards", false);
-              }}
-            />
-          )}
-          {panelOpen && section === "graphs" && (
-            <ViewsPanel
-              kind="graph"
-              views={bundle.graphs}
-              tree={tree}
-              rootLabel={bundle.label}
-              intro="A graph is a folder's entries and the links between them. Narrow it with a filter afterwards, in its settings."
-              onPick={(picked) => {
-                setLastGraph(picked);
-                toggle("graphs", false);
-              }}
-            />
-          )}
-        </aside>
+            {/* `data-open` is the state, so nothing has to read it off a width. */}
+            <aside
+              data-print="hide"
+              data-open={panelOpen}
+              className={[
+                "border-line bg-panel flex min-h-0 shrink-0 flex-col overflow-hidden border-r",
+                animate ? "transition-[width] duration-200 ease-out" : "",
+                panelOpen ? "w-67" : "w-0 border-r-0",
+              ].join(" ")}
+            >
+              {panelOpen && panelFor(section)}
+            </aside>
+          </>
+        )}
+        {narrow && drawer && (
+          // The section's own panel where it has one, the tree otherwise: the
+          // drawer is how you move around, wherever you are.
+          <Drawer onClose={() => setDrawer(false)}>{panelFor(hasPanel(section) ? section : "entries")}</Drawer>
+        )}
 
         <main ref={viewRef} className="min-w-0 grow overflow-y-auto">
           <ScrollRestoration containerRef={viewRef} />
           {children}
         </main>
       </div>
+
+      {narrow && <TabBar active={section} onSelect={pickTab} />}
     </div>
   );
 }
 
 /**
- * Whether there is room for a panel beside the work.
- *
- * Read once, at load: boards and grids need width, and this is a working tool on
- * a wide screen before it is a phone app.
+ * The panel on a narrow screen: a drawer over the view, under the header, with
+ * a backdrop that closes it. It closes on navigation (the shell's effect), on
+ * the backdrop, and on Escape.
  */
-const wideEnough = window.innerWidth >= 768;
+function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEscape(onClose);
+  return (
+    <>
+      <div
+        data-print="hide"
+        aria-hidden
+        onClick={onClose}
+        className="animate-wv-fade fixed inset-x-0 top-13 bottom-0 z-45 bg-black/50"
+      />
+      <aside
+        data-print="hide"
+        aria-label="Panel"
+        className="border-line bg-panel shadow-float animate-wv-in fixed top-13 bottom-0 left-0 z-50 flex w-[min(320px,86vw)] flex-col border-r"
+      >
+        {children}
+      </aside>
+    </>
+  );
+}
 
 /**
  * The route prefix each section owns.

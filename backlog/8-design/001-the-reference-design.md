@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the reference design, applied: plan and decisions"
-status: in-progress
+status: done
 priority: high
 tags: [design, ui]
 ---
@@ -26,15 +26,15 @@ Settled with the user before any code, 2026-09-29.
 - **Card/node peek: a side panel with the full body.** The mock's right-hand peek (header, property grid with Status/Lane controls, links) plus the whole rendered entry, replacing the centred `CardSheet` dialog — [010](./010-peek.md).
 - **Mobile is the last phase** — [017](./017-mobile.md).
 
-## Assumed, not yet confirmed
+## Assumed, then confirmed
 
-Small enough to default; listed so they are not silent.
+Small enough to default, listed so they were not silent, and confirmed by the user on 2026-09-30.
 
 - **Theme keeps three states** (auto → light → dark) with the mock's icons. The mock has two and defaults to dark; dropping "match system" would be a regression nobody asked for.
 - **No bundle switcher.** The mock's header name has a dropdown chevron; there is one bundle per server, so the name is a link to the front door, without the chevron.
 - **No accent picker.** The mock exposes four accents as a prop; one accent, `#8B7CFF`.
 - **No lead summary.** The mock's entries open with a muted summary paragraph and folders with a description. Neither has a source in a bundle; they are omitted rather than invented from a frontmatter key nobody agreed on.
-- **Tree folders**: clicking a folder's name opens it (its `index.md`, or its listing); the chevron alone toggles it, as in the mock. Today the whole row toggles.
+- **Tree folders**: clicking a folder's name opens it (its `index.md`, or its listing); the chevron alone toggles it, as in the mock. Before, the whole row toggled.
 
 ## Inventory
 
@@ -72,3 +72,22 @@ Keyboard from the mock: ⌘K toggles the palette (exists), **⌘\\ toggles the p
 ## Order
 
 002 → 003 first: everything else is drawn in their tokens and colours. Then the shell (004–006), the reader (007–008), the views (009–012), the overlays (013–016), and mobile (017) last.
+
+## How it went
+
+All sixteen tasks are done, each checked in both themes against the served binary as well as by its tests. Where the result departs from the mock, the task that made the call says why. In brief:
+
+- **Decided with the user along the way:** "Updated" is the engine's `SortTime` ([007](./007-entry.md)), and board columns snap to the four stops rather than blending between them ([009](./009-board.md)).
+- **Where the mock was followed less than literally**, for a stated reason:
+  - the git popover opens on the tab with your work in it, so opening it to push does not fetch ([005](./005-git-popover.md));
+  - the card sheet sits below the view's header so the header's controls stay reachable ([010](./010-peek.md));
+  - the graph's groups legend is on the canvas, not in the panel ([011](./011-graph.md));
+  - a changed row names its folder, not its path ([012](./012-lists.md));
+  - the settings keep editable filter rows and tabbed axes ([014](./014-settings.md)).
+- **Bugs found on the way and fixed:**
+  - `/` opened `index.md` whether or not there was one ([004](./004-header.md));
+  - Tailwind dropped colour tokens named only at runtime ([006](./006-rail-and-panel.md));
+  - one Escape closed every open layer ([010](./010-peek.md));
+  - the phone header pushed its last control off screen ([017](./017-mobile.md)).
+- **Raised, not changed:** two of the mock's eight hues, `#FF6FA8` and `#FF5C7A`, read as one pink side by side ([007](./007-entry.md), [011](./011-graph.md)).
+- **Left open elsewhere:** the body's first heading as a card title fallback ([4-boards/008](../4-boards/008-card-titles.md)), and a git-aware `SortTime` upstream (see the index).

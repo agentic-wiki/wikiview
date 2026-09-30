@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the command palette: entries and commands"
-status: todo
+status: done
 priority: medium
 tags: [design, ui]
 blockers: [/8-design/005-git-popover.md]
@@ -36,3 +36,12 @@ Entries are matched as they are today, on label, title and path. The mock's comm
 With an empty query, the first three commands come first, then five entries, then the remaining commands. With a query, matching entries come first, up to 9, then matching commands. Arrow keys wrap. Enter runs the selected item.
 
 **Tests:** ordering with and without a query, arrow keys wrapping, each command running its action, git commands absent without an upstream, and one board command per declared board.
+
+## What building it settled
+
+- **The shell holds what commands act on.** `useTheme()` and `useGitStatus()` are hooks the shell calls. `ThemeToggle` and `GitActions` became controlled components (the git popover's open tab is shell state too), so "Toggle theme" and the header button are one theme, and "Commit & push…" opens the same popover the pill does, on its tab. No event bus.
+- **Commands are plain `{title, sub, kind, run}`**, built in `Shell.tsx`. Git commands appear only with an upstream, as the pill does. There is one per declared board and graph (the undeclared `root` board is not listed, the same as in the rail's list).
+- **`paletteItems()` is the ordering rule**, exported and unit-tested apart from the component (`shell/palette.test.ts`): no query gives three commands, five entries, then the rest; a query gives up to nine matching entries, then the matching commands. Arrows wrap.
+- **Escape goes through the stack** ([010](./010-peek.md)), so the palette over a card closes alone.
+- **An entry's kind** is "Task" for `type: task` and "Entry" for anything else, as in the reference. The unseen dot rides along beside the title.
+- **The header trigger now says "Search or run a command…"**, which is true now ([004](./004-header.md) held the old wording until this landed).

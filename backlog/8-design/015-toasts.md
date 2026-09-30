@@ -1,7 +1,7 @@
 ---
 type: task
 title: "toasts: saying an action landed"
-status: todo
+status: done
 priority: medium
 tags: [design, ui]
 blockers: [/8-design/004-header.md]
@@ -37,3 +37,12 @@ A `useToast()` hook over one provider in `App`. `toast(message, tone?)` is the w
 The git popover's "Done." pause is removed ([005](./005-git-popover.md)).
 
 **Tests:** a toast appears and times out, a new toast replaces the current one, and every row in the table fires its message, success and failure alike.
+
+## What building it settled
+
+- **`ui/Toast.tsx`**: `ToastProvider` around the reader, `useToast()` → `toast(message, tone?)`. One toast at a time; each is timed from when *it* appeared, so a second toast shortly after the first gets its full 2.6s. Pinned by test, and by a mutation that timed only the first.
+- **Read later toasts once, at the queue.** The reader wraps `queue.toggle`, so every bookmark (the entry's, a card sheet's, the list's "Done") says what it did without each button knowing about toasts.
+- **The git popover's "Done." pause is gone.** Success closes it at once and toasts "Pulled N commits", "Committed N files and pushed" or "Pushed N commits". A rescue still stays open, since the branch name it shows is the point, and it toasts "Pushed to <branch>".
+- **A card move** toasts "Moved to <column> · <lane>" when it lands, and a refused one toasts the server's words in `danger`, alongside the snap-back.
+- **Refresh** toasts "Reloaded N entries"; a failed refresh toasts why.
+- **Not wired, deliberately**: a checkbox tick. It is its own feedback (the box is ticked), and a refused one already shows its error in place.

@@ -92,16 +92,20 @@ export function isShelved(value: string): boolean {
   return SHELVED.includes(value.toLowerCase());
 }
 
-/** The gradient a board's live columns are sampled from, first to last. */
+/** The four colours a board's live columns take, first to last. */
 const STAGES = [0, 1, 2, 3].map((i) => `var(--color-stage-${i})`);
 
 /**
  * A column's colour, by its place among the board's live columns: gray, blue,
- * amber, green, sampled evenly whatever their count. Shelved columns are gray
+ * amber, green, spread over them whatever their count. Shelved columns are gray
  * and take no step; the column with no status (value "") is neutral.
  *
- * Between two stops the colour is a `color-mix` of them in oklch, so it follows
- * the theme without anything here knowing which one is on.
+ * Each column takes the **nearest stop**, never a blend. Blending was tried:
+ * the midpoint of blue and amber is magenta round the hue wheel and beige in a
+ * straight line, and either reads as a colour the gradient does not contain.
+ * Snapping keeps every column one of the four, at the cost of neighbours
+ * sharing one on a wide board: three columns are gray, amber, green; five are
+ * gray, blue, amber, amber, green.
  */
 export function columnColour(value: string, columns: string[]): string {
   if (value === "") return NEUTRAL;
@@ -112,19 +116,7 @@ export function columnColour(value: string, columns: string[]): string {
   // One live column has no first or last; it sits at the first real colour
   // rather than at gray, which would read as shelved.
   const t = live.length === 1 ? 1 / 3 : i / (live.length - 1);
-  return sample(t);
-}
-
-/** The gradient at `t` in [0, 1]. Exactly on a stop, the stop itself. */
-function sample(t: number): string {
-  const at = t * (STAGES.length - 1);
-  const from = Math.min(Math.floor(at), STAGES.length - 2);
-  const frac = at - from;
-  // Rounded so float noise (0.9999…) lands on the stop it means.
-  const pct = Math.round((1 - frac) * 1000) / 10;
-  if (pct >= 100) return STAGES[from]!;
-  if (pct <= 0) return STAGES[from + 1]!;
-  return `color-mix(in oklch, ${STAGES[from]} ${pct}%, ${STAGES[from + 1]})`;
+  return STAGES[Math.round(t * (STAGES.length - 1))]!;
 }
 
 /**

@@ -97,15 +97,21 @@ test("whatever the count, the first live column is gray and the last is green", 
   }
 });
 
-test("between stops a column is a mix of the two it sits between", () => {
-  // Three live columns: the middle one is halfway along, between blue and amber.
-  expect(columnColour("b", ["a", "b", "c"])).toBe(
-    "color-mix(in oklch, var(--color-stage-1) 50%, var(--color-stage-2))",
-  );
-  // Five: the second is at t=1/4, three quarters of the way from gray to blue.
-  expect(columnColour("b", ["a", "b", "c", "d", "e"])).toBe(
-    "color-mix(in oklch, var(--color-stage-0) 25%, var(--color-stage-1))",
-  );
+// Never a blend: between two stops a column takes the nearer one, because every
+// mix of blue and amber reads as a colour the gradient does not have.
+test("between stops a column snaps to the nearest one", () => {
+  const stages = (n: number) => {
+    const cols = Array.from({ length: n }, (_, i) => `c${i}`);
+    return cols.map((c) => columnColour(c, cols).replace(/var\(--color-stage-(\d)\)/, "$1"));
+  };
+  expect(stages(2)).toEqual(["0", "3"]);
+  expect(stages(3)).toEqual(["0", "2", "3"]);
+  expect(stages(5)).toEqual(["0", "1", "2", "2", "3"]);
+  expect(stages(7)).toEqual(["0", "1", "1", "2", "2", "3", "3"]);
+  // Whatever the count, only the four stops ever appear.
+  for (let n = 1; n <= 12; n++) {
+    expect(stages(n).every((s) => ["0", "1", "2", "3"].includes(s))).toBe(true);
+  }
 });
 
 test("shelved columns are gray and take no step in the gradient", () => {
@@ -113,7 +119,8 @@ test("shelved columns are gray and take no step in the gradient", () => {
   const cols = ["todo", "in-progress", "done", "archived"];
   expect(columnColour("archived", cols)).toBe("var(--color-stage-0)");
   expect(columnColour("done", cols)).toBe("var(--color-stage-3)");
-  expect(columnColour("in-progress", cols)).toBe(columnColour("b", ["a", "b", "c"]));
+  // Three live columns, so the middle one snaps to amber.
+  expect(columnColour("in-progress", cols)).toBe("var(--color-stage-2)");
   // Wherever the shelf sits, and whatever its case.
   expect(columnColour("done", ["Parked", "todo", "done"])).toBe("var(--color-stage-3)");
   expect(isShelved("ARCHIVED")).toBe(true);

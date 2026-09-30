@@ -13,7 +13,11 @@ import { BoardView } from "@/views/BoardView";
 import { GraphView } from "@/views/GraphView";
 import { splitSheetPath } from "@/views/CardSheet";
 import { NotFound } from "@/views/NotFound";
+import { Loading } from "@/views/Loading";
+import { State, StateIcon, stateButton } from "@/ui/State";
 import { frontDoor } from "@/tree";
+import { BundleProvider } from "@/bundle";
+import { ToastProvider, useToast } from "@/ui/Toast";
 
 export function App() {
   const [bundle, setBundle] = useState<BundleInfo | null>(null);
@@ -73,20 +77,27 @@ export function App() {
 
   if (error) {
     return (
-      <div className="grid h-full place-items-center p-8 text-center">
-        <div>
-          <p className="text-fg font-medium">Cannot reach the bundle</p>
-          <p className="text-muted mt-1 text-sm">{error}</p>
-        </div>
-      </div>
+      <State
+        icon={StateIcon.offline}
+        tone="danger"
+        title="Cannot reach the bundle"
+        detail={error}
+        // The server may be starting, or restarting after a rebuild: trying
+        // again is the one thing worth offering, and it is the same load.
+        action={
+          <button type="button" onClick={() => setRefresh((n) => n + 1)} className={stateButton}>
+            Retry
+          </button>
+        }
+      />
     );
   }
-  if (!bundle || !tree) {
-    return <div className="text-muted grid h-full place-items-center text-sm">Loading…</div>;
-  }
+  if (!bundle || !tree) return <Loading />;
 
   return (
-    <Reader bundle={bundle} tree={tree} refresh={refresh} />
+    <ToastProvider>
+      <Reader bundle={bundle} tree={tree} refresh={refresh} />
+    </ToastProvider>
   );
 }
 
@@ -115,9 +126,21 @@ function Reader({
   // Called here for the same reason `useSeen` is: it is one list in one storage
   // key, and two copies of the hook would be two React states over it, agreeing
   // only after a reload.
-  const queue = useQueue(bundle.id);
+  const saved = useQueue(bundle.id);
+  const toast = useToast();
+  // Every bookmark in the app goes through here — the entry's, a card's, the
+  // list's "Done" — so each says what it did, in one place.
+  const queue: Queue = {
+    ...saved,
+    toggle: (path) => {
+      const had = saved.queued.has(path);
+      saved.toggle(path);
+      toast(had ? "Removed from Read later" : "Saved to Read later");
+    },
+  };
 
   return (
+    <BundleProvider bundle={bundle} tree={tree}>
     <Shell bundle={bundle} tree={tree} unseen={unseen} saved={queue.queued} refresh={refresh}>
       <ClearSelection />
       <MarkSeen onSeen={markSeen} />
@@ -189,6 +212,7 @@ function Reader({
         <Route path="*" element={<UnknownRoute />} />
       </Routes>
     </Shell>
+    </BundleProvider>
   );
 }
 

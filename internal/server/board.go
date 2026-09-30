@@ -105,6 +105,14 @@ type Card struct {
 	// values mean finished, so it reports the edges and leaves the judgement.
 	BlockedBy int `json:"blockedBy,omitempty"`
 	Blocks    int `json:"blocks,omitempty"`
+	// Blocker names the first entry this one waits on, in the order the field
+	// lists them — its title, or its filename made readable when it has none or
+	// is not written yet — so a card can say what it is waiting on and count
+	// the rest. Present exactly when BlockedBy is, and no verdict either: the
+	// first one listed, not the first one unfinished.
+	Blocker string `json:"blocker,omitempty"`
+	// Links is the card's degree on a graph, as on a tree stub.
+	Links int `json:"links,omitempty"`
 	// Tags are the entry's own, and the key is not configurable the way the
 	// status, lane and blocker fields are. `tags` is not a workflow's word for
 	// something, it is the conventional name — the engine uses it as its example
@@ -203,6 +211,7 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 	// columns exist comes from the entries, and what order they sit in comes
 	// from the config.
 	waiting, blocking := blockerEdges(v.Index, board.Blockers)
+	links := connections(v.Index)
 
 	cards := map[string][]Card{}
 	for _, e := range entries {
@@ -215,6 +224,8 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 			Lane:      laneOf(e, board.Lane),
 			BlockedBy: waiting[e.Path],
 			Blocks:    blocking[e.Path],
+			Blocker:   firstBlocker(v.Index, e, board.Blockers),
+			Links:     links[e.Path],
 			Tags:      e.FieldList("tags"),
 		})
 	}
@@ -397,6 +408,30 @@ func blockerEdges(idx *index.Index, field string) (waiting, blocking map[string]
 		}
 	}
 	return waiting, blocking
+}
+
+// firstBlocker names the first entry an entry waits on, by the rule
+// blockerEdges counts with, or "" when it waits on nothing.
+func firstBlocker(idx *index.Index, e *index.Entry, field string) string {
+	if field == "" {
+		return ""
+	}
+	for _, value := range e.FieldList(field) {
+		if !strings.HasSuffix(value, ".md") {
+			continue
+		}
+		target, outside := idx.ResolveLink(e.Path, value)
+		if outside {
+			continue
+		}
+		if src, err := idx.Resolve(target); err == nil {
+			if title := src.Field("title"); title != "" {
+				return title
+			}
+		}
+		return titleFromFilename(target)
+	}
+	return ""
 }
 
 // laneOf reads a card's lane, or "" when the board has no lanes or the entry

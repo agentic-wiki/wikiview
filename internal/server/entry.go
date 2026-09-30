@@ -52,6 +52,9 @@ type EntryView struct {
 	Backlinks       []BacklinkView `json:"backlinks"`
 	Headings        []HeadingView  `json:"headings"`
 	Checkboxes      []CheckboxView `json:"checkboxes"`
+	// Updated is when the entry last changed, by the engine's rule: its
+	// frontmatter `timestamp`, else the file's modification time. See updated().
+	Updated string `json:"updated,omitempty"`
 }
 
 // LinkView is one outgoing internal link. Raw is the lookup key: it is the href
@@ -187,6 +190,7 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 		Backlinks:       incoming(idx, e.Path),
 		Headings:        headings(e, offset),
 		Checkboxes:      checkboxes(e, offset),
+		Updated:         updated(e),
 	}
 	writeJSON(w, http.StatusOK, view)
 }

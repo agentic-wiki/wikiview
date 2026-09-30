@@ -6,6 +6,7 @@ import { App } from "@/App";
 import { proposeMessage } from "@/shell/GitActions";
 import type { BundleInfo, Entry, GitStatus, Graph, TreeNode } from "@/api";
 import { forget } from "@/cache";
+import { resize } from "./test-setup";
 
 /**
  * These mount the real app and drive it, which is the only way to know it
@@ -64,7 +65,7 @@ const tree: TreeNode = {
   path: "/",
   name: "",
   index: "/index.md",
-  entries: [{ path: "/index.md", name: "index.md", type: "", label: "Index", changedAt: 1 }],
+  entries: [{ path: "/index.md", name: "index.md", type: "", label: "Index", changedAt: 1, links: 0 }],
   children: [
     {
       path: "/notes",
@@ -74,9 +75,9 @@ const tree: TreeNode = {
       entries: [
         // Its title says something its filename does not, which is what keeps
         // "shows the label" and "shows the title" telling apart.
-        { path: "/notes/a.md", name: "a.md", type: "note", label: "A", title: "A Note", changedAt: 1 },
-        { path: "/notes/b.md", name: "b.md", type: "note", label: "B", changedAt: 1 },
-        { path: "/notes/checks.md", name: "checks.md", type: "task", label: "Checks", changedAt: 1 },
+        { path: "/notes/a.md", name: "a.md", type: "note", label: "A", title: "A Note", changedAt: 1, links: 0 },
+        { path: "/notes/b.md", name: "b.md", type: "note", label: "B", changedAt: 1, links: 0 },
+        { path: "/notes/checks.md", name: "checks.md", type: "task", label: "Checks", changedAt: 1, links: 0 },
       ],
       children: [],
     },
@@ -244,6 +245,25 @@ function fetchCount() {
   return fetches;
 }
 
+/** An entry with sections, for "On this page": two h2s and an h3 between. */
+const sectionsEntry: Entry = {
+  path: "/notes/sections.md",
+  title: "Sections",
+  type: "note",
+  frontmatter: { tags: ["api", "ui"], owners: ["ana", "jordi"] },
+  body: "## First\n\nOne.\n\n### Detail\n\nMore.\n\n## Second\n\nTwo.\n",
+  links: [],
+  frontmatterRefs: [],
+  backlinks: [],
+  headings: [
+    { level: 2, text: "First", id: "first", line: 5, bodyLine: 1 },
+    { level: 3, text: "Detail", id: "detail", line: 9, bodyLine: 5 },
+    { level: 2, text: "Second", id: "second", line: 13, bodyLine: 9 },
+  ],
+  checkboxes: [],
+  updated: new Date(Date.now() - 3 * 3600_000).toISOString(),
+};
+
 function stubFetch() {
   fetches = 0;
   const body = (v: unknown) =>
@@ -259,6 +279,7 @@ function stubFetch() {
     if (url.includes("/api/entry/notes/named.md")) return body(namedInProse);
     if (url.includes("/api/entry/notes/differs.md")) return body(headingDiffers);
     if (url.includes("/api/entry/notes/wide.md")) return body(tableEntry);
+    if (url.includes("/api/entry/notes/sections.md")) return body(sectionsEntry);
     // Only the entries the fixture actually declares. A catch-all here would
     // mean a "missing" entry still returned content, and the not-found path
     // would never be exercised.
@@ -783,10 +804,12 @@ test("a text selection does not survive navigation", async () => {
 // as the backlink's heading reads as this page's own title. What identifies the
 // source is the source's title.
 test("a backlink names the entry that links here, not the words it used", async () => {
-  const text = await mountAt("/wiki/notes/a.md");
-  expect(text).toContain("Backlinks");
-  expect(text).toContain("The Front Door"); // the linking entry's own title
-  expect(text).toContain("/index.md:3"); // and where in it
+  await mountAt("/wiki/notes/a.md");
+  const column = document.querySelector("article section > div:last-child")!;
+  expect(column.textContent).toContain("Linked from · 2");
+  const row = column.querySelector("a")!;
+  expect(row.textContent).toContain("The Front Door"); // the linking entry's own title
+  expect(row.getAttribute("title")).toBe("/index.md:3"); // and where in it
 });
 
 // A URL outside the app's routes used to render an empty page, which reads as a
@@ -807,6 +830,7 @@ test("an entry that does not exist gets a placeholder", async () => {
 // Any frontmatter value that names an entry becomes a link, whatever the field
 // is called, and it shows the target's title rather than its path.
 test("frontmatter values that resolve are links; others are text", async () => {
+  openProperties();
   await mountAt("/wiki/notes/a.md");
   const strip = document.querySelector("dl")!;
   const link = strip.querySelector("a");
@@ -893,18 +917,24 @@ test("a title is prepended only when the body does not already name itself", asy
   expect(headings[0]).not.toContain("Deployment runbook");
 });
 
-// The borrowed title sits where the body's own heading would, so an entry that
-// has one and an entry that does not are laid out the same way.
-test("a prepended title sits below the frontmatter strip, not above it", async () => {
-  await mountAt("/wiki/notes/checks.md");
-  const article = document.querySelector("article")!;
-  const kids = [...article.children];
-  // The strip is a plain block wrapping the chips, so the divider it carries
-  // spans the column rather than stopping short of the floated print button.
-  const strip = kids.findIndex((n) => n.tagName === "DL" || n.querySelector("dl") !== null);
-  const heading = kids.findIndex((n) => n.tagName === "H1");
-  expect(strip).toBeGreaterThanOrEqual(0);
-  expect(heading).toBeGreaterThan(strip);
+// The title comes first whichever source it has — borrowed from the entry, or
+// lifted from the body's own opening heading — so every entry is laid out the
+// same way: toolbar, title, what it is, then the properties and the body.
+test("the title sits above the properties, whether borrowed or the body's own", async () => {
+  openProperties();
+  for (const path of ["/wiki/notes/checks.md", "/wiki/notes/a.md"]) {
+    await mountAt(path);
+    const kids = [...document.querySelector("article")!.children];
+    const h1 = kids.findIndex((n) => n.tagName === "H1");
+    const grid = kids.findIndex((n) => n.tagName === "DL" || n.querySelector("dl") !== null);
+    expect(h1).toBeGreaterThanOrEqual(0);
+    expect(h1).toBeLessThan(grid);
+    // One title, never two: a lifted heading leaves the body.
+    expect(document.querySelectorAll("article h1")).toHaveLength(1);
+  }
+  // a.md opens with "# A Note": that heading is the title, and keeps its anchor.
+  expect(document.querySelector("article h1")?.textContent).toBe("A Note");
+  expect(document.querySelector(".markdown h1")).toBeNull();
 });
 
 // The outgoing entry stays rendered until the incoming one arrives. Blanking
@@ -1097,6 +1127,7 @@ test("every link in a card obeys the board, not just the ones in the body", asyn
   const restore = stubBoard();
   await act(async () => navigateTo("/kanban/notes/notes/a.md"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await keepSheetProperties();
   const sheet = () => document.querySelector("[role='dialog']")!;
 
   // `blockers: /notes/b.md` names a card on this board, so it opens that card.
@@ -1105,14 +1136,14 @@ test("every link in a card obeys the board, not just the ones in the body", asyn
 
   // A backlink from the folder's own index.md, which is never a card because it
   // is not a task. It is still this board's folder, so it opens over the board.
-  const inFolder = [...sheet().querySelectorAll("section a")].find((a) =>
+  const inFolder = [...sheet().querySelectorAll("section > div:last-child a")].find((a) =>
     (a.textContent ?? "").includes("Notes"),
   );
   expect(inFolder?.getAttribute("href")).toBe("/kanban/notes/notes/index.md");
 
   // And one from /index.md, outside the folder, so it leaves — the same rule
   // reaching the opposite answer.
-  const elsewhere = [...sheet().querySelectorAll("section a")].find((a) =>
+  const elsewhere = [...sheet().querySelectorAll("section > div:last-child a")].find((a) =>
     (a.textContent ?? "").includes("The Front Door"),
   );
   expect(elsewhere?.getAttribute("href")).toBe("/wiki/index.md");
@@ -1123,12 +1154,13 @@ test("every link in a card obeys the board, not just the ones in the body", asyn
 // Staying on the board is the board's rule. The reader has no board to stay on,
 // so every link there goes to the reader, including the two that now ask.
 test("in the reader, blockers and backlinks stay in the reader", async () => {
+  openProperties();
   await mountAt("/wiki/notes/a.md");
 
   const chip = [...document.querySelectorAll("article dl a")].find((a) => a.textContent === "B");
   expect(chip?.getAttribute("href")).toBe("/wiki/notes/b.md");
 
-  const backlink = [...document.querySelectorAll("article section a")].find((a) =>
+  const backlink = [...document.querySelectorAll("article section > div:last-child a")].find((a) =>
     (a.textContent ?? "").includes("The Front Door"),
   );
   expect(backlink?.getAttribute("href")).toBe("/wiki/index.md");
@@ -1212,10 +1244,11 @@ function columnEl(value: string): HTMLElement {
   )! as HTMLElement;
 }
 
-/** A card by the name on its face, so an assertion names what a person sees. */
+/** A card by a name on its face — its title, or the filename under it — so an
+ *  assertion names what a person sees. */
 function cardIn(column: string, label: string): HTMLElement | undefined {
-  return [...columnEl(column).querySelectorAll("a")].find(
-    (a) => a.querySelector("span")?.textContent === label,
+  return [...columnEl(column).querySelectorAll("a")].find((a) =>
+    [...a.querySelectorAll(":scope > span")].slice(0, 2).some((s) => s.textContent === label),
   );
 }
 
@@ -1492,6 +1525,12 @@ async function reportTree(next: TreeNode, version: number): Promise<() => void> 
 }
 
 /** The rows of a listing in the view area, as text. */
+/** The reader's properties start folded; tests about what is in them start
+ *  with them open, the way a reader who wants them has them. */
+function openProperties() {
+  localStorage.setItem(`wiki:${bundle.id}:reader:properties`, "true");
+}
+
 function pageRows(): string[] {
   return [...document.querySelectorAll("main li a")].map((a) => a.textContent ?? "");
 }
@@ -1608,6 +1647,7 @@ test("mark-all clears the whole changed list at once", async () => {
 // overlap, so this pins the structural fix: the value can shrink and truncate,
 // and the buttons are still in the document.
 test("a long frontmatter value is capped so it cannot cover the buttons", async () => {
+  openProperties();
   await mountAt("/wiki/notes/a.md");
 
   // `status: todo` is a plain value; find its chip's value span.
@@ -1636,7 +1676,7 @@ test("an index entry is named by its folder in both lists", async () => {
             index: "/notes/index.md",
             entries: [
               ...c.entries,
-              { path: "/notes/index.md", name: "index.md", type: "", label: "Index", changedAt: 2 },
+              { path: "/notes/index.md", name: "index.md", type: "", label: "Index", changedAt: 2, links: 0 },
             ],
           }
         : c,
@@ -1733,7 +1773,7 @@ test("a saved entry names itself, keeps its place, and comes off when you say", 
     document.querySelector<HTMLElement>("main li [aria-label^='Remove']")!.click(),
   );
   expect(pageRows()).toEqual([]);
-  expect(document.querySelector("main")?.textContent).toContain("Nothing saved yet");
+  expect(document.querySelector("main")?.textContent).toContain("Nothing saved.");
 });
 
 test("the read-later list survives a reload and does not leak into another bundle", async () => {
@@ -1750,7 +1790,7 @@ test("the read-later list survives a reload and does not leak into another bundl
   localStorage.setItem("wiki:another-bundle:queue", JSON.stringify(["/notes/a.md"]));
   await mountAt("/read-later");
   expect(pageRows()).toEqual([]);
-  expect(document.querySelector("main")?.textContent).toContain("Nothing saved yet");
+  expect(document.querySelector("main")?.textContent).toContain("Nothing saved.");
 });
 
 // A list that quietly loses things is a list you stop trusting, and the only
@@ -2174,8 +2214,8 @@ test("the field pickers offer the keys the folder actually has", async () => {
   await act(async () => openSettings());
 
   const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
-  // The first of them: the filter has a row per condition, and they all offer
-  // the same keys.
+  // The filter's keys are in its editor, open on a condition.
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Edit filter 1']")!.click());
   const options = (label: string) =>
     [...(dialog.querySelector(`[aria-label='${label}']`)?.querySelectorAll("option") ?? [])].map(
       (o) => o.textContent,
@@ -2189,49 +2229,86 @@ test("the field pickers offer the keys the folder actually has", async () => {
   expect(options("Lane field")).toEqual(["— no lanes —", "priority", "status", "title", "type"]);
 });
 
+/** The filter's conditions as their chips read. */
+const chips = (dialog: Element) => [...dialog.querySelectorAll("[aria-label^='Edit filter']")].map((c) => c.textContent);
+
 // `key=value` is a small language, but one nobody should have to be told: both
 // halves are known, and a mistyped one empties the board rather than complaining.
-test("the filter reads as rows, and a row can be removed", async () => {
+test("the filter reads as chips, and a chip can be removed", async () => {
   await mountAt("/kanban/notes");
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   await act(async () => openSettings());
 
   const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
-  const cells = (label: string) =>
-    [...dialog.querySelectorAll<HTMLSelectElement | HTMLInputElement>(`[aria-label='${label}']`)].map(
-      (s) => s.value,
-    );
-
   // `!=` is read before `=`, which is the engine's own order: the other way
   // round, `priority!=low` would be the key `priority!` equal to `low`.
-  expect(cells("Filter key")).toEqual(["type", "priority"]);
-  expect(cells("Filter operator")).toEqual(["=", "!="]);
-  expect(cells("Filter value")).toEqual(["task", "low"]);
-
-  // A value is typed, not picked: a filter is often written before the entries
-  // catch up, and a board you cannot describe until something matches it is a
-  // board you cannot set up. What the key already holds is a suggestion.
-  const boxes = [...dialog.querySelectorAll<HTMLInputElement>("[aria-label='Filter value']")];
-  expect(boxes.map((b) => b.tagName)).toEqual(["INPUT", "INPUT"]);
-  const suggestions = boxes.map((b) =>
-    [...(document.getElementById(b.getAttribute("list")!)?.querySelectorAll("option") ?? [])].map(
-      (o) => o.getAttribute("value"),
-    ),
-  );
-  expect(suggestions[0]).toEqual(["note", "task"]);
-  expect(suggestions[1]).toEqual(["high", "low"]);
-  // Empty is a value — `status=` matches an entry with no status — which is the
-  // one thing an empty box does not say for itself.
-  expect(boxes[0]?.getAttribute("placeholder")).toBe("(nothing)");
+  expect(chips(dialog)).toEqual(["typeistask", "priorityis notlow"]);
+  // Nothing to type into until a condition is opened.
+  expect(dialog.querySelector("[aria-label='Filter key']")).toBeNull();
 
   const writes = captureWrites();
   await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 1']")!.click());
-  expect(cells("Filter key")).toEqual(["priority"]);
+  expect(chips(dialog)).toEqual(["priorityis notlow"]);
 
   await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   // The rows round-trip back to the spelling they came from.
   expect(writes[0]?.body.where).toEqual(["priority!=low"]);
+});
+
+// A chip opens in the editor under the chips. Edits apply as they are made, so
+// there is no draft for the dialog's Save to miss; Enter and Escape finish the
+// condition, and neither submits nor closes the dialog.
+test("a chip edits in place, and + Filter adds one open for editing", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => openSettings());
+  const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+  const value = () => dialog.querySelector<HTMLInputElement>("[aria-label='Filter value']");
+  const writes = captureWrites();
+
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Edit filter 2']")!.click());
+  expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Filter key']")?.value).toBe("priority");
+  expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Filter operator']")?.value).toBe("!=");
+  // A value is typed, not picked: a filter is often written before the entries
+  // catch up. What the key already holds is a suggestion, and empty is a value
+  // (`status=` matches an entry with no status), which an empty box does not
+  // say for itself.
+  expect(value()?.tagName).toBe("INPUT");
+  const suggestions = [...document.getElementById(value()!.getAttribute("list")!)!.querySelectorAll("option")];
+  expect(suggestions.map((o) => o.getAttribute("value"))).toEqual(["high", "low"]);
+  expect(value()?.getAttribute("placeholder")).toBe("(nothing)");
+
+  await act(async () => typeInto(value()!, "high"));
+  expect(chips(dialog)).toEqual(["typeistask", "priorityis nothigh"]);
+  // Enter finishes the condition. In a browser it would also submit the form,
+  // which is the default it prevents (the test DOM submits nothing on Enter).
+  const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  await act(async () => void value()!.dispatchEvent(enter));
+  expect(enter.defaultPrevented).toBe(true);
+  expect(value()).toBeNull();
+  expect(writes).toEqual([]);
+
+  // Escape closes the editor, not the dialog under it.
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Edit filter 1']")!.click());
+  await act(async () => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(value()).toBeNull();
+  expect(document.querySelector("[aria-label='Board settings']")).not.toBeNull();
+
+  // Added, it is a condition at once, open for editing.
+  await act(async () => [...dialog.querySelectorAll("button")].find((b) => b.textContent === "+ Filter")!.click());
+  expect(chips(dialog)).toEqual(["typeistask", "priorityis nothigh", "priorityis(nothing)"]);
+  expect(dialog.querySelector("[aria-label='Edit filter 3']")?.getAttribute("aria-expanded")).toBe("true");
+  // Removing one before it keeps the editor on the same condition...
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 1']")!.click());
+  expect(dialog.querySelector("[aria-label='Edit filter 2']")?.getAttribute("aria-expanded")).toBe("true");
+  // ...and removing it closes the editor.
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 2']")!.click());
+  expect(value()).toBeNull();
+
+  await act(async () => dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(writes[0]?.body.where).toEqual(["priority!=high"]);
 });
 
 test("saving the settings form writes them", async () => {
@@ -2309,10 +2386,11 @@ test("a condition that is not a filter is shown as written", async () => {
   await act(async () => openSettings());
 
   const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
-  // One editable row, and the other shown as it was written rather than as a key
-  // with an empty value.
-  expect([...dialog.querySelectorAll("[aria-label='Filter key']")].length).toBe(1);
+  // One condition, and the other shown as it was written rather than as a key
+  // with an empty value: removable, not editable.
+  expect(chips(dialog)).toEqual(["typeistask"]);
   expect(dialog.querySelector("[title='Not a filter']")?.textContent).toBe("nonsense");
+  expect(dialog.querySelector("[aria-label='Remove filter 2']")).not.toBeNull();
 
   // And it goes back exactly as it came, so the server refuses it by name.
   const writes = captureWrites(422);
@@ -2648,7 +2726,7 @@ test("cards and lane bands do not shrink", async () => {
 /** The values pinned on the axis tab that is open, in order. */
 function pinnedIn(dialog: Element): (string | null | undefined)[] {
   const list = dialog.querySelector("[aria-label^='Pinned ']");
-  return [...(list?.querySelectorAll("li") ?? [])].map((li) => li.querySelector("span")?.textContent);
+  return [...(list?.querySelectorAll("li") ?? [])].map((li) => li.querySelector("span.font-mono")?.textContent);
 }
 
 // Printing is a stylesheet, so what a test can hold is the markup it keys off:
@@ -2663,7 +2741,7 @@ test("printing an entry keeps the entry and drops the navigation", async () => {
   // Ways to reach another page, and paper goes nowhere.
   expect(hidden("nav[aria-label='Sections']")).toBe(true);
   expect(hidden("aside")).toBe(true);
-  expect(hidden("[aria-label='Search entries and boards']")).toBe(true);
+  expect(hidden("[aria-label='Search or run a command']")).toBe(true);
 
   // The breadcrumb stays: on paper it is the only thing saying which entry this
   // sheet came from. So does the entry.
@@ -2681,7 +2759,8 @@ test("printing a board drops its controls and keeps its columns", async () => {
   const settings = [...document.querySelectorAll("main header button")].find(
     (b) => b.textContent === "Settings",
   )!;
-  expect(settings.getAttribute("data-print")).toBe("hide");
+  // Hidden with the rest of the board's controls, as one group.
+  expect(settings.closest("[data-print='hide']")).not.toBeNull();
   // The columns are the content, and the scroller is what the print rules stack.
   const scroller = document.querySelector("[data-scroller]")!;
   expect(scroller.getAttribute("data-print")).toBeNull();
@@ -2700,7 +2779,7 @@ test("printing a card open over a board drops the board", async () => {
   expect(Boolean(sheet)).toBe(true);
   expect(sheet!.querySelector("[role='dialog']")?.textContent).toContain("The body of the entry.");
   // Its own controls go with the rest of the chrome.
-  expect(sheet!.querySelector("[aria-label='Close card']")?.getAttribute("data-print")).toBe("hide");
+  expect(sheet!.querySelector("[aria-label='Close card']")?.closest("[data-print='hide']")).not.toBeNull();
 });
 
 // The affordance has nothing dependable to attach to: an entry with no metadata
@@ -2738,35 +2817,29 @@ test("an entry offers to print itself, whatever it is made of", async () => {
   expect(Boolean(document.querySelector("article [aria-label='Print this entry']"))).toBe(true);
 });
 
-// The divider spans the column rather than stopping short of the print button.
-// A flex container establishes its own formatting context and steps aside from a
-// float; an ordinary block does not, so only its line boxes move and its border
-// still crosses the full width. Merging these two back into one element is the
-// regression, and it is invisible without a renderer.
-test("the frontmatter divider is not shortened by the print button", async () => {
+// The entry's controls sit in a row above the title rather than floating over
+// the content, so nothing can slide under them and they never cover anything.
+test("the entry's controls are a toolbar row, not floats", async () => {
   await mountAt("/wiki/notes/a.md");
-  await act(async () => new Promise((r) => setTimeout(r, 0)));
-
-  const chips = document.querySelector("article dl")!;
-  const rule = chips.parentElement!;
-  expect(rule.className).toContain("border-b");
-  expect(rule.className).not.toContain("flex");
-  expect(chips.className).toContain("flex");
-  // And the button it has to cross under is the floated one.
-  expect(document.querySelector("article [aria-label='Print this entry']")?.className).toContain(
-    "float-right",
-  );
+  const print = document.querySelector("article [aria-label='Print this entry']")!;
+  const toolbar = print.closest("article > div")!;
+  expect(toolbar.querySelector("[aria-label='Save to read later']")).not.toBeNull();
+  expect(toolbar.querySelector("[aria-label^='Page width']")).not.toBeNull();
+  // The toolbar comes first, before the title.
+  expect(document.querySelector("article")!.firstElementChild).toBe(toolbar);
+  expect(document.querySelector("article")!.innerHTML).not.toContain("float-");
 });
 
-// A column header and a lane header are the same typographic decision made
-// twice, so they share one rule rather than sprinklings of
-// `uppercase tracking-wide`.
+// A lane header is set in capitals by the one shared rule rather than a
+// sprinkling of `uppercase tracking-wide`. A column header is sentence-cased,
+// as in the reference — by CSS, so its text is still the value.
 test("capitals are set by one shared rule", async () => {
   await mountAt("/kanban/notes");
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const caps = (el: Element | null | undefined) => el?.className.split(/\s+/).includes("caps");
-  expect(caps(columnEl("todo").querySelector("h2"))).toBe(true);
+  expect(caps(columnEl("todo").querySelector("h2"))).toBe(false);
+  expect(columnEl("todo").querySelector("h2")?.className).toContain("first-letter:uppercase");
   expect(caps(columnEl("todo").querySelector("h3"))).toBe(true);
 
   // Uppercasing is presentation: the text itself is still the value, which is
@@ -3003,7 +3076,7 @@ test("an action with nothing to do cannot be confirmed", async () => {
 // A dialog whose work is finished has nothing left to say, so it says it and
 // goes — rather than waiting to be dismissed by somebody who has already moved
 // on.
-test("a finished action closes itself", async () => {
+test("a finished action closes itself, and a toast says what it did", async () => {
   await mountAt("/wiki/index.md");
   stubGit({ ahead: 1, changes: [] });
   await act(async () => emitVersion(98));
@@ -3016,11 +3089,9 @@ test("a finished action closes itself", async () => {
     [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!.click(),
   );
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  // It says so first, and is still there to be read.
-  expect(document.querySelector("[role='dialog'][aria-label='Source control']")?.textContent).toContain("Done");
-
-  await act(async () => new Promise((r) => setTimeout(r, 1400)));
+  // Gone at once, rather than lingering to say "Done" — the toast says it.
   expect(Boolean(document.querySelector("[role='dialog'][aria-label='Source control']"))).toBe(false);
+  expect(document.querySelector("[role='status']")?.textContent).toBe("Pushed 1 commit");
 });
 
 // The one success worth staying open for: the branch name is the whole point of
@@ -3285,6 +3356,32 @@ test("clicking a node opens its entry over the graph", async () => {
   expect(hrefs).toContain("/wiki/notes/gone.md");
 });
 
+// As on a board, a click on the view itself is done with the entry. On a graph
+// pressing is also how you pan, so only a press that did not move counts.
+test("a click on the empty canvas closes the entry, a pan does not", async () => {
+  await openGraph();
+  const canvas = document.querySelector("main svg[role='img']")!;
+  const node = () => document.querySelector("main svg [data-path='/notes/a.md']")!;
+  const at = (el: Element, type: string, x: number) =>
+    el.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerType: "mouse", clientX: x, clientY: 10 }));
+  const open = async () => {
+    await act(async () => node().dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(here).toBe("/graph/notes/notes/a.md");
+  };
+
+  // A pan, then a jitter under the 4px a pan needs: the first keeps it open.
+  await open();
+  await act(async () => void (at(canvas, "pointerdown", 10), at(canvas, "pointermove", 40), at(canvas, "pointerup", 40)));
+  expect(here).toBe("/graph/notes/notes/a.md");
+  await act(async () => void (at(canvas, "pointerdown", 10), at(canvas, "pointermove", 12), at(canvas, "pointerup", 12)));
+  expect(here).toBe("/graph/notes");
+
+  // A press on a node is the node's, not the canvas's.
+  await open();
+  await act(async () => void (at(node(), "pointerdown", 10), at(node(), "pointerup", 10)));
+  expect(here).toBe("/graph/notes/notes/a.md");
+});
+
 test("a node opens from the keyboard", async () => {
   await openGraph();
   const b = document.querySelector("main svg [data-path='/notes/b.md']") as SVGElement;
@@ -3296,7 +3393,7 @@ test("a node opens from the keyboard", async () => {
 // different view, and asking the graph endpoint for it is what proves which.
 test("a graph and a board may share an id", async () => {
   await openGraph();
-  expect(document.querySelector("main svg")).not.toBeNull();
+  expect(document.querySelector("main svg[role='img']")).not.toBeNull();
   expect(document.querySelector("main section[aria-label]")).toBeNull(); // no columns
 });
 
@@ -3305,23 +3402,24 @@ test("a graph nobody declared is not found", async () => {
   expect(document.querySelector("main")!.textContent).toContain("There is no graph with that id");
 });
 
-// Direction is a preference, not a fact about the bundle: off by default, and
-// remembered per bundle once changed.
-test("arrowheads are off until asked for, and stay asked for", async () => {
+// Direction is shown where it is asked about: on the edges of the node you are
+// pointing at, and nowhere else — there is no toggle to keep on.
+test("arrowheads appear on the pointed-at node's edges only", async () => {
   await openGraph();
-  const markers = () => document.querySelectorAll("main svg line[marker-end]").length;
-  expect(markers()).toBe(0);
+  const ends = () => document.querySelectorAll("main svg line[marker-end]").length;
+  const starts = () => document.querySelectorAll("main svg line[marker-start]").length;
+  expect(ends()).toBe(0);
+  expect([...document.querySelectorAll("main header label")].some((l) => l.textContent?.includes("Direction"))).toBe(false);
 
-  const toggle = [...document.querySelectorAll("main header label")]
-    .find((l) => l.textContent?.includes("Direction"))!
-    .querySelector("input")!;
-  await act(async () => toggle.click());
-  expect(markers()).toBe(2);
-  // A mutual edge points both ways, a one-way edge one way.
-  expect(document.querySelectorAll("main svg line[marker-start]").length).toBe(1);
+  await pointAt("/notes/a.md");
+  // Both of A's edges, and the one that goes both ways points both ways.
+  expect(ends()).toBe(2);
+  expect(starts()).toBe(1);
 
-  await openGraph();
-  expect(markers()).toBe(2);
+  const a = document.querySelector("main svg [data-path='/notes/a.md']")!;
+  await act(async () => a.dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
+  await act(async () => a.dispatchEvent(new PointerEvent("pointerleave")));
+  expect(ends()).toBe(0);
 });
 
 // Hovering a node lights its edges and its neighbours and fades the rest.
@@ -3333,7 +3431,7 @@ test("pointing at a node lights what it touches", async () => {
   await act(async () => a.dispatchEvent(new PointerEvent("pointerenter")));
   expect(a.getAttribute("opacity")).toBe("1");
   expect(Number(d.getAttribute("opacity"))).toBeLessThan(0.5);
-  expect(document.querySelectorAll("main svg line.stroke-accent").length).toBe(2);
+  expect(document.querySelectorAll("main svg line[class~='stroke-fg/60']").length).toBe(2);
 });
 
 async function mountWithGraphs(graphs: BundleInfo["graphs"], served?: Graph) {
@@ -3480,8 +3578,7 @@ test("graph settings open seeded from the graph and save it whole", async () => 
   const dialog = graphDialog()!;
 
   expect(dialog.querySelector<HTMLInputElement>("input:not([type])")?.value).toBe("Who links whom");
-  expect(dialog.querySelector<HTMLSelectElement>("[aria-label='Filter key']")?.value).toBe("type");
-  expect(dialog.querySelector<HTMLInputElement>("[aria-label='Filter value']")?.value).toBe("note");
+  expect(chips(dialog)).toEqual(["typeisnote"]);
   const neighbours = dialog.querySelector<HTMLInputElement>("input[type='checkbox']")!;
   expect(neighbours.checked).toBe(true);
   // A node, not a card: the words are the view's.
@@ -3507,6 +3604,7 @@ test("a graph's filter offers the folder's keys", async () => {
   await openGraph();
   await act(async () => openGraphSettings());
   const dialog = graphDialog()!;
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Edit filter 1']")!.click());
   const keys = [...dialog.querySelectorAll("[aria-label='Filter key'] option")].map((o) => o.textContent);
   expect(keys).toEqual(["status", "type"]);
   const values = [...dialog.querySelectorAll("datalist option")].map((o) => o.getAttribute("value"));
@@ -3556,7 +3654,7 @@ test("zooming in moves nodes apart and leaves dots and labels their size", async
   };
   const before = { gap: gap(), r: dotOf("/notes/a.md").getAttribute("r"), font: labelOf("/notes/a.md")!.getAttribute("font-size") };
 
-  const svg = document.querySelector("main svg")!;
+  const svg = document.querySelector("main svg[role='img']")!;
   await act(async () => svg.dispatchEvent(new WheelEvent("wheel", { deltaY: -800, bubbles: true, cancelable: true })));
 
   expect(gap()).toBeGreaterThan(before.gap * 2);
@@ -3825,4 +3923,1619 @@ test("the boards and graphs lists say how big each view is", async () => {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   const rows = [...document.querySelectorAll("aside li a")].map((a) => a.textContent);
   expect(rows).toEqual(["WWho links whom/notes · 3 entries", "EEverything/ · 1 entry"]);
+});
+
+// ─── The entry page, redrawn ────────────────────────────────────────────────
+
+// "Links out" counts entries, once each: a body link to a real entry and a
+// frontmatter reference both count, while a file, an unwritten entry and a link
+// out of the bundle are not entries this one links to.
+test("the meta line counts distinct entries linked, and says when it changed", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const meta = document.querySelector("article > h1 + div")!;
+  // b.md (body and blockers, once), index.md. Not README, contract, diagram, gone.
+  expect(meta.textContent).toContain("2 links out");
+  expect(meta.textContent).toContain("2 backlinks");
+  const out = [...document.querySelectorAll("article section > div:first-child a")];
+  expect(out.map((a) => a.getAttribute("href"))).toEqual(["/wiki/notes/b.md", "/wiki/index.md"]);
+
+  await act(async () => navigateTo("/wiki/notes/sections.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelector("article > h1 + div")!.textContent).toBe(
+    "Updated 3 h ago0 links out0 backlinks",
+  );
+  // An entry with nothing either way still draws both columns, so the footer
+  // does not reflow between entries.
+  expect(document.querySelector("article section")!.textContent).toBe(
+    "Links to · 0Nothing yetLinked from · 0Nothing yet",
+  );
+});
+
+// Tags wear their colour; other lists are chips so their items read as items;
+// references stay links. Nothing is coloured by what it says.
+test("the property grid draws tags, lists and references each as what they are", async () => {
+  openProperties();
+  await mountAt("/wiki/notes/sections.md");
+  const dd = (key: string) =>
+    [...document.querySelectorAll("article dl dt")].find((dt) => dt.textContent === key)!
+      .nextElementSibling!;
+  const tagDots = [...dd("tags").querySelectorAll("span[aria-hidden]")] as HTMLElement[];
+  // The fixture bundle's tag list is empty, so these are ahead of it: neutral.
+  expect(tagDots.map((d) => d.style.background)).toEqual(["var(--color-faint)", "var(--color-faint)"]);
+  expect(dd("owners").textContent).toBe("anajordi");
+  expect(dd("owners").querySelectorAll("span[aria-hidden]")).toHaveLength(0); // no dot on a plain list
+
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(dd("blockers").querySelector("a")?.getAttribute("href")).toBe("/wiki/notes/b.md");
+});
+
+/** Sets the window's width for the media queries that read it. */
+async function viewport(width: number) {
+  // Inside act: the media query answers synchronously, and the state it sets
+  // has to land before the next assertion rather than whenever React gets to it.
+  await act(async () => {
+    (window as unknown as { happyDOM: { setViewport(v: { width: number; height: number }): void } }).happyDOM.setViewport(
+      { width, height: 900 },
+    );
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
+/** Says how much room the reader has: its area's content box, which is the
+ *  window less the panels beside it, and is what the reader lays out by. */
+async function readerRoom(width: number) {
+  await act(async () => resize(document.querySelector("main article")!.parentElement!, width));
+}
+
+const map = () => document.querySelector<HTMLElement>("nav[aria-label='On this page']");
+/** The map's lines, and its floating titles once it is open. */
+const mapLines = () => [...map()!.querySelectorAll<HTMLElement>(":scope > div[aria-hidden] > a")];
+const mapTitles = () => [...map()!.querySelectorAll<HTMLElement>(":scope > div:not([aria-hidden]) a")];
+async function restOnMap() {
+  await act(async () => mapLines()[0]!.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => map()!.dispatchEvent(new PointerEvent("pointerenter")));
+  await act(async () => new Promise((r) => setTimeout(r, 150)));
+}
+async function leaveMap() {
+  await act(async () => {
+    mapLines()[0]!.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+    map()!.dispatchEvent(new PointerEvent("pointerleave"));
+  });
+  await act(async () => new Promise((r) => setTimeout(r, 200)));
+}
+
+// A line per heading in the margin: no column to make room for, so it is there
+// whatever the room, wide page included. A map of one heading is a heading.
+test("the heading map draws a line per heading, whatever the room", async () => {
+  await mountAt("/wiki/notes/sections.md");
+  expect(mapLines().map((a) => a.getAttribute("href"))).toEqual(["#first", "#detail", "#second"]);
+  // Deeper is shorter.
+  expect(mapLines()[1]!.firstElementChild!.className).toContain("w-2 ");
+  expect(mapLines()[0]!.firstElementChild!.className).toContain("w-2.5");
+  expect(mapTitles().length).toBe(0); // titles only once it opens
+
+  await readerRoom(400);
+  expect(map()).not.toBeNull();
+  await readerRoom(1400);
+  await act(async () => document.querySelector<HTMLElement>("[aria-label^='Page width']")!.click());
+  expect(map()).not.toBeNull();
+  await act(async () => document.querySelector<HTMLElement>("[aria-label^='Page width']")!.click());
+
+  // a.md has no headings at all.
+  await act(async () => navigateTo("/wiki/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(map()).toBeNull();
+});
+
+// The title is the page's, not a section of it, and an h1 further down is.
+test("the heading map leaves out the title and takes h1 to h3", async () => {
+  const saved = { body: sectionsEntry.body, headings: sectionsEntry.headings };
+  sectionsEntry.body = "# Sections\n\n## First\n\n### Also\n\n#### Deep\n\n# Appendix\n";
+  sectionsEntry.headings = [
+    { level: 1, text: "Sections", id: "sections", line: 5, bodyLine: 1 },
+    { level: 2, text: "First", id: "first", line: 7, bodyLine: 3 },
+    { level: 3, text: "Also", id: "also", line: 9, bodyLine: 5 },
+    { level: 4, text: "Deep", id: "deep", line: 11, bodyLine: 7 },
+    { level: 1, text: "Appendix", id: "appendix", line: 13, bodyLine: 9 },
+  ];
+  try {
+    await mountAt("/wiki/notes/sections.md");
+    expect(mapLines().map((a) => a.getAttribute("href"))).toEqual(["#first", "#also", "#appendix"]);
+    // Depth is from the shallowest listed: the h1 full length, the h2 one step in, the h3 two.
+    expect(mapLines()[2]!.firstElementChild!.className).toContain("w-2.5");
+    expect(mapLines()[0]!.firstElementChild!.className).toContain("w-2 ");
+    expect(mapLines()[1]!.firstElementChild!.className).toContain("w-1.5");
+  } finally {
+    Object.assign(sectionsEntry, saved);
+  }
+});
+
+// Resting on the map floats the titles; the one under the pointer is lit in
+// the list and on its line. Leaving folds it.
+test("resting on the heading map shows the titles, lit under the pointer", async () => {
+  await mountAt("/wiki/notes/sections.md");
+  await restOnMap();
+  expect(mapTitles().map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+    ["First", "#first"],
+    ["Detail", "#detail"],
+    ["Second", "#second"],
+  ]);
+  expect(mapTitles()[1]!.style.paddingLeft).toBe("24px"); // an h3 under its h2
+
+  await act(async () => mapTitles()[2]!.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  expect(mapTitles()[2]!.className).toContain("text-fg");
+  expect(mapLines()[2]!.firstElementChild!.className).toContain("bg-fg");
+  expect(mapLines()[0]!.firstElementChild!.className).not.toContain("bg-fg");
+
+  await leaveMap();
+  expect(mapTitles().length).toBe(0);
+});
+
+// A first tap on a line opens the map rather than jumping, since a line says
+// nothing until its title shows; that is also how a touch screen opens it, and
+// a click keeps it. Choosing lets go of the click's hold, and the titles stay
+// while the pointer does. Escape puts it away until the pointer has left.
+test("a click on the map keeps it open, choosing lets go, Escape puts it away", async () => {
+  await mountAt("/wiki/notes/sections.md");
+  const tap = new MouseEvent("click", { bubbles: true, cancelable: true });
+  await act(async () => void mapLines()[1]!.dispatchEvent(tap));
+  expect(tap.defaultPrevented).toBe(true);
+  expect(mapTitles().length).toBe(3);
+  await leaveMap();
+  expect(mapTitles().length).toBe(3); // kept
+
+  await restOnMap();
+  await act(async () => mapTitles()[0]!.click());
+  expect(mapTitles().length).toBe(3); // still pointed at, so still showing
+  await leaveMap();
+  expect(mapTitles().length).toBe(0); // and no longer held
+
+  await restOnMap();
+  await act(async () => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(mapTitles().length).toBe(0);
+  await restOnMap();
+  expect(mapTitles().length).toBe(0); // not under the pointer that put it away
+  await leaveMap();
+  await restOnMap();
+  expect(mapTitles().length).toBe(3);
+});
+
+// A click focuses the link it lands on, and following it hands focus on to
+// the page. That is not the pointer leaving: the titles stay while it is there
+// (found by the user, who lost the map under the pointer after each click).
+test("the heading map stays open under the pointer when focus moves on", async () => {
+  await mountAt("/wiki/notes/sections.md");
+  await restOnMap();
+  const link = mapTitles()[1]!;
+  await act(async () => link.focus());
+  await act(async () => link.blur());
+  await act(async () => new Promise((r) => setTimeout(r, 200))); // past the close
+  expect(mapTitles().length).toBe(3);
+  await leaveMap();
+  expect(mapTitles().length).toBe(0);
+});
+
+// Without a pointer: the map has a button to tab to, and focus opens it.
+test("the heading map opens from the keyboard", async () => {
+  await mountAt("/wiki/notes/sections.md");
+  await act(async () => map()!.querySelector<HTMLElement>("button")!.focus());
+  expect(mapTitles().length).toBe(3);
+});
+
+// Wide widens an article held at the reading width. Where the article already
+// has less room than that, it would change nothing, so it is not offered.
+test("wide is offered only when the article has room to grow", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const toggle = () => document.querySelector("[aria-label^='Page width']");
+  await readerRoom(680);
+  expect(toggle()).toBeNull();
+  await readerRoom(681);
+  expect(toggle()).not.toBeNull();
+
+  // Chosen and then out of room: the choice is kept, only the button goes,
+  // and it comes back pressed.
+  await act(async () => (toggle() as HTMLElement).click());
+  await readerRoom(600);
+  expect(toggle()).toBeNull();
+  expect(document.documentElement.getAttribute("data-width")).toBe("wide");
+  await readerRoom(1000);
+  expect(toggle()?.getAttribute("aria-pressed")).toBe("true");
+  await act(async () => (toggle() as HTMLElement).click());
+});
+
+// ─── The folder listing ─────────────────────────────────────────────────────
+
+/** Gives the /notes fixture entries times and link counts for one test. */
+async function withNotesStamped(run: () => Promise<void>) {
+  const notes = tree.children.find((c) => c.path === "/notes")!;
+  const saved = notes.entries.map((e) => ({ ...e }));
+  const stamp: Record<string, [string | undefined, number]> = {
+    "/notes/a.md": ["2026-09-01T10:00:00Z", 4],
+    "/notes/b.md": ["2026-09-20T10:00:00Z", 1],
+    "/notes/checks.md": [undefined, 0], // no time at all: last when sorting by one
+  };
+  notes.entries = notes.entries.map((e) => ({ ...e, updated: stamp[e.path]![0], links: stamp[e.path]![1] }));
+  try {
+    await run();
+  } finally {
+    notes.entries = saved;
+  }
+}
+
+const listingRows = () =>
+  [...document.querySelectorAll("main ul > li a")].map((a) => a.querySelector("span.font-medium")?.textContent);
+
+test("a listing sorts by name or by when things changed, and remembers which", async () => {
+  await withNotesStamped(async () => {
+    await mountAt("/wiki/notes/");
+    // By name is the tree's order, the filenames' own.
+    expect(listingRows()).toEqual(["A", "B", "Checks"]);
+
+    const updated = [...document.querySelectorAll<HTMLElement>("[role='radio']")].find(
+      (b) => b.textContent === "Updated",
+    )!;
+    await act(async () => updated.click());
+    // Newest first; the one with no time last rather than first.
+    expect(listingRows()).toEqual(["B", "A", "Checks"]);
+
+    // A view preference, so it is still there on the next visit.
+    await mountAt("/wiki/notes/");
+    expect(listingRows()).toEqual(["B", "A", "Checks"]);
+    expect(document.querySelector("[role='radio'][aria-checked='true']")?.textContent).toBe("Updated");
+  });
+});
+
+test("a listing row says how connected an entry is and when it changed", async () => {
+  await withNotesStamped(async () => {
+    await mountAt("/wiki/notes/");
+    const row = [...document.querySelectorAll("main ul > li a")].find((a) => a.getAttribute("href") === "/wiki/notes/a.md")!;
+    expect(row.textContent).toContain("A Note"); // its own title, under the filename
+    expect(row.querySelector("[title='4 linked entries']")?.textContent).toBe("4");
+    expect(row.lastElementChild?.getAttribute("title")).toBe("2026-09-01T10:00:00Z");
+  });
+});
+
+// Subfolders sit above entries whichever sort is chosen: a folder has no one
+// time of its own to be sorted by.
+test("subfolders come first, and the listing says it is generated", async () => {
+  const had = tree.index;
+  delete tree.index;
+  try {
+    await mountAt("/wiki/");
+    const hrefs = [...document.querySelectorAll("main ul > li a")].map((a) => a.getAttribute("href"));
+    expect(hrefs.slice(0, 2)).toEqual(["/wiki/notes/", "/wiki/empty/"]);
+    expect(hrefs[2]).toBe("/wiki/index.md");
+    // The root has no name of its own; the bundle's is what it is called.
+    expect(document.querySelector("main h1")?.textContent).toBe("My kb");
+    expect(document.querySelector("main")?.textContent).toContain("Add /index.md to replace it.");
+  } finally {
+    tree.index = had;
+  }
+});
+
+test("an empty folder says so, and still says how to give it a page", async () => {
+  await mountAt("/wiki/empty/");
+  const main = document.querySelector("main")!;
+  expect(main.textContent).toContain("Nothing here yet.");
+  expect(main.querySelector("ul")).toBeNull();
+  expect(main.textContent).toContain("Add /empty/index.md to replace it.");
+});
+
+// ─── The board, redrawn ─────────────────────────────────────────────────────
+
+/** Types into an input the way a person does: through the native setter, so
+ *  React's own tracking sees the change, then the event it listens for. */
+async function typeInto(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+const allCards = () =>
+  [...document.querySelectorAll("main section[aria-label] a")].map((a) => a.querySelector("span")?.textContent);
+
+// A filter narrows what is on screen by what a card says: its title, its
+// filename, or a tag. It lives in the address, so opening a card and closing it
+// again comes back to the same narrowing.
+test("the board filters by title, filename and tag, and keeps the filter in the URL", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    expect(allCards()).toEqual(["A Note", "Checks", "B", "D"]);
+    const filter = document.querySelector<HTMLInputElement>("input[aria-label='Filter cards']")!;
+
+    await typeInto(filter, "NOTE"); // the title, whatever the case
+    expect(allCards()).toEqual(["A Note"]);
+    await typeInto(filter, "api"); // a tag
+    expect(allCards()).toEqual(["A Note"]);
+    await typeInto(filter, "check"); // the filename
+    expect(allCards()).toEqual(["Checks"]);
+    expect(here).toBe("/kanban/notes");
+    expect(document.querySelector("main header")!.textContent).toContain("1 of 4 cards");
+    // A column the filter empties says why it is empty.
+    expect(columnEl("blocked").textContent).toContain("No cards match");
+
+    // Open a card and close it: the filter comes back with you.
+    const card = document.querySelector<HTMLAnchorElement>("main section[aria-label] a")!;
+    expect(card.getAttribute("href")).toBe("/kanban/notes/notes/checks.md?q=check");
+    await act(async () => card.click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(allCards()).toEqual(["Checks"]);
+
+    await typeInto(document.querySelector<HTMLInputElement>("input[aria-label='Filter cards']")!, "");
+    expect(allCards()).toEqual(["A Note", "Checks", "B", "D"]);
+  } finally {
+    restore();
+  }
+});
+
+// Flat is a way of reading the board: the bands go, the cards stay, the config
+// is untouched, and the choice is remembered for this board.
+test("a board with lanes can be read flat, and remembers it", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const bands = () => document.querySelectorAll("main section[aria-label] h3").length;
+    expect(bands()).toBeGreaterThan(0);
+    const flat = [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === "Flat")!;
+    await act(async () => flat.click());
+    expect(bands()).toBe(0);
+    expect(allCards()).toEqual(["A Note", "Checks", "B", "D"]);
+
+    await mountAt("/kanban/notes");
+    expect(bands()).toBe(0);
+  } finally {
+    restore();
+  }
+});
+
+// Columns are coloured by where they sit, first gray to last green, the shelf
+// gray and the no-status column neutral; the bar says each one's share.
+test("columns take the gradient by position, and a bar for their share", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const dot = (c: string) =>
+      columnEl(c).querySelector<HTMLElement>("header > span[aria-hidden]")!.style.getPropertyValue("--c");
+    expect(dot("todo")).toBe("var(--color-stage-0)");
+    expect(dot("in-progress")).toBe("var(--color-stage-2)"); // three live columns: the middle snaps to amber
+    expect(dot("blocked")).toBe("var(--color-stage-3)");
+    expect(dot("no status")).toBe("var(--color-faint)");
+    const bar = (c: string) => (columnEl(c).querySelector("header > div[aria-hidden] > div") as HTMLElement).style.width;
+    expect([bar("todo"), bar("in-progress"), bar("blocked"), bar("no status")]).toEqual(["50%", "0%", "25%", "25%"]);
+  } finally {
+    restore();
+  }
+});
+
+// A card names the first thing it waits on and counts the rest, so "blocked"
+// says by what without opening it.
+test("a waiting card names its first blocker and counts the others", async () => {
+  const a = boardFixture.columns[0]!.cards[0]! as { blocker?: string };
+  a.blocker = "Ship the parser";
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const waiting = cardIn("todo", "A Note")!.querySelector(".text-warn")!;
+    expect(waiting.textContent).toBe("Waiting on Ship the parser+1");
+  } finally {
+    restore();
+    delete a.blocker;
+  }
+});
+
+// The entry's own name first, the filename under it — and only once when the
+// two say the same.
+test("a card leads with the entry's title, the filename beneath", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const face = (label: string) =>
+      [...cardIn("todo", label)!.querySelectorAll(":scope > span")].slice(0, 2).map((s) => s.textContent);
+    expect(face("A Note")).toEqual(["A Note", "A"]);
+    expect(face("Checks")[0]).toBe("Checks");
+    expect(face("Checks")[1]).not.toBe("Checks");
+  } finally {
+    restore();
+  }
+});
+
+// ─── The card sheet, as a side panel ────────────────────────────────────────
+
+const sheetEl = () => document.querySelector<HTMLElement>("[data-print='sheet'] [role='dialog']");
+/** Opens a sheet's folded properties and keeps them, as a click on their
+ *  line does: for tests about what is in them rather than how they fold. */
+async function keepSheetProperties() {
+  const toggle = document.querySelector<HTMLElement>("[role='dialog'] button[aria-controls='entry-properties']")!;
+  if (toggle.getAttribute("aria-expanded") === "false") await act(async () => toggle.click());
+}
+
+const choice = (group: string, value: string) =>
+  [...document.querySelectorAll<HTMLElement>(`[role='radiogroup'][aria-label='${group}'] [role='radio']`)].find(
+    (b) => b.textContent === value,
+  )!;
+
+// The sheet's status and lane are the board's, drawn as controls: choosing one
+// makes exactly the move a drop would, and the card moves before the answer.
+test("a card's status and lane can be chosen in its sheet", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await keepSheetProperties();
+    expect(choice("status", "todo").getAttribute("aria-checked")).toBe("true");
+    expect(choice("priority", "high").getAttribute("aria-checked")).toBe("true");
+
+    const writes = captureWrites();
+    await act(async () => choice("status", "blocked").click());
+    expect(writes).toEqual([
+      { url: "/api/card/notes/notes/a.md", body: { value: "blocked", lane: "", version: 1 } },
+    ]);
+    // Moved on the board at once, not after a round trip.
+    expect(cardIn("blocked", "A Note")).toBeTruthy();
+
+    await act(async () => choice("priority", "low").click());
+    expect(writes[1]?.body).toEqual({ value: "blocked", lane: "low", version: 1 });
+    // Choosing what it already is writes nothing.
+    await act(async () => choice("priority", "low").click());
+    expect(writes).toHaveLength(2);
+  } finally {
+    restore();
+  }
+});
+
+// A refused move puts the card back where it was: the screen agrees with the
+// file, not with the click.
+test("a refused move from the sheet puts the card back", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await keepSheetProperties();
+    captureWrites(409);
+    await act(async () => choice("status", "blocked").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(cardIn("todo", "A Note")).toBeTruthy();
+    expect(cardIn("blocked", "A Note")).toBeFalsy();
+  } finally {
+    restore();
+  }
+});
+
+// A card with no status has no column to keep while its lane changes, so its
+// lane waits until it has one — rather than writing a status of nothing.
+test("a card with no status cannot change lane from its sheet", async () => {
+  // Checks, moved into the column of cards with no status for this test: it is
+  // an entry the fixture serves, so its sheet has a body and a grid.
+  const [todo, , , unset] = boardFixture.columns;
+  const checks = todo!.cards.splice(1, 1)[0]!;
+  (unset!.cards as unknown[]).push(checks);
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/checks.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await keepSheetProperties();
+    expect(document.querySelector("[role='radiogroup'][aria-label='status'] [aria-checked='true']")).toBeNull();
+    expect(choice("priority", "high").hasAttribute("disabled")).toBe(true);
+  } finally {
+    restore();
+    unset!.cards.pop();
+    (todo!.cards as unknown[]).splice(1, 0, checks);
+  }
+});
+
+// Links followed inside the sheet can be walked back, in the sheet — and the
+// history is the sheet's, gone when it closes.
+test("the sheet walks back through what it has shown", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await keepSheetProperties();
+    expect(sheetEl()!.querySelector("[aria-label='Back']")).toBeNull();
+
+    // `blockers: /notes/b.md` is on this board, so it opens in the sheet.
+    const b = [...sheetEl()!.querySelectorAll("dl a")].find((a) => a.textContent === "B")!;
+    await act(async () => (b as HTMLElement).click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(here).toBe("/kanban/notes/notes/b.md");
+
+    await act(async () => sheetEl()!.querySelector<HTMLElement>("[aria-label='Back']")!.click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(here).toBe("/kanban/notes/notes/a.md");
+    expect(sheetEl()!.querySelector("[aria-label='Back']")).toBeNull();
+  } finally {
+    restore();
+  }
+});
+
+// The board stays live under the sheet: a press on empty board is done with
+// the card; a press on a card or a control is not.
+test("pressing the empty board closes the sheet, and pressing a card does not", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const press = (el: Element) =>
+      act(async () => void el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+
+    await press(cardIn("blocked", "B")!);
+    await press(document.querySelector("input[aria-label='Filter cards']")!);
+    await press(sheetEl()!);
+    expect(here).toBe("/kanban/notes/notes/a.md");
+
+    await press(document.querySelector("[data-scroller]")!);
+    expect(here).toBe("/kanban/notes");
+  } finally {
+    restore();
+  }
+});
+
+// One press, one layer: the palette over a card closes and leaves the card.
+test("Escape closes the topmost layer only", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const escape = () => act(async () => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    await act(async () => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true })));
+    expect(document.querySelector("[aria-label='Search']")).not.toBeNull();
+
+    await escape();
+    expect(document.querySelector("[aria-label='Search']")).toBeNull();
+    expect(here).toBe("/kanban/notes/notes/a.md");
+
+    await escape();
+    expect(here).toBe("/kanban/notes");
+  } finally {
+    restore();
+  }
+});
+
+// ─── The graph, redrawn ─────────────────────────────────────────────────────
+
+/** Points at a node the way a mouse does: React hears enter through `over`. */
+async function pointAt(path: string) {
+  const node = document.querySelector(`main svg [data-path='${path}']`)!;
+  await act(async () => node.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => node.dispatchEvent(new PointerEvent("pointerenter")));
+}
+
+const labelled = () =>
+  [...document.querySelectorAll("main svg [data-path]")].filter((g) => g.querySelector("text")).map((g) => g.getAttribute("data-path"));
+
+// Typing lights the nodes that match and fades the rest, and names the ones it
+// found whatever the label mode says.
+test("the highlight lights matching nodes and names them", async () => {
+  await openGraph();
+  await act(async () => [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === "None")!.click());
+  expect(labelled()).toEqual([]);
+
+  await typeInto(document.querySelector<HTMLInputElement>("input[aria-label='Highlight nodes']")!, "note");
+  const node = (p: string) => document.querySelector(`main svg [data-path='${p}']`)!;
+  // "A Note" matches by its title; D does not.
+  expect(node("/notes/a.md").getAttribute("opacity")).toBe("1");
+  expect(Number(node("/notes/d.md").getAttribute("opacity"))).toBeLessThan(0.5);
+  expect(labelled()).toContain("/notes/a.md");
+  expect(labelled()).not.toContain("/notes/d.md");
+});
+
+// Hubs names every node on a graph this small; None names only what you point
+// at; the choice is remembered.
+test("label modes: hubs names a small graph whole, none names only the pointed-at", async () => {
+  await openGraph();
+  const all = [...document.querySelectorAll("main svg [data-path]")].map((g) => g.getAttribute("data-path"));
+  expect(labelled()).toEqual(all);
+
+  await act(async () => [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === "None")!.click());
+  expect(labelled()).toEqual([]);
+  await pointAt("/notes/a.md");
+  expect(labelled()).toContain("/notes/a.md");
+
+  await openGraph();
+  expect(document.querySelector("[role='radio'][aria-checked='true']")?.textContent).toBe("None");
+});
+
+// Setting a group aside takes its nodes and their edges off the canvas, and
+// putting it back returns them; the choice is kept for this graph.
+test("the groups legend hides a group's nodes and brings them back", async () => {
+  pinLegend();
+  // Over the whole bundle, where /notes is a group and the front door is not in
+  // any: two rows to tell apart.
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 3 }], {
+    ...graphFixture,
+    id: "all",
+    path: "/",
+    nodes: [
+      { path: "/index.md", label: "Index" },
+      { path: "/notes/a.md", label: "A" },
+      { path: "/notes/b.md", label: "B" },
+    ],
+    edges: [
+      { from: "/index.md", to: "/notes/a.md", via: ["body"], count: 1 },
+      { from: "/notes/a.md", to: "/notes/b.md", via: ["body"], count: 1 },
+    ],
+  });
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const rows = () =>
+    [...document.querySelectorAll("[role='group'][aria-label='Groups'] [data-legend-row] > button:first-child")].map((b) => b.textContent);
+  // The graph's own folder first, under its name — the bundle's, over "/".
+  expect(rows()).toEqual(["My kb", "Notes"]);
+  const counts = [...document.querySelectorAll("[role='group'][aria-label='Groups'] [data-legend-row] > button:last-child span.font-mono")];
+  expect(counts.map((c) => c.textContent)).toEqual(["1", "2"]);
+  const drawn = () => [...document.querySelectorAll("main svg [data-path]")].map((g) => g.getAttribute("data-path"));
+  const edges = () => document.querySelectorAll("main svg line.stroke-edge").length;
+  expect(edges()).toBe(2);
+
+  const notes = [...document.querySelectorAll<HTMLElement>("[role='group'][aria-label='Groups'] [data-legend-row] > button:first-child")][1]!;
+  await act(async () => notes.click());
+  expect(drawn()).toEqual(["/index.md"]);
+  expect(edges()).toBe(0); // an edge with either end set aside goes with it
+  expect(notes.getAttribute("aria-pressed")).toBe("false");
+
+  // Kept for this graph.
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(drawn()).toEqual(["/index.md"]);
+  await act(async () => [...document.querySelectorAll<HTMLElement>("[role='group'][aria-label='Groups'] [data-legend-row] > button:first-child")][1]!.click());
+  expect(drawn()).toEqual(["/index.md", "/notes/a.md", "/notes/b.md"]);
+});
+
+// The zoom buttons change the view the way the wheel does, and fit brings
+// every node back inside the canvas.
+test("the zoom controls zoom, and fit frames the graph", async () => {
+  await openGraph();
+  const gap = () => {
+    const a = positionOf("/notes/a.md");
+    const d = positionOf("/notes/d.md");
+    return Math.hypot(a.x - d.x, a.y - d.y);
+  };
+  const start = gap();
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Zoom in']")!.click());
+  expect(gap()).toBeCloseTo(start * 1.25, 1);
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Zoom out']")!.click());
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Zoom out']")!.click());
+  expect(gap()).toBeCloseTo(start / 1.25, 1);
+
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Fit the graph']")!.click());
+  // Every node inside the canvas's box, around its middle.
+  const g = document.querySelector("main svg[role='img'] > g")!.getAttribute("transform")!;
+  const [ox, oy] = g.replace(/translate\(|\)/g, "").split(" ").map(Number);
+  for (const node of document.querySelectorAll("main svg [data-path]")) {
+    const [x, y] = node.getAttribute("transform")!.replace(/translate\(|\)/g, "").split(" ").map(Number);
+    expect(ox! + x!).toBeGreaterThanOrEqual(0);
+    expect(oy! + y!).toBeGreaterThanOrEqual(0);
+    expect(ox! + x!).toBeLessThanOrEqual(800);
+    expect(oy! + y!).toBeLessThanOrEqual(600);
+  }
+});
+
+// Pointing at a node says what it is without opening it.
+test("hovering a node shows its card, and the open node is ringed", async () => {
+  await mountAt("/graph/notes/notes/a.md");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelector("main svg [data-path='/notes/a.md'] circle")?.getAttribute("class")).toContain("stroke-fg");
+
+  await pointAt("/notes/d.md");
+  const card = [...document.querySelectorAll("main div[aria-hidden]")].find((n) => n.textContent?.includes("Click to preview"));
+  expect(card?.textContent).toContain("connection");
+});
+
+// ─── Recently changed and Read later, redrawn ───────────────────────────────
+
+// A changed row says how long ago, and its "mark seen" stays out of the way
+// until you reach for it — by mouse or by keyboard, since focus shows it too.
+test("a changed row says how long ago, and its tick is there for the keyboard", async () => {
+  await mountAt("/wiki/index.md");
+  const moved = withChange("/notes/b.md", 2);
+  const notes = moved.children.find((c) => c.path === "/notes")!;
+  notes.entries = notes.entries.map((e) =>
+    e.path === "/notes/b.md" ? { ...e, updated: new Date(Date.now() - 2 * 3600_000).toISOString() } : e,
+  );
+  const restore = await reportTree(moved, 2);
+  try {
+    await act(async () => openSection("Recently changed"));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(pageRows()).toHaveLength(1);
+    expect(pageRows()[0]).toContain("2 h ago");
+    const tick = document.querySelector<HTMLElement>("main li [aria-label='Mark B as seen']")!;
+    // Hidden by opacity, never removed: a hidden control a keyboard cannot
+    // reach would be a control only the mouse has.
+    expect(tick.className).toContain("opacity-0");
+    expect(tick.className).toContain("focus-visible:opacity-100");
+    await act(async () => tick.click());
+    expect(pageRows()).toEqual([]);
+    expect(document.querySelector("main")!.textContent).toContain("Nothing has changed since you were last here.");
+  } finally {
+    restore();
+  }
+});
+
+// While a saved row is dragged, the row it would land before carries the line.
+test("dragging a saved row marks where it would land", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/a.md", "/notes/b.md", "/notes/checks.md"]));
+  await mountAt("/read-later");
+  const rows = () => [...document.querySelectorAll<HTMLElement>("main li")];
+  const handle = rows()[2]!.querySelector<HTMLElement>("button[aria-label^='Reorder']")!;
+  const real = document.elementFromPoint;
+  document.elementFromPoint = () => rows()[0]!;
+  try {
+    await act(async () => void handle.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse", clientX: 10, clientY: 200, button: 0 })));
+    await act(async () => void window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", clientX: 10, clientY: 20 })));
+    expect(rows()[0]!.className).toContain("shadow-[0_-3px_0_-1px_var(--color-accent)]");
+    expect(rows()[2]!.className).toContain("opacity-40"); // left in place, dimmed
+  } finally {
+    await act(async () => void window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse", clientX: 10, clientY: 20 })));
+    document.elementFromPoint = real;
+  }
+});
+
+// ─── The palette runs commands ──────────────────────────────────────────────
+
+async function openPalette() {
+  await act(async () => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true })));
+}
+const paletteRows = () =>
+  [...document.querySelectorAll("[role='dialog'][aria-label='Search'] li button")].map(
+    (b) => b.querySelector("span.font-medium span")?.textContent,
+  );
+const runCommand = async (title: string) => {
+  const b = [...document.querySelectorAll<HTMLElement>("[role='dialog'][aria-label='Search'] li button")].find(
+    (x) => x.querySelector("span.font-medium span")?.textContent === title,
+  )!;
+  await act(async () => b.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+};
+
+// Every declared board and graph is one command away, and a view is too.
+test("the palette opens a board, a graph, and the lists", async () => {
+  await mountAt("/wiki/index.md");
+  await openPalette();
+  expect(paletteRows()).toContain("Open board · Notes");
+  expect(paletteRows()).toContain("Open graph · Who links whom");
+  await runCommand("Open graph · Who links whom");
+  expect(here).toBe("/graph/notes");
+  // It closes when it has done what it was asked.
+  expect(document.querySelector("[role='dialog'][aria-label='Search']")).toBeNull();
+
+  await openPalette();
+  await runCommand("Read later");
+  expect(here).toBe("/read-later");
+});
+
+// The palette and the header button are one theme, not two that agree later.
+test("toggling the theme from the palette moves the header button too", async () => {
+  await mountAt("/wiki/index.md");
+  const button = () => document.querySelector("header [aria-label^='Theme:']")!.getAttribute("aria-label");
+  expect(button()).toStartWith("Theme: Match system");
+  await openPalette();
+  await runCommand("Toggle theme");
+  expect(button()).toStartWith("Theme: Light");
+  expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  document.documentElement.removeAttribute("data-theme");
+});
+
+// Git commands open the popover on the tab they name — and are not offered at
+// all where there is no upstream, as the pill is not.
+test("git commands open the source-control popover on their tab", async () => {
+  await mountWithGit({ behind: 3, changes: [{ path: "notes/a.md", code: " M" }] });
+  await openPalette();
+  expect(paletteRows().slice(0, 2)).toEqual(["Pull 3 commits", "Commit & push…"]);
+  await runCommand("Commit & push…");
+  expect(document.querySelector("[role='tab'][aria-selected='true']")?.textContent).toStartWith("Changes");
+
+  await mountWithGit({ repo: false, remote: "" });
+  await openPalette();
+  expect(paletteRows()).not.toContain("Commit & push…");
+  expect(paletteRows()[0]).toBe("Toggle theme");
+});
+
+// Arrows wrap, and Enter runs the one they are on — an entry navigates.
+test("arrow keys wrap and Enter opens the selected item", async () => {
+  await mountAt("/wiki/index.md");
+  await openPalette();
+  const input = document.querySelector<HTMLInputElement>("[aria-label='Search entries and commands']")!;
+  const key = (k: string) => act(async () => void input.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })));
+  const current = () => document.querySelector("[role='dialog'] li button[aria-current='true'] span.font-medium span")?.textContent;
+  const first = current();
+  await key("ArrowUp");
+  expect(current()).toBe(paletteRows()[paletteRows().length - 1]);
+  await key("ArrowDown");
+  expect(current()).toBe(first);
+
+  await typeInto(input, "checks");
+  expect(current()).toBe("Checks");
+  await key("Enter");
+  expect(here).toBe("/wiki/notes/checks.md");
+});
+
+// A column in the settings list wears the colour the board draws it in, so the
+// list reads as the board's columns.
+test("settings draws each pinned column in its board colour", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const onBoard = columnEl("todo").querySelector<HTMLElement>("header > span[aria-hidden]")!.style.getPropertyValue("--c");
+    await act(async () => openSettings());
+    const dialog = document.querySelector<HTMLElement>("[aria-label='Board settings']")!;
+    const row = [...dialog.querySelectorAll("[aria-label^='Pinned '] li")].find(
+      (li) => li.querySelector("span.font-mono")?.textContent === "todo",
+    )!;
+    expect(row.querySelector<HTMLElement>("span[aria-hidden]")!.style.getPropertyValue("--c")).toBe(onBoard);
+  } finally {
+    restore();
+  }
+});
+
+// ─── Toasts ─────────────────────────────────────────────────────────────────
+
+const toastText = () => document.querySelector("[role='status']")?.textContent ?? null;
+
+// Every bookmark goes through one place, so each one says what it did.
+test("saving to read later says so, and so does taking it off", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Save to read later']")!.click());
+  expect(toastText()).toBe("Saved to Read later");
+  await act(async () => document.querySelector<HTMLElement>("[aria-label='Remove from read later']")!.click());
+  expect(toastText()).toBe("Removed from Read later");
+});
+
+// One at a time, and gone after a beat — timed from the newest, so a quick
+// second toast gets its full time rather than the rest of the first's.
+test("a toast replaces the last one and leaves after a moment", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const save = () => document.querySelector<HTMLElement>("article [aria-label$='read later']")!;
+  await act(async () => save().click());
+  await act(async () => new Promise((r) => setTimeout(r, 2000)));
+  await act(async () => save().click());
+  expect(document.querySelectorAll("[role='status']")).toHaveLength(1);
+  expect(toastText()).toBe("Removed from Read later");
+  // 2.0s into the first; the second has its own 2.6s from here.
+  await act(async () => new Promise((r) => setTimeout(r, 1000)));
+  expect(toastText()).toBe("Removed from Read later");
+  await act(async () => new Promise((r) => setTimeout(r, 1800)));
+  expect(toastText()).toBeNull();
+}, 10_000);
+
+// A move says where the card went; a refused one says why, in the server's
+// words, in the colour of a failure.
+test("moving a card says where it went, and a refusal says why", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await keepSheetProperties();
+    captureWrites();
+    await act(async () => choice("status", "blocked").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(toastText()).toBe("Moved to blocked");
+
+    captureWrites(409);
+    await act(async () => choice("priority", "low").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(toastText()).toBe(refusal);
+    expect(document.querySelector("[role='status'] span[aria-hidden]")!.className).toContain("bg-danger");
+  } finally {
+    restore();
+  }
+});
+
+// ─── States ─────────────────────────────────────────────────────────────────
+
+// A server restarting after a rebuild is the usual reason the bundle is out of
+// reach, and trying again is the one thing worth offering. It is the same load.
+test("an unreachable bundle says so, and Retry loads it once it is back", async () => {
+  await mountAt("/wiki/index.md");
+  const real = globalThis.fetch;
+  let down = true;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    down && String(input).endsWith("/api/bundle")
+      ? Promise.resolve(new Response(JSON.stringify({ error: "connection refused" }), { status: 502, headers: { "content-type": "application/json" } }))
+      : real(input, init)) as typeof fetch;
+  try {
+    // An unseen version refetches, which is when the outage is met.
+    await act(async () => emitVersion(98));
+    await act(async () => emitVersion(99));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(document.body.textContent).toContain("Cannot reach the bundle");
+    expect(document.body.textContent).toContain("connection refused");
+
+    down = false;
+    const retry = [...document.querySelectorAll<HTMLElement>("button")].find((b) => b.textContent === "Retry")!;
+    await act(async () => retry.click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(document.body.textContent).not.toContain("Cannot reach the bundle");
+    expect(document.querySelector("article")).not.toBeNull();
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+// A not-found page is a way back, not a dead end.
+test("nothing at an address offers the way back to the front door", async () => {
+  await mountAt("/README.md");
+  const back = [...document.querySelectorAll("main a, #root a")].find((a) => a.textContent === "Go to the front door");
+  expect(back?.getAttribute("href")).toBe("/");
+});
+
+// ─── Narrow screens ─────────────────────────────────────────────────────────
+
+/** Runs a test at phone width. Mounted wide and narrowed after, for the
+ *  happy-dom quirk `viewport` explains; restored whatever happens. */
+async function onAPhone(path: string, run: () => Promise<void>) {
+  await mountAt(path);
+  await viewport(600);
+  try {
+    await run();
+  } finally {
+    await viewport(1024);
+  }
+}
+
+// The rail becomes a tab bar, the trail goes, and the panel waits in a drawer.
+test("a narrow screen swaps the rail for a tab bar, and the layout follows the width live", async () => {
+  await onAPhone("/wiki/notes/a.md", async () => {
+    const sections = () => document.querySelector("nav[aria-label='Sections']");
+    expect(sections()?.className).toContain("grid-cols-5"); // the tab bar
+    expect(sections()?.textContent).toBe("EntriesBoardsGraphsChangedLater");
+    expect(document.querySelector("nav[aria-label='Breadcrumb']")).toBeNull();
+    expect(document.querySelector("aside")).toBeNull(); // no panel until asked
+
+    await viewport(1024);
+    expect(sections()?.className).not.toContain("grid-cols-5"); // the rail again
+    expect(document.querySelector("nav[aria-label='Breadcrumb']")).not.toBeNull();
+    await viewport(600);
+  });
+});
+
+// The drawer is how you move around on a phone: the hamburger opens it, and
+// going somewhere, the backdrop, or Escape closes it.
+test("the drawer opens from the hamburger and closes on navigation and Escape", async () => {
+  await onAPhone("/wiki/index.md", async () => {
+    const drawer = () => document.querySelector("aside[aria-label='Panel']");
+    const hamburger = () => document.querySelector<HTMLElement>("[aria-label='Open the panel']")!;
+
+    await act(async () => hamburger().click());
+    expect(drawer()?.textContent).toContain("Entries");
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(drawer()).toBeNull();
+
+    await act(async () => hamburger().click());
+    const notes = [...drawer()!.querySelectorAll("a")].find((a) => a.textContent === "Notes")!;
+    await act(async () => notes.click());
+    expect(here).toBe("/wiki/notes/");
+    expect(drawer()).toBeNull();
+  });
+});
+
+// A tab takes you to its section; tapped again where you are, it opens that
+// section's panel, since there is none beside the view to toggle.
+test("a tab navigates, and tapped again opens its panel in the drawer", async () => {
+  await onAPhone("/wiki/index.md", async () => {
+    const tab = (label: string) =>
+      document.querySelector<HTMLElement>(`nav[aria-label='Sections'] button[title='${label}']`)!;
+    await act(async () => tab("Read later").click());
+    expect(here).toBe("/read-later");
+    await act(async () => tab("Entries").click());
+    await act(async () => tab("Entries").click());
+    expect(document.querySelector("aside[aria-label='Panel']")).not.toBeNull();
+  });
+});
+
+// A card rises from the bottom over a backdrop; the board's columns are most
+// of the width and snap.
+test("on a phone the card sheet is a bottom sheet and columns snap", async () => {
+  const restore = stubBoard();
+  try {
+    await onAPhone("/kanban/notes/notes/a.md", async () => {
+      await act(async () => new Promise((r) => setTimeout(r, 0)));
+      expect(document.querySelector("[data-print='sheet']")?.className).toContain("top-[14vh]");
+      expect(document.querySelector("[data-print='sheet'] [role='dialog']")?.className).toContain("rounded-t-[18px]");
+      expect(columnEl("todo").className).toContain("w-[84vw]");
+      expect(document.querySelector("[data-scroller]")?.className).toContain("snap-mandatory");
+    });
+  } finally {
+    restore();
+  }
+});
+
+// ─── Folded properties, and contents that make way ──────────────────────────
+
+const propertiesToggle = () => document.querySelector<HTMLElement>("article button[aria-controls='entry-properties']");
+
+// Folded, the properties are one line of what they say; open, the grid; and
+// whichever you left them is how the next entry opens.
+test("the reader's properties fold to one line, open on a click, and stay as left", async () => {
+  await mountAt("/wiki/notes/a.md");
+  expect(document.querySelector("article dl")).toBeNull();
+  // status, then the one blocker by its name.
+  expect(propertiesToggle()!.textContent).toBe("todo·B");
+  expect(propertiesToggle()!.getAttribute("aria-expanded")).toBe("false");
+
+  await act(async () => propertiesToggle()!.click());
+  expect(document.querySelector("article dl a")?.textContent).toBe("B");
+
+  await act(async () => navigateTo("/wiki/notes/sections.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelector("article dl")).not.toBeNull();
+  await act(async () => propertiesToggle()!.click());
+  // Tags keep their dots on the one line; a plain list reads as a list.
+  expect(propertiesToggle()!.textContent).toBe("apiui·ana, jordi");
+  expect(propertiesToggle()!.querySelectorAll("span[aria-hidden].rounded-full")).toHaveLength(2);
+});
+
+
+// ─── Waiting, shelves, and what a drag lights ───────────────────────────────
+
+/** Starts a drag of `el` and moves it over `onto`, leaving it in the air so a
+ *  test can look at the board mid-gesture. Returns the release. */
+async function holdOver(el: Element, onto: () => Element | null) {
+  const real = document.elementFromPoint;
+  document.elementFromPoint = () => onto();
+  await act(async () =>
+    void el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse", clientX: 10, clientY: 10 })),
+  );
+  // Twice, as a real pointer does: the first move lifts the card, which is what
+  // brings the empty bands into being, and the second finds the one under it.
+  for (const x of [300, 302]) {
+    await act(async () =>
+      void window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", clientX: x, clientY: 40 })),
+    );
+  }
+  return async () => {
+    await act(async () =>
+      void window.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "mouse", clientX: 300, clientY: 40 })),
+    );
+    document.elementFromPoint = real;
+  };
+}
+
+// On a shelf, what a card waits on no longer matters, so the card stops saying.
+test("a card on a shelf does not say what it waits on", async () => {
+  const shelf = {
+    value: "archived",
+    pinned: true,
+    cards: [{ path: "/notes/z.md", label: "Z", type: "task", lane: "low", blockedBy: 1, blocker: "B" }],
+  };
+  (boardFixture.columns as unknown[]).splice(3, 0, shelf);
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    expect(cardIn("archived", "Z")!.textContent).not.toContain("Waiting on");
+    // Off the shelf, the same edge is said, in amber rather than red.
+    const waiting = cardIn("todo", "A Note")!.querySelector("span.text-warn");
+    expect(waiting?.textContent).toContain("Waiting on");
+    expect(cardIn("todo", "A Note")!.querySelector(".text-danger")).toBeNull();
+  } finally {
+    restore();
+    (boardFixture.columns as unknown[]).splice(3, 1);
+  }
+});
+
+// With lanes, a card in the air lights the one band it would land in — the
+// band under the pointer — and not the column around it.
+test("with lanes on, a dragged card lights only the band it would land in", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const band = () => columnEl("blocked").querySelector("[data-lane='high']")!;
+    const release = await holdOver(cardIn("todo", "Checks")!, band);
+    try {
+      expect(columnEl("blocked").className).not.toContain("border-accent");
+      expect(band().className).toContain("bg-accent-bg");
+      // The column's other bands stay quiet.
+      expect(columnEl("blocked").querySelector("[data-lane='low']")!.className).not.toContain("bg-accent-bg");
+    } finally {
+      await release();
+    }
+  } finally {
+    restore();
+  }
+});
+
+// Over the column but not over a band — its header, say — the card would keep
+// its own lane, so that is the band lit.
+test("over a column but no band, the card's own lane is the one lit", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const header = () => columnEl("blocked").querySelector("header")!;
+    // A Note is in the high lane.
+    const release = await holdOver(cardIn("todo", "A Note")!, header);
+    try {
+      expect(columnEl("blocked").querySelector("[data-lane='high']")!.className).toContain("bg-accent-bg");
+      expect(columnEl("blocked").querySelector("[data-lane='low']")!.className).not.toContain("bg-accent-bg");
+    } finally {
+      await release();
+    }
+  } finally {
+    restore();
+  }
+});
+
+// Flat, there are no bands to aim at, so the column is what lights.
+test("with lanes off, a dragged card lights the column", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const flat = [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === "Flat")!;
+    await act(async () => flat.click());
+    const release = await holdOver(cardIn("todo", "Checks")!, () => columnEl("blocked"));
+    try {
+      expect(columnEl("blocked").className).toContain("border-accent");
+    } finally {
+      await release();
+    }
+  } finally {
+    restore();
+  }
+});
+
+// A column picked up by its header has weight like a card does: a copy under
+// the pointer, the original dimmed where it was, a line where it would land.
+test("dragging a column shows it moving, and where it would land", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes");
+    const header = columnEl("blocked").querySelector("header")!;
+    const release = await holdOver(header, () => columnEl("todo"));
+    try {
+      const ghost = [...document.querySelectorAll("div.fixed.rotate-1")].find((d) => d.textContent?.includes("blocked"));
+      expect(ghost).toBeTruthy();
+      expect(columnEl("blocked").className).toContain("opacity-40");
+      expect(columnEl("todo").className).toContain("shadow-[-8px_0_0_-5px_var(--color-accent)]");
+      // The column is not a card, so no band lights while it moves.
+      expect(document.querySelector("main section [data-lane].bg-accent-bg")).toBeNull();
+    } finally {
+      await release();
+    }
+    expect(document.querySelector("div.fixed.rotate-1")).toBeNull();
+  } finally {
+    restore();
+  }
+});
+
+// ─── The sheet's width ──────────────────────────────────────────────────────
+
+const sheetWidth = () => document.querySelector<HTMLElement>("[data-print='sheet']")!.style.getPropertyValue("--sheet");
+
+// Dragging the left edge left widens it; arrows do the same a step at a time;
+// it keeps a readable minimum; double-click puts it back; and it is remembered.
+test("the card sheet can be resized from its left edge, and stays as sized", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(sheetWidth()).toBe("480px");
+    const handle = () => document.querySelector<HTMLElement>("[role='separator'][aria-label='Resize the panel']")!;
+    const pointer = (type: string, x: number) =>
+      act(async () => void handle().dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: "mouse", clientX: x })));
+
+    await pointer("pointerdown", 1000);
+    await pointer("pointermove", 880); // 120px to the left
+    await pointer("pointerup", 880);
+    expect(sheetWidth()).toBe("600px");
+
+    await act(async () => void handle().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(sheetWidth()).toBe("576px");
+
+    // Not narrower than it reads well at, however far it is pulled.
+    await pointer("pointerdown", 500);
+    await pointer("pointermove", 1400);
+    await pointer("pointerup", 1400);
+    expect(sheetWidth()).toBe("360px");
+
+    // Remembered across a reload.
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(sheetWidth()).toBe("360px");
+    await act(async () => void handle().dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(sheetWidth()).toBe("480px");
+  } finally {
+    restore();
+  }
+});
+
+// The sheet's header says where the entry is; the body starts with its title.
+test("the card sheet opens on the title, with no path above it", async () => {
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const article = document.querySelector("[data-print='sheet'] article")!;
+    expect(article.firstElementChild?.tagName).toBe("H1");
+    expect(article.textContent).not.toContain("/notes/a.md");
+  } finally {
+    restore();
+  }
+});
+
+// Pointing at a legend row lights that group on the canvas, names its nodes and
+// the edges between them, and dims the rest — as pointing at a node does.
+test("hovering a group in the legend lights it and dims the rest", async () => {
+  pinLegend();
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 3 }], {
+    ...graphFixture,
+    id: "all",
+    path: "/",
+    nodes: [
+      { path: "/index.md", label: "Index" },
+      { path: "/notes/a.md", label: "A" },
+      { path: "/notes/b.md", label: "B" },
+    ],
+    edges: [
+      { from: "/index.md", to: "/notes/a.md", via: ["body"], count: 1 },
+      { from: "/notes/a.md", to: "/notes/b.md", via: ["body"], count: 1 },
+    ],
+  });
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  // Names off, so any name drawn is one the hover asked for.
+  await act(async () => [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === "None")!.click());
+
+  const row = (label: string) =>
+    [...document.querySelectorAll<HTMLElement>("[role='group'][aria-label='Groups'] [data-legend-row] > button:first-child")].find((b) =>
+      b.textContent?.startsWith(label),
+    )!;
+  const opacity = (p: string) => Number(document.querySelector(`main svg [data-path='${p}']`)!.getAttribute("opacity"));
+  const lit = () => document.querySelectorAll("main svg line[class~='stroke-fg/60']").length;
+
+  await act(async () => row("Notes").dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => row("Notes").dispatchEvent(new PointerEvent("pointerenter")));
+  expect(opacity("/notes/a.md")).toBe(1);
+  expect(opacity("/notes/b.md")).toBe(1);
+  expect(opacity("/index.md")).toBeLessThan(0.5);
+  expect(labelled()).toEqual(["/notes/a.md", "/notes/b.md"]);
+  // Only the edge inside the group: a–b, not the one out to the front door.
+  expect(lit()).toBe(1);
+
+  await act(async () => row("Notes").dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
+  await act(async () => row("Notes").dispatchEvent(new PointerEvent("pointerleave")));
+  expect(opacity("/index.md")).toBe(1);
+  expect(labelled()).toEqual([]);
+  expect(lit()).toBe(0);
+
+  // Keyboard focus lights it too; a group set aside has nothing to light.
+  await act(async () => row("My kb").focus());
+  expect(opacity("/notes/a.md")).toBeLessThan(0.5);
+  await act(async () => row("My kb").blur());
+  await act(async () => row("Notes").click()); // set aside
+  await act(async () => row("Notes").focus());
+  expect(opacity("/index.md")).toBe(1);
+});
+
+/** The groups legend, pinned open before mounting: tests about its rows are
+ *  tests of someone using them, who keeps it open. The fold has its own. */
+function pinLegend() {
+  localStorage.setItem(`wiki:${bundle.id}:graph:legend`, "true");
+}
+
+/** A graph over the whole bundle: /notes is a group, the front door is not. */
+async function mountGroupsGraph() {
+  pinLegend();
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 3 }], {
+    ...graphFixture,
+    id: "all",
+    path: "/",
+    nodes: [
+      { path: "/index.md", label: "Index" },
+      { path: "/notes/a.md", label: "A" },
+      { path: "/notes/b.md", label: "B" },
+    ],
+    edges: [
+      { from: "/index.md", to: "/notes/a.md", via: ["body"], count: 1 },
+      { from: "/notes/a.md", to: "/notes/b.md", via: ["body"], count: 1 },
+    ],
+  });
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+}
+const legendRow = (label: string) =>
+  [...document.querySelectorAll<HTMLElement>("[role='group'][aria-label='Groups'] > div")].find((d) =>
+    d.querySelector("button")?.textContent?.startsWith(label),
+  )!;
+const nodeOpacity = (p: string) => Number(document.querySelector(`main svg [data-path='${p}']`)!.getAttribute("opacity"));
+const drawnNodes = () => [...document.querySelectorAll("main svg [data-path]")].map((g) => g.getAttribute("data-path"));
+
+// Hiding the group you are pointing at used to leave every node dimmed: the
+// hover still lit a group that was no longer drawn.
+test("hiding the group you point at leaves the rest lit, not dimmed", async () => {
+  await mountGroupsGraph();
+  const toggle = legendRow("Notes").querySelector("button")!;
+  await act(async () => toggle.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => legendRow("Notes").dispatchEvent(new PointerEvent("pointerenter")));
+  expect(nodeOpacity("/index.md")).toBeLessThan(0.5); // lit Notes, dimmed the rest
+
+  await act(async () => toggle.click()); // hidden, with the pointer still on it
+  expect(drawnNodes()).toEqual(["/index.md"]);
+  expect(nodeOpacity("/index.md")).toBe(1);
+});
+
+// "Show only" in the count's place: everything else set aside, and — pressed
+// again while it is the only group showing — everything back.
+test("show only one group, then show them all again", async () => {
+  await mountGroupsGraph();
+  const solo = () => legendRow("Notes").querySelector<HTMLElement>("button[aria-pressed]:last-child")!;
+  expect(solo().getAttribute("aria-label")).toBe("Show only Notes");
+  // The count is what the slot shows at rest.
+  expect(solo().querySelector("span.font-mono")?.textContent).toBe("2");
+
+  await act(async () => solo().click());
+  expect(drawnNodes()).toEqual(["/notes/a.md", "/notes/b.md"]);
+  expect(solo().getAttribute("aria-label")).toBe("Show all groups");
+  expect(solo().getAttribute("aria-pressed")).toBe("true");
+  // While in force the button stays, in place of the count.
+  expect(solo().querySelector("span.font-mono")).toBeNull();
+
+  await act(async () => solo().click());
+  expect(drawnNodes()).toEqual(["/index.md", "/notes/a.md", "/notes/b.md"]);
+});
+
+const enterRow = async (label: string) => {
+  await act(async () => legendRow(label).querySelector("button")!.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => legendRow(label).dispatchEvent(new PointerEvent("pointerenter")));
+};
+const leaveRow = async (label: string) => {
+  await act(async () => legendRow(label).querySelector("button")!.dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
+  await act(async () => legendRow(label).dispatchEvent(new PointerEvent("pointerleave")));
+};
+
+// A hidden group can be looked at without being brought back: pointing at its
+// row draws it, lit, for as long as you point. But not under the click that
+// hid it — that one waits for the pointer to leave and come back.
+test("pointing at a hidden group previews it, except straight after hiding it", async () => {
+  await mountGroupsGraph();
+  await enterRow("Notes");
+  await act(async () => legendRow("Notes").querySelector("button")!.click());
+  expect(drawnNodes()).toEqual(["/index.md"]); // hidden, and not previewed under the click
+
+  await leaveRow("Notes");
+  expect(drawnNodes()).toEqual(["/index.md"]);
+  await enterRow("Notes");
+  expect(drawnNodes()).toEqual(["/index.md", "/notes/a.md", "/notes/b.md"]); // the preview
+  expect(nodeOpacity("/notes/a.md")).toBe(1);
+  expect(nodeOpacity("/index.md")).toBeLessThan(0.5); // the rest dimmed, as for any group
+
+  await leaveRow("Notes");
+  expect(drawnNodes()).toEqual(["/index.md"]); // still hidden: the preview changed nothing
+  expect(legendRow("Notes").querySelector("button")!.getAttribute("aria-pressed")).toBe("false");
+});
+
+// Whenever anything is set aside, the legend offers everything back at once.
+test("show all appears while a group is hidden, and brings every one back", async () => {
+  await mountGroupsGraph();
+  const showAll = () =>
+    [...document.querySelectorAll<HTMLElement>("[role='group'][aria-label='Groups'] button")].find(
+      (b) => b.textContent === "show all",
+    );
+  expect(showAll()).toBeUndefined();
+
+  await act(async () => legendRow("Notes").querySelector("button")!.click());
+  await act(async () => legendRow("My kb").querySelector("button")!.click());
+  expect(drawnNodes()).toEqual([]);
+  await act(async () => showAll()!.click());
+  expect(drawnNodes()).toEqual(["/index.md", "/notes/a.md", "/notes/b.md"]);
+  expect(showAll()).toBeUndefined();
+});
+
+// The entries in the graph's own folder are named after it and listed first;
+// neighbours, which come from anywhere, are a row of their own, listed last.
+test("the legend names the graph's own folder first, and neighbours apart", async () => {
+  pinLegend();
+  await mountWithGraphs([{ path: "/notes", id: "notes", name: "Who links whom", entries: 2 }], {
+    ...graphFixture,
+    path: "/notes",
+    nodes: [
+      { path: "/notes/a.md", label: "A" },
+      { path: "/notes/b.md", label: "B" },
+      { path: "/index.md", label: "Index", neighbour: true },
+    ],
+    edges: [
+      { from: "/notes/a.md", to: "/notes/b.md", via: ["body"], count: 1 },
+      { from: "/index.md", to: "/notes/a.md", via: ["body"], count: 1 },
+    ],
+  });
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const rows = [...document.querySelectorAll("[role='group'][aria-label='Groups'] [data-legend-row] > button:first-child")].map(
+    (b) => b.textContent,
+  );
+  // "Notes" is /notes itself — the folder's own readable name — not "Other".
+  expect(rows).toEqual(["Notes", "Neighbours"]);
+  const neighboursDot = legendRow("Neighbours").querySelector("span[aria-hidden]")!;
+  expect(neighboursDot.className).toContain("border-dashed"); // hollow, as on the canvas
+
+  // The hover card uses the same names.
+  await pointAt("/index.md");
+  const card = [...document.querySelectorAll("main div[aria-hidden]")].find((n) => n.textContent?.includes("Click to preview"));
+  expect(card?.textContent).toContain("Neighbours ·");
+});
+
+// The whole row picks up, not only its grip — and a press that does not move
+// is still a click, so the row's link still opens the entry.
+test("a saved row drags by its body, and a still press still opens it", async () => {
+  localStorage.setItem(`wiki:${bundle.id}:queue`, JSON.stringify(["/notes/a.md", "/notes/b.md", "/notes/checks.md"]));
+  await mountAt("/read-later");
+  const rows = () => [...document.querySelectorAll<HTMLElement>("main li")];
+  const order = () => rows().map((li) => li.querySelector("a span.font-medium")?.textContent);
+  expect(order()).toEqual(["A Note", "B", "Checks"]);
+
+  // Pick up "Checks" by its title and drop it on the first row.
+  await dragTo(rows()[2]!.querySelector("a")!, () => rows()[0]!);
+  expect(order()).toEqual(["Checks", "A Note", "B"]);
+
+  // A press on a title with no movement, then its click, is a click. (The
+  // press is what clears the drag's "swallow the next click" flag, as it does
+  // in a browser, where every click starts with one.)
+  const title = rows()[1]!.querySelector<HTMLElement>("a")!;
+  await act(async () => void title.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse", clientX: 5, clientY: 5 })));
+  await act(async () => void window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse", clientX: 5, clientY: 5 })));
+  await act(async () => title.click());
+  expect(here).toBe("/wiki/notes/a.md");
+});
+
+// The legend stays out of the way until you reach for it: folded to its dots,
+// open while pointed at, and pinned open by a click on its header.
+test("the groups legend folds until pointed at, and a click pins it open", async () => {
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 3 }], {
+    ...graphFixture,
+    id: "all",
+    path: "/",
+    nodes: [
+      { path: "/index.md", label: "Index" },
+      { path: "/notes/a.md", label: "A" },
+    ],
+    edges: [{ from: "/index.md", to: "/notes/a.md", via: ["body"], count: 1 }],
+  });
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const legend = () => document.querySelector<HTMLElement>("[role='group'][aria-label='Groups']")!;
+  const rows = () => legend().querySelectorAll("[data-legend-row]").length;
+  const header = () => legend().querySelector<HTMLElement>("button[aria-expanded]")!;
+
+  // Folded: no rows, but a dot per group, so the colours still say something.
+  expect(rows()).toBe(0);
+  expect(header().querySelectorAll("span[aria-hidden] > span").length).toBe(2);
+
+  // Pointed at, it opens; left, it folds again after a beat.
+  await act(async () => legend().dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => legend().dispatchEvent(new PointerEvent("pointerenter")));
+  expect(rows()).toBe(2);
+  await act(async () => [...legend().querySelectorAll<HTMLElement>("[data-legend-row] > button:first-child")][1]!.click()); // hide Notes
+  await act(async () => legend().dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
+  await act(async () => legend().dispatchEvent(new PointerEvent("pointerleave")));
+  expect(rows()).toBe(2); // not yet: a pointer grazing the edge does not flicker it
+  await act(async () => new Promise((r) => setTimeout(r, 250)));
+  expect(rows()).toBe(0);
+  // Folded, it still says something is hidden.
+  expect(header().textContent).toContain("1 hidden");
+
+  // A click on the header keeps it open, and that is remembered.
+  await act(async () => header().click());
+  expect(rows()).toBe(2);
+  await act(async () => navigateTo("/wiki/index.md"));
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(rows()).toBe(2);
+  expect(header().querySelector("svg")).not.toBeNull(); // the pin says so
+
+  // Every click shows what it did (found by the user: clicks on a legend open
+  // under the pointer changed nothing visible). Pinned, a click folds it at
+  // once, and it stays folded while still pointed at, until the pointer leaves.
+  const point = (on: boolean) =>
+    act(async () => {
+      legend().dispatchEvent(new PointerEvent(on ? "pointerover" : "pointerout", { bubbles: true }));
+      legend().dispatchEvent(new PointerEvent(on ? "pointerenter" : "pointerleave"));
+    });
+  await point(true);
+  await act(async () => header().click());
+  expect(rows()).toBe(0);
+  expect(header().getAttribute("aria-pressed")).toBe("false");
+  await point(true);
+  expect(rows()).toBe(0);
+  await point(false);
+  await point(true);
+  expect(rows()).toBe(2);
+  // Open under the pointer, a click pins it: the pin shows.
+  await act(async () => header().click());
+  expect(header().getAttribute("aria-pressed")).toBe("true");
+  expect(header().querySelector("svg")).not.toBeNull();
+});
+
+/** Rests the pointer on a folded properties line long enough to open it. */
+async function peekProperties(toggle: HTMLElement) {
+  await act(async () => toggle.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => toggle.closest("div.relative")!.dispatchEvent(new PointerEvent("pointerenter")));
+  await act(async () => new Promise((r) => setTimeout(r, 150)));
+}
+
+test("resting on folded properties floats them over the text, and a click pins them", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const area = () => propertiesToggle()!.closest("div.relative") as HTMLElement;
+  const floating = () => area().querySelector(":scope > .absolute dl");
+  const inFlow = () => area().querySelector(":scope > .bg-panel-2 dl");
+  const leave = () =>
+    act(async () => {
+      propertiesToggle()!.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+      area().dispatchEvent(new PointerEvent("pointerleave"));
+    });
+
+  // Passing over: the pointer leaves before the rest is up, and nothing opens.
+  await act(async () => propertiesToggle()!.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+  await act(async () => area().dispatchEvent(new PointerEvent("pointerenter")));
+  await act(async () => new Promise((r) => setTimeout(r, 40)));
+  expect(floating()).toBeNull();
+  await leave();
+  await act(async () => new Promise((r) => setTimeout(r, 150)));
+  expect(floating()).toBeNull();
+
+  // Resting: it opens, over the text rather than pushing it down.
+  await peekProperties(propertiesToggle()!);
+  expect(floating()).not.toBeNull();
+  expect(inFlow()).toBeNull();
+  expect(floating()!.querySelector("a")?.getAttribute("href")).toBe("/wiki/notes/b.md");
+
+  // Leaving: gone almost at once, after a 30ms beat.
+  await leave();
+  expect(floating()).not.toBeNull();
+  await act(async () => new Promise((r) => setTimeout(r, 60)));
+  expect(floating()).toBeNull();
+
+  // Focus is never passing by, so it opens at once.
+  await act(async () => propertiesToggle()!.focus());
+  expect(floating()).not.toBeNull();
+  await act(async () => propertiesToggle()!.blur());
+
+  // A click keeps it open, in the page: the float gives way to the grid in place.
+  await act(async () => propertiesToggle()!.click());
+  expect(inFlow()).not.toBeNull();
+  expect(floating()).toBeNull();
+
+  // Folding it again under the pointer folds it: no float where the grid was,
+  // until the pointer has left and come back.
+  await peekProperties(propertiesToggle()!);
+  await act(async () => propertiesToggle()!.click());
+  expect(inFlow()).toBeNull();
+  expect(floating()).toBeNull();
+  await peekProperties(propertiesToggle()!);
+  expect(floating()).toBeNull();
+  await leave();
+  await peekProperties(propertiesToggle()!);
+  expect(floating()).not.toBeNull();
+});
+
+
+// Every sheet folds the properties the way the page does, so the hand learns
+// it once. A board's status and lane lead the line, and its controls work in
+// the floating grid, without keeping it open.
+test("every sheet folds the properties, and a board's controls work while they float", async () => {
+  await openGraph("/graph/notes/notes/a.md");
+  const toggle = () => document.querySelector<HTMLElement>("[role='dialog'] button[aria-controls='entry-properties']");
+  expect(toggle()?.getAttribute("aria-expanded")).toBe("false");
+  expect(document.querySelector("[role='dialog'] dl")).toBeNull();
+
+  const restore = stubBoard();
+  try {
+    await mountAt("/kanban/notes/notes/a.md");
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false");
+    // Status and lane first: todo · high, then the rest.
+    expect([...toggle()!.querySelectorAll(":scope > span > span[title]")].slice(0, 2).map((e) => e.textContent)).toEqual([
+      "todo",
+      "high",
+    ]);
+
+    await peekProperties(toggle()!);
+    const writes = captureWrites();
+    await act(async () => choice("status", "blocked").click());
+    expect(writes[0]?.body).toEqual({ value: "blocked", lane: "", version: 1 });
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false"); // used, not kept
+  } finally {
+    restore();
+  }
 });

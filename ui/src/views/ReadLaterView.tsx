@@ -2,7 +2,11 @@ import type { TreeNode } from "@/api";
 import type { Queue } from "@/queue";
 import { describe } from "@/tree";
 import { reordered, useDrag } from "@/views/drag";
-import { count, FileIcon, Row } from "@/views/listing";
+import { useMemo } from "react";
+import { Link } from "react-router";
+import { groupColour, groupsUnder, NEUTRAL } from "@/colour";
+import { count } from "@/count";
+import { Glyph } from "@/ui/IconButton";
 
 /**
  * Everything you saved to read later.
@@ -39,79 +43,108 @@ export function ReadLaterView({
   // One item cannot be reordered, so its handle would be an affordance that does
   // nothing. The remove control is still there.
   const canReorder = queue.paths.length > 1;
+  const groups = useMemo(() => groupsUnder(tree, "/"), [tree]);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-fg text-2xl font-semibold tracking-tight">Read later</h1>
-      <p className="text-muted mt-1 text-sm">
+    <div className="animate-wv-fade mx-auto max-w-[760px] px-12 pt-11 pb-24">
+      <h1 className="text-fg mb-1.5 text-[32px] font-bold tracking-[-0.03em]">Read later</h1>
+      <p className="text-muted mb-7 text-pretty">
         {queue.paths.length === 0
-          ? "Nothing saved yet. While reading an entry that deserves more time than you have, save it with the bookmark button."
-          : `${count(queue.paths.length, "entry", "entries")} to come back to, in the order you saved them, or the order you drag them into. Opening one leaves it here until you take it off.`}
+          ? "While reading an entry that deserves more time than you have, save it with the bookmark and it waits here."
+          : `${count(queue.paths.length, "entry", "entries")} to come back to, in the order you saved them, or the order you drag them into. Opening one leaves it here until you mark it done.`}
       </p>
 
-      <ul className="mt-6 space-y-1">
-        {queue.paths.map((path) => {
-          // An entry that has gone keeps its filename and says so, rather than
-          // being dropped: a list that quietly loses things is a list you stop
-          // trusting.
-          const { name, where, missing } = describe(tree, path, rootLabel);
-          const dragging = drag?.item === path;
-          return (
-            <Row
-              key={path}
-              dropId={canReorder ? path : undefined}
-              // A path with nothing behind it still goes somewhere honest: the
-              // reader's placeholder for an entry nobody has written says so,
-              // where a dead row would just sit there.
-              to={"/wiki" + path}
-              icon={<FileIcon />}
-              title={name}
-              // For a gone entry the second line says so, in place of a folder it
-              // no longer lives in: `describe` would otherwise fall back to the
-              // bundle name, which reads as "it is in the root" — the opposite of
-              // true. Still a row, still removable, rather than dropped.
-              subtitle={missing ? "Entry not found in this bundle" : where}
-              lead={
-                canReorder ? (
+      {queue.paths.length === 0 ? (
+        <div className="border-line-2 text-faint rounded-xl border border-dashed p-10 text-center">
+          Nothing saved. Use the bookmark on any entry.
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {queue.paths.map((path) => {
+            // An entry that has gone keeps its filename and says so, rather
+            // than being dropped: a list that quietly loses things is a list you
+            // stop trusting.
+            const { name, where, missing } = describe(tree, path, rootLabel);
+            const dragging = drag?.item === path;
+            // Where a drop would land: before the row under the pointer, drawn
+            // as a line along that row's top edge.
+            const target = drag !== null && drag.item !== path && drag.over?.drop === path;
+            return (
+              <li
+                key={path}
+                data-drop={canReorder ? path : undefined}
+                // The whole row picks up, as in the reference and as a card on a
+                // board does: a press that does not move is still a click, so
+                // the link and the Done button keep working. The grip is where
+                // the eye finds it, and where the keyboard reorders.
+                {...(canReorder ? handlers(path) : {})}
+                className={[
+                  "border-line bg-panel flex items-center gap-3 rounded-xl border py-3 pr-3 pl-2",
+                  canReorder ? "cursor-grab" : "",
+                  target ? "shadow-[0_-3px_0_-1px_var(--color-accent)]" : "",
+                  dragging ? "opacity-40" : "",
+                ].join(" ")}
+              >
+                {canReorder && (
                   <Handle
                     label={name}
                     dragging={dragging}
-                    handlers={handlers(path)}
                     onNudge={(delta) => queue.reorder(shifted(queue.paths, path, delta))}
                   />
-                ) : undefined
-              }
-              // Taking it off is explicit, because opening it never will. This is
-              // the only place that can do it, now that the list has one home.
-              action={
+                )}
+                <span
+                  aria-hidden
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: missing ? NEUTRAL : groupColour(path, groups, "/") }}
+                />
+                {/* A path with nothing behind it still goes somewhere honest:
+                    the reader's placeholder for an entry nobody has written
+                    says so, where a dead row would just sit there.
+                    Not draggable itself: an anchor starts the browser's own
+                    link-drag, and then the row's drag never begins. */}
+                <Link to={"/wiki" + path} draggable={false} className="min-w-0 flex-1">
+                  <span className="text-fg block truncate font-medium">{name}</span>
+                  {/* For a gone entry the second line says so, in place of a
+                      folder it no longer lives in. */}
+                  <span className="text-muted mt-0.5 block truncate text-[12.5px]">
+                    {missing ? "Entry not found in this bundle" : where}
+                  </span>
+                </Link>
+                {/* Taking it off is explicit, because opening it never will. */}
                 <button
                   type="button"
                   onClick={() => queue.toggle(path)}
                   aria-label={`Remove ${name} from read later`}
-                  title="Remove from read later"
-                  className="text-muted hover:text-fg hover:bg-fg/5 grid size-8 shrink-0 place-items-center rounded-md"
+                  title="Done — take it off the list"
+                  className="border-line text-muted hover:border-ok hover:text-ok flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]"
                 >
-                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 13l4 4L19 7" />
-                  </svg>
+                  <Glyph size={13}>
+                    <path d="M5 12l5 5L20 7" />
+                  </Glyph>
+                  Done
                 </button>
-              }
-            />
-          );
-        })}
-      </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
-      {/* The row under the pointer while dragging, so the grab has weight and you
-          can see what is moving. Named, not the whole row, because a title is
-          what you are placing. */}
+      {/* The row itself under the pointer while dragging, at its own width and
+          from where it was grabbed, so what moves is what you picked up. */}
       {drag && (
         <div
-          style={{ left: drag.x - drag.dx, top: drag.y - drag.dy }}
+          style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.width }}
           data-print="hide"
-          className="border-accent bg-elev shadow-float text-fg pointer-events-none fixed z-50 flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+          className="border-accent bg-elev shadow-float pointer-events-none fixed z-50 flex rotate-1 items-center gap-3 rounded-xl border py-3 pr-3 pl-2"
         >
-          <FileIcon />
-          <span className="truncate">{describe(tree, drag.item, rootLabel).name}</span>
+          <span className="text-accent-ink grid size-7 shrink-0 place-items-center" aria-hidden>
+            <Grip />
+          </span>
+          <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: groupColour(drag.item, groups, "/") }} />
+          <span className="min-w-0 flex-1">
+            <span className="text-fg block truncate font-medium">{describe(tree, drag.item, rootLabel).name}</span>
+            <span className="text-muted mt-0.5 block truncate text-[12.5px]">{describe(tree, drag.item, rootLabel).where}</span>
+          </span>
         </div>
       )}
     </div>
@@ -129,18 +162,15 @@ export function ReadLaterView({
 function Handle({
   label,
   dragging,
-  handlers,
   onNudge,
 }: {
   label: string;
   dragging: boolean;
-  handlers: Record<string, unknown>;
   onNudge: (delta: number) => void;
 }) {
   return (
     <button
       type="button"
-      {...handlers}
       onKeyDown={(e) => {
         if (e.key === "ArrowUp") {
           e.preventDefault();
@@ -153,19 +183,27 @@ function Handle({
       aria-label={`Reorder ${label}, arrow up or down`}
       title="Drag to reorder, or use arrow keys"
       className={[
-        "grid size-8 shrink-0 cursor-grab touch-none place-items-center rounded-md",
+        // Muted, not faint: the grip is how the row says it can be picked up.
+        "grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md",
         dragging ? "text-accent-ink" : "text-muted hover:text-fg hover:bg-fg/5",
       ].join(" ")}
     >
-      <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden>
-        <circle cx="9" cy="6" r="1.4" />
-        <circle cx="15" cy="6" r="1.4" />
-        <circle cx="9" cy="12" r="1.4" />
-        <circle cx="15" cy="12" r="1.4" />
-        <circle cx="9" cy="18" r="1.4" />
-        <circle cx="15" cy="18" r="1.4" />
-      </svg>
+      <Grip />
     </button>
+  );
+}
+
+/** Six dots: something you can pick up. */
+function Grip() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden>
+      <circle cx="9" cy="6" r="1.6" />
+      <circle cx="15" cy="6" r="1.6" />
+      <circle cx="9" cy="12" r="1.6" />
+      <circle cx="15" cy="12" r="1.6" />
+      <circle cx="9" cy="18" r="1.6" />
+      <circle cx="15" cy="18" r="1.6" />
+    </svg>
   );
 }
 

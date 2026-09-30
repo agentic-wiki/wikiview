@@ -5,6 +5,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/agentic-wiki/wiki/index"
 	"github.com/agentic-wiki/wikiview/internal/store"
@@ -57,6 +58,29 @@ type EntryStub struct {
 	// compares one number per entry instead of diffing two trees — and a client
 	// that missed ten events gets the right answer from the eleventh.
 	ChangedAt uint64 `json:"changedAt"`
+	// Updated is when the entry last changed, in wall-clock time, by the same
+	// rule the entry itself reports. ChangedAt orders changes the server saw;
+	// this is what a person reads as "3 h ago".
+	Updated string `json:"updated,omitempty"`
+	// Links counts the distinct entries this one is linked with, either way:
+	// its degree on a graph, so a listing and a graph agree about it.
+	Links int `json:"links"`
+}
+
+// updated is an entry's time as the engine defines it (`SortTime`: a curated
+// frontmatter `timestamp`, else the file's mtime), in RFC 3339, or "" when it
+// has none. The engine's rule rather than one of ours, so wikiview and `wiki`
+// agree on what "recent" means.
+//
+// Known limit, accepted: a clone, checkout or pull rewrites a file's mtime, so
+// entries it touched read as changed "just now". A git-aware rule belongs in the
+// engine, where `wiki` would sort by it too.
+func updated(e *index.Entry) string {
+	t := e.SortTime()
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +96,7 @@ func buildTree(v store.View) *TreeNode {
 	// happens to have is not something a client should see change.
 	entries := slices.Clone(idx.Entries)
 	slices.SortFunc(entries, func(a, b *index.Entry) int { return strings.Compare(a.Path, b.Path) })
+	links := connections(idx)
 
 	for _, e := range entries {
 		dir := path.Dir(e.Path)
@@ -83,6 +108,8 @@ func buildTree(v store.View) *TreeNode {
 			Label:     titleFromFilename(e.Path),
 			Title:     e.Field("title"),
 			ChangedAt: v.ChangedAt[e.Path],
+			Updated:   updated(e),
+			Links:     links[e.Path],
 		})
 		if path.Base(e.Path) == "index.md" {
 			node.Index = e.Path

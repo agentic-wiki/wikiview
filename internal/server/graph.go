@@ -169,6 +169,35 @@ func linksFrom(idx *index.Index, e *index.Entry, entries map[string]*index.Entry
 	return out
 }
 
+// connections counts, for every entry, the distinct entries it is linked with
+// either way — its degree on a graph of the whole bundle, by the same edge rule
+// a graph draws with. One pass over the index, where asking Backlinks per entry
+// would walk it once for each.
+func connections(idx *index.Index) map[string]int {
+	entries := map[string]*index.Entry{}
+	for _, e := range idx.Entries {
+		entries[e.Path] = e
+	}
+	near := map[string]map[string]bool{}
+	join := func(a, b string) {
+		if near[a] == nil {
+			near[a] = map[string]bool{}
+		}
+		near[a][b] = true
+	}
+	for _, e := range idx.Entries {
+		for _, l := range linksFrom(idx, e, entries) {
+			join(l.from, l.to)
+			join(l.to, l.from)
+		}
+	}
+	out := make(map[string]int, len(near))
+	for p, set := range near {
+		out[p] = len(set)
+	}
+	return out
+}
+
 // merge folds links into one edge per pair of entries, whichever way they point.
 func merge(links []link) []Edge {
 	type pair struct{ a, b string }

@@ -1,7 +1,11 @@
 import { useMemo } from "react";
 import type { EntryStub, TreeNode } from "@/api";
 import { describe } from "@/tree";
-import { count, FileIcon, Row } from "@/views/listing";
+import { Link } from "react-router";
+import { groupColour, groupsUnder } from "@/colour";
+import { count } from "@/count";
+import { age } from "@/time";
+import { Glyph, IconButton } from "@/ui/IconButton";
 
 /**
  * What changed since you last looked.
@@ -35,11 +39,12 @@ export function ChangedView({
   onDismissAll: (paths: string[]) => void;
 }) {
   const rows = useMemo(() => changed(tree, unseen), [tree, unseen]);
+  const groups = useMemo(() => groupsUnder(tree, "/"), [tree]);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <div className="flex items-baseline gap-3">
-        <h1 className="text-fg text-2xl font-semibold tracking-tight">Recently changed</h1>
+    <div className="animate-wv-fade mx-auto max-w-[760px] px-12 pt-11 pb-24">
+      <div className="mb-1.5 flex items-baseline gap-3">
+        <h1 className="text-fg text-[32px] font-bold tracking-[-0.03em]">Recently changed</h1>
         {/* Clears the lot at once, which after a `tidy --all` is thirty rows you
             have accounted for by other means. Counted in its own label rather
             than a bare "clear", because it dismisses things you have not opened
@@ -49,7 +54,7 @@ export function ChangedView({
           <button
             type="button"
             onClick={() => onDismissAll(rows.map((r) => r.entry.path))}
-            className="text-muted hover:text-fg ml-auto shrink-0 text-sm"
+            className="text-muted hover:text-fg hover:bg-fg/5 ml-auto shrink-0 rounded-lg px-2.5 py-1 text-[13px]"
           >
             Mark all {rows.length} as seen
           </button>
@@ -58,51 +63,63 @@ export function ChangedView({
       {/* What the page is, not just how many rows are on it: this list exists
           because something else writes to these files while you read them, and
           that is not obvious from a heading. */}
-      <p className="text-muted mt-1 text-sm">
+      <p className="text-muted mb-7">
         {rows.length === 0
-          ? "Nothing has changed since you were last here."
+          ? "Entries something else changed while you were reading show up here, until you open them."
           : `${count(rows.length, "entry", "entries")} changed since you last opened ${
               rows.length === 1 ? "it" : "them"
             }, most recent first. Opening one takes it off this list.`}
       </p>
 
-      <ul className="mt-6 space-y-1">
-        {rows.map(({ entry }) => {
-          // What the entry calls itself, and where it lives when the name does
-          // not already say. A list of things to read, not the tree — and the
-          // tree is where a row has to keep naming its file.
-          const { name, where } = describe(tree, entry.path, rootLabel);
-          return (
-            <Row
-              key={entry.path}
-              to={"/wiki" + entry.path}
-              icon={<FileIcon />}
-              title={name}
-              subtitle={where}
-              meta={entry.type}
-              // Marks it seen without opening it: a title tweak you can judge
-              // from the row does not need a visit to clear. It touches seen and
-              // nothing else, so an entry also in read-later stays there.
-              //
-              // A tick rather than an X: this is "I have accounted for it," which
-              // is the same act as reading it, not the deletion an X would imply.
-              action={
-                <button
-                  type="button"
+      {rows.length === 0 ? (
+        <div className="border-line-2 text-faint rounded-xl border border-dashed p-10 text-center">
+          Nothing has changed since you were last here.
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {rows.map(({ entry }) => {
+            // What the entry calls itself, and where it lives when the name does
+            // not already say — named the way the tree names it rather than as
+            // a raw path (the reference shows the path; the tree's names were
+            // chosen here first, and a row should read the same as the tree).
+            const { name, where } = describe(tree, entry.path, rootLabel);
+            return (
+              <li key={entry.path} className="group hover:bg-fg/5 flex items-center gap-1 rounded-[10px] pr-1.5">
+                <Link to={"/wiki" + entry.path} className="grid min-w-0 flex-1 grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-3.5 py-2.5 pl-3">
+                  <span
+                    aria-hidden
+                    className="size-2 rounded-full"
+                    style={{ background: groupColour(entry.path, groups, "/") }}
+                  />
+                  <span className="min-w-0">
+                    <span className="text-fg block truncate font-medium">{name}</span>
+                    {where && <span className="text-faint mt-0.5 block truncate text-[12.5px]">{where}</span>}
+                  </span>
+                  <span className="text-faint text-xs whitespace-nowrap" title={entry.updated}>
+                    {entry.updated ? age(entry.updated) : ""}
+                  </span>
+                </Link>
+                {/* Marks it seen without opening it: a title tweak you can judge
+                    from the row does not need a visit to clear. It touches seen
+                    and nothing else, so an entry also in read-later stays there.
+                    A tick rather than an X: this is "I have accounted for it,"
+                    the same act as reading it, not a deletion. Shown on hover and
+                    on focus, so the row stays quiet until you reach for it. */}
+                <IconButton
+                  label={`Mark ${name} as seen`}
+                  size="sm"
                   onClick={() => onDismiss(entry.path)}
-                  aria-label={`Mark ${name} as seen`}
-                  title="Mark as seen"
-                  className="text-muted hover:text-fg hover:bg-fg/5 grid size-8 shrink-0 place-items-center rounded-md"
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 >
-                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 13l4 4L19 7" />
-                  </svg>
-                </button>
-              }
-            />
-          );
-        })}
-      </ul>
+                  <Glyph size={15}>
+                    <path d="M5 12l5 5L20 7" />
+                  </Glyph>
+                </IconButton>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

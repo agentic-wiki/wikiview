@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type Graph, type GraphSettings as Settings } from "@/api";
+import { useToast } from "@/ui/Toast";
 import { Filters, parseRule, ruleText } from "@/views/filters";
 import { Field, SettingsDialog, saving } from "@/views/SettingsDialog";
 
@@ -15,6 +16,7 @@ export function GraphSettings({ graph, onClose }: { graph: Graph; onClose: () =>
   }));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
   const set = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
 
   return (
@@ -24,14 +26,19 @@ export function GraphSettings({ graph, onClose }: { graph: Graph; onClose: () =>
       busy={busy}
       error={error}
       onClose={onClose}
-      onSubmit={() => saving(() => api.graphSettings(graph.id, settings), setBusy, setError, onClose)}
+      onSubmit={() =>
+        saving(() => api.graphSettings(graph.id, settings), setBusy, setError, () => {
+          toast("Graph saved to wiki.toml");
+          onClose();
+        })
+      }
     >
       <Field label="Name">
         <input
           value={settings.name}
           onChange={(e) => set({ name: e.target.value })}
           placeholder={graph.name}
-          className="border-line-2 bg-panel-2 text-fg w-full rounded-md border px-2 py-1"
+          className="border-line-2 bg-panel-2 text-fg focus:border-accent h-9.5 w-full rounded-[9px] border px-3 text-sm outline-none"
         />
       </Field>
 

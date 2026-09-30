@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useEscape } from "@/ui/escape";
 
 /**
  * The frame every view's settings sit in: a dialog over the view, a header
@@ -26,18 +27,12 @@ export function SettingsDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   return (
     <div
       data-print="hide"
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-[8vh]"
+      className="animate-wv-fade fixed inset-0 z-80 flex items-center justify-center bg-black/55 p-4"
       onClick={onClose}
       role="presentation"
     >
@@ -50,20 +45,20 @@ export function SettingsDialog({
           e.preventDefault();
           onSubmit();
         }}
-        className="bg-elev shadow-float flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl"
+        className="bg-elev shadow-float animate-wv-in flex max-h-[90vh] w-[min(560px,100%)] flex-col overflow-hidden rounded-2xl"
       >
         {/* The path under the title, where it says which view this is rather
             than sitting where a dialog's close is. */}
-        <header className="border-line flex shrink-0 items-center gap-2 border-b px-4 py-3">
+        <header className="border-line flex shrink-0 items-center gap-2 border-b pt-4 pr-4 pb-3.5 pl-5">
           <div className="min-w-0">
-            <span className="text-fg block text-sm font-medium">{title}</span>
-            <span className="text-faint block truncate font-mono text-xs">{path}</span>
+            <span className="text-fg block text-base font-semibold">{title}</span>
+            <span className="text-faint mt-0.5 block truncate font-mono text-xs">{path}</span>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close settings"
-            className="text-muted hover:text-fg hover:bg-fg/5 ml-auto grid size-7 shrink-0 place-items-center rounded-md"
+            className="text-muted hover:text-fg hover:bg-fg/5 ml-auto grid size-7.5 shrink-0 place-items-center rounded-[7px]"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -71,24 +66,26 @@ export function SettingsDialog({
           </button>
         </header>
 
-        <div className="min-h-0 grow space-y-5 overflow-y-auto p-4 text-sm">
+        <div className="flex min-h-0 grow flex-col gap-4.5 overflow-y-auto px-5 py-4.5">
           {children}
           {error && <p className="text-danger text-sm">{error}</p>}
         </div>
 
-        <footer className="border-line flex shrink-0 items-center gap-2 border-t px-4 py-3">
-          <span className="text-muted text-xs">Writes to the bundle's wiki.toml.</span>
+        <footer className="border-line flex shrink-0 items-center gap-2 border-t py-3 pr-4 pl-5">
+          <span className="text-faint flex-1 text-xs">
+            Writes to the bundle's <span className="font-mono">wiki.toml</span>
+          </span>
           <button
             type="button"
             onClick={onClose}
-            className="text-muted hover:text-fg ml-auto rounded-md px-3 py-1.5 text-sm"
+            className="text-muted hover:text-fg hover:bg-fg/5 h-8.5 rounded-[9px] px-3.5"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="bg-accent text-on-accent rounded-md px-3 py-1.5 text-sm font-medium hover:brightness-110 disabled:opacity-50"
+            className="bg-accent text-on-accent h-8.5 rounded-[9px] px-4 font-semibold hover:brightness-110 disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save"}
           </button>
@@ -125,8 +122,8 @@ export async function saving(
  *  them is a wall of text explaining boxes that were already labelled. */
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-fg block text-xs font-medium">{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className="text-muted text-[12.5px] font-medium">{label}</span>
       {children}
     </label>
   );

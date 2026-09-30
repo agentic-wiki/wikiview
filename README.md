@@ -145,7 +145,7 @@ An edge is any link from one entry on the graph to another: a link in the body, 
 
 `neighbours = true` also draws the entries one link away from those, in either direction, even though they fail the filter. They are hollow, since they are context rather than what the graph is about, and no edge is drawn between two of them.
 
-Drag a node and its neighbours follow; point at one to light up what it touches; click it to open the entry over the graph. Pan by dragging the background. The wheel zooms by spreading nodes apart: dots and labels stay the same size, so zooming in makes room to read. How big they are is a separate Small, Medium or Large control in the header. Long titles are shortened, and shown whole on the node you point at. Arrowheads and the text size are remembered in your browser. Past 500 nodes the graph suggests narrowing `where`, and still draws every node.
+Drag a node and its neighbours follow; point at one to light up what it touches, with arrowheads saying which way each of its links points; click it to open the entry over the graph. Pan by dragging the background. The wheel zooms by spreading nodes apart: dots and labels stay the same size, so zooming in makes room to read. How big they are is a separate Small, Medium or Large control in the header. Long titles are shortened, and shown whole on the node you point at. The text size is remembered in your browser. Past 500 nodes the graph suggests narrowing `where`, and still draws every node.
 
 ## HTTP API
 
@@ -153,9 +153,12 @@ Useful for scripting against a running server.
 
 ```
 GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version, declared boards and graphs, and every tag in first-appearance order
-GET  /api/tree                the folder tree, each folder's entries and its index.md if it has one
+GET  /api/tree                the folder tree, each folder's entries and its index.md if it has one,
+                              with when each last changed and how many entries it is
+                              linked with, either way (its degree on a graph)
 GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and resolved-link
-                              and heading-id tables
+                              and heading-id tables, and when it last changed (its
+                              `timestamp`, else the file's mtime, as `wiki` sorts)
 GET  /api/board/{id}          one board as columns of cards, in the config's order,
                               with the frontmatter keys its folder uses
 GET  /api/graph/{id}          one graph as nodes and edges, each edge saying which

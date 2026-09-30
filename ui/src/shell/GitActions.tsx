@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscape } from "@/ui/escape";
 import { Glyph, IconButton } from "@/ui/IconButton";
 import { api, ApiError, type GitResult, type GitStatus } from "@/api";
 import { age } from "@/time";
+import { useBundle } from "@/bundle";
+import { count } from "@/count";
+import { useToast } from "@/ui/Toast";
 
 /**
  * Refresh, and the repository: a pill that says where the branch stands and a
@@ -20,32 +24,42 @@ import { age } from "@/time";
  * upstream, or git is not installed: a bundle is a folder first, and most
  * folders are none of those.
  */
-export function GitActions({ refresh }: { refresh: number }) {
-  const [status, setStatus] = useState<GitStatus | null>(null);
-  const [open, setOpen] = useState<Tab | null>(null);
+export function GitActions({
+  status,
+  onStatus,
+  open,
+  onOpen,
+  compact = false,
+}: {
+  /** The pill drops the branch name, keeping only its counts. */
+  compact?: boolean;
+  /** The repository, as `useGitStatus` last read it; null until it has. */
+  status: GitStatus | null;
+  onStatus: (status: GitStatus) => void;
+  /** Which tab of the popover is open, null for none. Held by the shell, so
+   *  the palette can open it too. */
+  open: GitTab | null;
+  onOpen: (tab: GitTab | null) => void;
+}) {
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const { bundle } = useBundle();
   // The pill and its popover, as one thing an outside click is outside of.
   const anchor = useRef<HTMLDivElement>(null);
-
-  // Re-read whenever the bundle's version moves: a commit somebody else made,
-  // or an entry an agent wrote, both change what a sync would carry.
-  useEffect(() => {
-    const ac = new AbortController();
-    api
-      .git(ac.signal)
-      .then((r) => !ac.signal.aborted && setStatus(r.status))
-      .catch(() => {});
-    return () => ac.abort();
-  }, [refresh]);
+  const setOpen = onOpen;
+  const setStatus = onStatus;
 
   const onRefresh = useCallback(async () => {
     setBusy(true);
     try {
       await api.refresh();
+      toast(`Reloaded ${count(bundle.entries, "entry", "entries")}`);
+    } catch (e) {
+      toast(String((e as Error).message ?? e), "danger");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [toast, bundle.entries]);
 
   const close = useCallback(() => setOpen(null), []);
 
@@ -64,7 +78,7 @@ export function GitActions({ refresh }: { refresh: number }) {
           nothing to offer. */}
       {status?.repo && status.remote !== "" && (
         <div ref={anchor}>
-          <Pill status={status} open={open !== null} onClick={() => setOpen(open ? null : firstTab(status))} />
+          <Pill status={status} compact={compact} open={open !== null} onClick={() => setOpen(open ? null : firstTab(status))} />
           {open && (
             <Popover
               tab={open}
@@ -81,7 +95,27 @@ export function GitActions({ refresh }: { refresh: number }) {
   );
 }
 
-type Tab = "incoming" | "changes";
+export type GitTab = "incoming" | "changes";
+type Tab = GitTab;
+
+/**
+ * The bundle's repository, re-read whenever the bundle's version moves: a
+ * commit somebody else made, or an entry an agent wrote, both change what a
+ * sync would carry. Held by the shell, which hands it to the pill and the
+ * palette alike.
+ */
+export function useGitStatus(refresh: number): [GitStatus | null, (status: GitStatus) => void] {
+  const [status, setStatus] = useState<GitStatus | null>(null);
+  useEffect(() => {
+    const ac = new AbortController();
+    api
+      .git(ac.signal)
+      .then((r) => !ac.signal.aborted && setStatus(r.status))
+      .catch(() => {});
+    return () => ac.abort();
+  }, [refresh]);
+  return [status, setStatus];
+}
 
 /**
  * The tab the popover opens on: the one with something of yours in it. Local
@@ -92,7 +126,7 @@ type Tab = "incoming" | "changes";
  * what asks the remote. Opening the popover to push would then reach the
  * network first for a read nobody asked for.
  */
-function firstTab(status: GitStatus): Tab {
+export function firstTab(status: GitStatus): Tab {
   return status.changes.length > 0 || status.ahead > 0 ? "changes" : "incoming";
 }
 
@@ -103,7 +137,17 @@ function firstTab(status: GitStatus): Tab {
  * "Synced" is as of the last fetch, like every count here: nothing asks the
  * remote until the popover does.
  */
-function Pill({ status, open, onClick }: { status: GitStatus; open: boolean; onClick: () => void }) {
+function Pill({
+  status,
+  compact,
+  open,
+  onClick,
+}: {
+  status: GitStatus;
+  compact: boolean;
+  open: boolean;
+  onClick: () => void;
+}) {
   const changed = status.changes.length;
   const synced = status.behind === 0 && status.ahead === 0 && changed === 0;
   return (
@@ -125,7 +169,7 @@ function Pill({ status, open, onClick }: { status: GitStatus; open: boolean; onC
         <circle cx="18" cy="7" r="2.2" />
         <path d="M6 7.2v9.6M18 9.2c0 4.5-7 3.5-11.2 7.8" />
       </Glyph>
-      <span className="text-fg">{status.branch || "detached"}</span>
+      {!compact && <span className="text-fg">{status.branch || "detached"}</span>}
       {status.behind > 0 && (
         <span className="text-accent-ink" title={`${status.behind} to pull`}>
           ↓{status.behind}
@@ -177,35 +221,21 @@ function Popover({
   // The name a rescue would use, offered by the server with the failure that
   // needs it.
   const [proposed, setProposed] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   // A rescue is the one success worth staying open for: the branch name is the
   // whole point of it, and closing would take away the only place it is
   // written down.
   const [rescued, setRescued] = useState<string | null>(null);
 
-  // A popover whose work is finished has nothing left to say, so it says it and
-  // goes. Long enough to read one word, short enough not to be a step. (A toast
-  // takes over from this in backlog/8-design/015.)
-  useEffect(() => {
-    if (!done) return;
-    const timer = setTimeout(onClose, 1200);
-    return () => clearTimeout(timer);
-  }, [done, onClose]);
+  const toast = useToast();
 
   // Escape, and a press anywhere outside the pill and the popover, close it.
+  useEscape(onClose);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
     const onDown = (e: PointerEvent) => {
       if (!anchor.current?.contains(e.target as Node)) onClose();
     };
-    window.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onDown);
-    };
+    return () => document.removeEventListener("pointerdown", onDown);
   }, [onClose, anchor]);
 
   // Incoming previews what is actually there, which means asking the remote.
@@ -223,14 +253,20 @@ function Popover({
       .finally(() => setFetching(false));
   }, [tab, onStatus]);
 
-  const act = async (run: () => Promise<GitResult>, rescue?: string) => {
+  /** Runs an action. Done, the popover has nothing left to say, so it goes
+   *  and the toast says what happened; a rescue stays, since the branch name
+   *  it shows is the point. */
+  const act = async (run: () => Promise<GitResult>, done: string, rescue?: string) => {
     setBusy(true);
     setError(null);
     try {
       const result = await run();
       onStatus(result.status);
       if (rescue) setRescued(rescue);
-      else setDone(true);
+      else {
+        toast(done);
+        onClose();
+      }
     } catch (e) {
       const err = e as ApiError;
       setError(err.message);
@@ -343,7 +379,7 @@ function Popover({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => act(() => api.gitBranch(proposed), proposed)}
+                  onClick={() => act(() => api.gitBranch(proposed), "Pushed to " + proposed, proposed)}
                   className="border-line-2 text-fg hover:bg-fg/5 h-8 w-full rounded-lg border text-xs disabled:opacity-50"
                 >
                   Push to this branch
@@ -411,7 +447,6 @@ function Popover({
         )}
 
         {error && <p className="text-danger">{error}</p>}
-        {done && !error && <p className="text-muted">Done.</p>}
 
         <div className="flex items-center gap-2">
           <span className="text-faint flex-1 text-xs">
@@ -419,15 +454,20 @@ function Popover({
           </span>
           {tab === "incoming" ? (
             <Primary
-              disabled={busy || fetching || done || status.behind === 0}
-              onClick={() => act(() => api.gitPull())}
+              disabled={busy || fetching || status.behind === 0}
+              onClick={() => act(() => api.gitPull(), `Pulled ${count(status.behind, "commit")}`)}
             >
               {busy && !proposed ? "Pulling…" : "Pull & rebase"}
             </Primary>
           ) : (
             <Primary
-              disabled={busy || done || nothingToPush}
-              onClick={() => act(() => api.gitSync(message))}
+              disabled={busy || nothingToPush}
+              onClick={() =>
+                act(
+                  () => api.gitSync(message),
+                  changed > 0 ? `Committed ${count(changed, "file")} and pushed` : `Pushed ${count(status.ahead, "commit")}`,
+                )
+              }
             >
               {busy ? "Pushing…" : changed > 0 ? "Commit & push" : "Push"}
             </Primary>

@@ -543,3 +543,50 @@ func TestCardsCarryTheirTags(t *testing.T) {
 		}
 	}
 }
+
+// A card names what it waits on: the first blocker as the field lists it, by
+// its title, or by its filename when it has none or has not been written. No
+// verdict about whether that blocker is finished — the same edges the counts
+// report, named.
+func TestACardNamesItsFirstBlocker(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	dir := srv.store.View().Index.Bundle.Dir
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("backlog/b.md", "---\ntype: task\nstatus: done\ntitle: Ship the parser\n---\nB\n")
+	// Listed b first: its title, though b is done. Then c first: its filename,
+	// since it has no title. Then one nobody has written: its filename too.
+	write("backlog/a.md", "---\ntype: task\nstatus: todo\nblockers: [/backlog/b.md, /backlog/c.md]\n---\n[b](./b.md)\n")
+	write("backlog/c.md", "---\ntype: task\nstatus: blocked\nblockers: [/backlog/d.md, /backlog/b.md]\n---\nC\n")
+	write("backlog/d.md", "---\ntype: task\nblockers: [./not-yet-written.md]\n---\nD\n")
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	blocker, links := map[string]string{}, map[string]int{}
+	for _, c := range board(t, srv, "/api/board/backlog").Columns {
+		for _, card := range c.Cards {
+			blocker[card.Path] = card.Blocker
+			links[card.Path] = card.Links
+		}
+	}
+	want := map[string]string{
+		"/backlog/a.md": "Ship the parser",
+		"/backlog/c.md": "D",
+		"/backlog/d.md": "Not yet written",
+		"/backlog/b.md": "", // waits on nothing
+	}
+	for p, w := range want {
+		if blocker[p] != w {
+			t.Errorf("%s blocker=%q, want %q", p, blocker[p], w)
+		}
+	}
+	// a is linked with b (body and blockers, once) and c: its degree, as a tree
+	// stub would report it.
+	if links["/backlog/a.md"] != 2 {
+		t.Errorf("a.md links=%d, want 2", links["/backlog/a.md"])
+	}
+}

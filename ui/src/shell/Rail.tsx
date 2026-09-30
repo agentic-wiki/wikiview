@@ -16,10 +16,11 @@ export type RailSection = "entries" | "boards" | "graphs" | "changed" | "later";
  * is a bookmark, the same glyph the tree marks a saved entry with, so one shape
  * means one thing wherever it appears. The glyphs are the reference's.
  */
-const SECTIONS: { id: RailSection; label: string; icon: ReactNode }[] = [
+const SECTIONS: { id: RailSection; label: string; short: string; icon: ReactNode }[] = [
   {
     id: "entries",
     label: "Entries",
+    short: "Entries",
     icon: (
       <>
         <path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z" />
@@ -30,6 +31,7 @@ const SECTIONS: { id: RailSection; label: string; icon: ReactNode }[] = [
   {
     id: "boards",
     label: "Boards",
+    short: "Boards",
     icon: (
       <>
         <rect x="3" y="3" width="18" height="18" rx="3" />
@@ -40,6 +42,7 @@ const SECTIONS: { id: RailSection; label: string; icon: ReactNode }[] = [
   {
     id: "graphs",
     label: "Graphs",
+    short: "Graphs",
     // Three entries and the links between them.
     icon: (
       <>
@@ -53,6 +56,7 @@ const SECTIONS: { id: RailSection; label: string; icon: ReactNode }[] = [
   {
     id: "changed",
     label: "Recently changed",
+    short: "Changed",
     icon: (
       <>
         <circle cx="12" cy="12" r="9" />
@@ -63,6 +67,7 @@ const SECTIONS: { id: RailSection; label: string; icon: ReactNode }[] = [
   {
     id: "later",
     label: "Read later",
+    short: "Later",
     icon: <path d="M18.5 21l-6.5-4-6.5 4V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2z" />,
   },
 ];
@@ -126,6 +131,40 @@ export function Rail({
           </button>
         );
       })}
+    </nav>
+  );
+}
+
+/**
+ * The rail on a narrow screen: the same sections along the bottom, each with a
+ * word under its glyph, since a phone has no pointer to hover for a tooltip.
+ */
+export function TabBar({ active, onSelect }: { active: RailSection; onSelect: (s: RailSection) => void }) {
+  return (
+    <nav
+      data-print="hide"
+      aria-label="Sections"
+      className="border-line bg-panel grid h-15.5 shrink-0 grid-cols-5 border-t pb-[env(safe-area-inset-bottom)]"
+    >
+      {SECTIONS.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          title={s.label}
+          aria-label={s.label}
+          aria-current={active === s.id ? "page" : undefined}
+          onClick={() => onSelect(s.id)}
+          className={[
+            "flex flex-col items-center justify-center gap-1 text-[10.5px]",
+            active === s.id ? "text-accent-ink" : "text-muted",
+          ].join(" ")}
+        >
+          <Glyph size={20} className="[stroke-width:1.7]">
+            {s.icon}
+          </Glyph>
+          <span>{s.short}</span>
+        </button>
+      ))}
     </nav>
   );
 }
