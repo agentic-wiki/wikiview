@@ -11,8 +11,11 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 
+	"github.com/agentic-wiki/wiki/index"
 	"github.com/agentic-wiki/wikiview/internal/config"
 	"github.com/agentic-wiki/wikiview/internal/store"
 )
@@ -98,6 +101,11 @@ type BundleInfo struct {
 	// Graphs are the graphs declared, named. There is no built-in one, so this
 	// is every graph there is.
 	Graphs []config.Graph `json:"graphs,omitempty"`
+	// Tags is every tag in the bundle, in the order they first appear: entries
+	// walked by path, each one's tags as written. A tag's colour is its
+	// position in this list, so one tag is one colour on every surface — and the
+	// list is the server's, so no client has to agree with another about it.
+	Tags []string `json:"tags"`
 }
 
 // bundleID identifies a bundle by where it lives, which is the only thing
@@ -150,7 +158,28 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		Version: v.Version,
 		Boards:  boards,
 		Graphs:  graphs,
+		Tags:    tagsInOrder(v.Index),
 	})
+}
+
+// tagsInOrder is every distinct tag, first appearance first, walking entries in
+// path order. Path order rather than the index's walk order, which is not a
+// promise: the list is what colours are assigned by, and a colour that moved
+// between two requests for no reason would be a bug nobody could reproduce.
+func tagsInOrder(idx *index.Index) []string {
+	entries := slices.Clone(idx.Entries)
+	slices.SortFunc(entries, func(a, b *index.Entry) int { return strings.Compare(a.Path, b.Path) })
+	seen := map[string]bool{}
+	tags := []string{}
+	for _, e := range entries {
+		for _, t := range e.FieldList("tags") {
+			if !seen[t] {
+				seen[t] = true
+				tags = append(tags, t)
+			}
+		}
+	}
+	return tags
 }
 
 type errorBody struct {

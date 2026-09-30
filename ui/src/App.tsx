@@ -13,6 +13,7 @@ import { BoardView } from "@/views/BoardView";
 import { GraphView } from "@/views/GraphView";
 import { splitSheetPath } from "@/views/CardSheet";
 import { NotFound } from "@/views/NotFound";
+import { frontDoor } from "@/tree";
 
 export function App() {
   const [bundle, setBundle] = useState<BundleInfo | null>(null);
@@ -121,8 +122,8 @@ function Reader({
       <ClearSelection />
       <MarkSeen onSeen={markSeen} />
       <Routes>
-        {/* The front door is the bundle's own index.md. */}
-        <Route path="/" element={<Navigate to="/wiki/index.md" replace />} />
+        {/* The front door: index.md, else README.md, else the listing. */}
+        <Route path="/" element={<Navigate to={frontDoor(tree)} replace />} />
         <Route
           path="/wiki/*"
           element={

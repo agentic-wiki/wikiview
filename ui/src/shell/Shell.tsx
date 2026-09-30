@@ -1,8 +1,8 @@
 import { useRef, useState, type ReactNode } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import type { BundleInfo, TreeNode } from "@/api";
 import { Rail, type RailSection } from "@/shell/Rail";
-import { Breadcrumbs } from "@/shell/Breadcrumbs";
+import { Breadcrumbs, readerCrumbs, type Crumb } from "@/shell/Breadcrumbs";
 import { Tree } from "@/shell/Tree";
 import { Omnibar } from "@/shell/Omnibar";
 import { DocumentTitle } from "@/shell/DocumentTitle";
@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/shell/Theme";
 import { useBundleState } from "@/state";
 import { GitActions } from "@/shell/GitActions";
 import { NewView } from "@/views/NewView";
+import { frontDoor } from "@/tree";
 
 /**
  * The chrome every view sits inside: a rail, a collapsible panel, a breadcrumb
@@ -168,6 +169,8 @@ export function Shell({
     setOpenFor((was) => ({ ...was, [next]: true }));
   };
 
+  const crumbs = trail(location.pathname, path, tree, bundle, (s) => toggle(s, true));
+
   // The view area scrolls, not the document, so scroll restoration works from
   // this element rather than from the window.
   const viewRef = useRef<HTMLElement>(null);
@@ -179,14 +182,30 @@ export function Shell({
           control, and a hamburger beside it was a second way to do one thing —
           the vaguer of the two, since it could only ever mean "whichever panel
           is showing" while the icon names the section it hides. */}
-      <header className="border-line bg-panel relative z-10 flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        {/* Breadcrumbs shrink and ellipsize; the omnibar keeps a workable
-            width. The path orients you, the omnibar moves you. */}
+      <header className="border-line bg-panel relative z-10 flex h-13 shrink-0 items-center gap-2.5 border-b pr-3 pl-2.5">
+        {/* The bundle, named once: the tile and the label are one link to the
+            front door, and the trail beside it starts inside the bundle. */}
+        <Link
+          to={frontDoor(tree)}
+          title="Go to the bundle's front door"
+          className="hover:bg-fg/5 flex shrink-0 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1"
+        >
+          <span
+            aria-hidden
+            className="bg-accent text-on-accent grid size-6.5 place-items-center rounded-[7px] text-[13px] font-bold tracking-tight"
+          >
+            {initial(bundle.label)}
+          </span>
+          <span className="font-semibold tracking-tight whitespace-nowrap">{bundle.label}</span>
+        </Link>
+
+        {/* The trail shrinks and ellipsizes; the search trigger keeps a workable
+            width. The path orients you, the search moves you. */}
         <div className="min-w-0 flex-1">
-          <Breadcrumbs bundleName={bundle.label} root={tree} path={path} />
+          <Breadcrumbs crumbs={crumbs} />
         </div>
 
-        <div data-print="hide" className="hidden w-full max-w-sm shrink justify-center sm:flex">
+        <div data-print="hide" className="hidden shrink sm:flex">
           <Omnibar tree={tree} unseen={unseen} />
         </div>
 
@@ -431,11 +450,41 @@ function returnTo(prefix: string, views: Declared[] | undefined, last: string): 
   return target && prefix + "/" + encodeURIComponent(target.id);
 }
 
+/** The letter in the logo tile: the bundle label's first character. */
+function initial(label: string): string {
+  return (label.trim()[0] ?? "·").toUpperCase();
+}
+
 /**
- * Where the reader opens: the bundle's own `index.md`, or the root listing when
- * it has none. The same front door the app opens on, so returning to Entries
- * from a board lands where starting fresh would.
+ * The header's trail for a route.
+ *
+ * The reader walks the bundle path. A board or a graph is addressed by an id, so
+ * its trail is the section and the view's name, and the section crumb opens its
+ * panel — the list of the others — rather than going anywhere. The two lists are
+ * pages of the app with nothing above them.
  */
-function frontDoor(tree: TreeNode): string {
-  return tree.index ? "/wiki" + tree.index : "/wiki/";
+function trail(
+  pathname: string,
+  path: string,
+  tree: TreeNode,
+  bundle: BundleInfo,
+  openPanel: (s: RailSection) => void,
+): Crumb[] {
+  const view = (section: "boards" | "graphs", prefix: string, views?: Declared[]): Crumb[] => {
+    const id = decodeURIComponent(pathname.slice(prefix.length + 1).split("/")[0] ?? "");
+    const name = views?.find((v) => v.id === id)?.name ?? id;
+    return [{ label: section === "boards" ? "Boards" : "Graphs", onClick: () => openPanel(section) }, { label: name }];
+  };
+  switch (sectionFor(pathname)) {
+    case "boards":
+      return view("boards", "/kanban", bundle.boards);
+    case "graphs":
+      return view("graphs", "/graph", bundle.graphs);
+    case "changed":
+      return [{ label: "Recently changed" }];
+    case "later":
+      return [{ label: "Read later" }];
+    default:
+      return readerCrumbs(tree, path);
+  }
 }

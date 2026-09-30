@@ -156,3 +156,73 @@ func TestUnknownRoutes(t *testing.T) {
 		}
 	}
 }
+
+// bundleServer serves a bundle made of exactly these files, and returns the
+// folder so a test can change it afterwards.
+func bundleServer(t *testing.T, files map[string]string) (*Server, func(name, content string)) {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range files {
+		write(name, content)
+	}
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(s, nil), write
+}
+
+// Tag colour is a tag's position in this list, so the order is the contract:
+// first appearance, walking entries by path, each entry's tags as written. The
+// fixture is a map, so the files are written in no particular order, and a walk
+// that followed the filesystem or the index instead of the paths shows up here.
+func TestBundleTagsInFirstAppearanceOrder(t *testing.T) {
+	srv, write := bundleServer(t, map[string]string{
+		"wiki.toml":   "spec = \"0.1\"\n",
+		"index.md":    "---\nokf_version: \"0.1\"\n---\nhome\n",
+		"z/last.md":   "---\ntags: [zeta, alpha]\n---\n",
+		"b.md":        "---\ntags: [beta, alpha]\n---\n",
+		"a.md":        "---\ntags: [gamma, beta]\n---\n",
+		"untagged.md": "---\ntype: note\n---\n",
+	})
+	var got BundleInfo
+	get(t, srv, "/api/bundle", &got)
+	// a.md, then b.md, then z/last.md; each tag once, where it first appeared.
+	assertSame(t, "tags", got.Tags, []string{"gamma", "beta", "alpha", "zeta"})
+
+	// The list follows the files: a new tag in an early path takes its place in
+	// the order, which shifts the ones after it. Accepted, and pinned so it is a
+	// decision rather than a surprise.
+	write("0.md", "---\ntags: [new]\n---\n")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/refresh", strings.NewReader("{}")))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("refresh: %d %s", rec.Code, rec.Body)
+	}
+	get(t, srv, "/api/bundle", &got)
+	assertSame(t, "tags after a new file", got.Tags, []string{"new", "gamma", "beta", "alpha", "zeta"})
+}
+
+// A bundle with no tags sends an empty list, not null: a client indexing into a
+// list it was promised has no reason to check for one.
+func TestBundleTagsAreAListWhenThereAreNone(t *testing.T) {
+	srv, _ := bundleServer(t, map[string]string{
+		"wiki.toml": "spec = \"0.1\"\n",
+		"index.md":  "---\nokf_version: \"0.1\"\n---\nhome\n",
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/bundle", nil))
+	if !strings.Contains(rec.Body.String(), `"tags":[]`) {
+		t.Errorf("body %s: want an empty tags list", rec.Body)
+	}
+}

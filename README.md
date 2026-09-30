@@ -152,7 +152,7 @@ Drag a node and its neighbours follow; point at one to light up what it touches;
 Useful for scripting against a running server.
 
 ```
-GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version
+GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version, declared boards and graphs, and every tag in first-appearance order
 GET  /api/tree                the folder tree, each folder's entries and its index.md if it has one
 GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and resolved-link
                               and heading-id tables

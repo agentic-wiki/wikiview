@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Glyph, IconButton } from "@/ui/IconButton";
 import { api, ApiError, type GitResult, type GitStatus } from "@/api";
 
 /**
@@ -42,10 +43,14 @@ export function GitActions({ refresh }: { refresh: number }) {
 
   return (
     <div data-print="hide" className="flex shrink-0 items-center gap-0.5">
-      <Icon label="Refresh the index" onClick={onRefresh} disabled={busy}>
-        <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5" />
-        <path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" />
-      </Icon>
+      {/* Spins for as long as the re-read takes, so a click that is still
+          working does not look like a click that did nothing. */}
+      <IconButton label="Refresh the index" onClick={onRefresh} disabled={busy} aria-busy={busy}>
+        <Glyph className={busy ? "animate-wv-spin" : ""}>
+          <path d="M21 12a9 9 0 1 1-2.6-6.4L21 8" />
+          <path d="M21 3v5h-5" />
+        </Glyph>
+      </IconButton>
 
       {/* Nothing to pull from or push to without an upstream, so there is
           nothing to offer. */}
@@ -76,45 +81,27 @@ export function GitActions({ refresh }: { refresh: number }) {
   );
 }
 
+/** Pull or sync, with a dot when it would move something. Until the pill
+ *  replaces both (backlog/8-design/005). */
 function Icon({
   label,
   onClick,
-  disabled,
   count,
   children,
 }: {
   label: string;
   onClick: () => void;
-  disabled?: boolean;
   /** How many things this action would move, shown only when there are any. */
   count?: number;
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled}
-      className="text-muted hover:text-fg hover:bg-fg/5 relative grid size-8 shrink-0 place-items-center rounded-md disabled:opacity-40"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        className="size-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        {children}
-      </svg>
+    <IconButton label={label} onClick={onClick}>
+      <Glyph>{children}</Glyph>
       {count !== undefined && count > 0 && (
-        <span className="bg-accent absolute top-0.5 right-0.5 size-1.5 rounded-full" aria-hidden />
+        <span className="bg-accent absolute top-1 right-1 size-1.5 rounded-full" aria-hidden />
       )}
-    </button>
+    </IconButton>
   );
 }
 

@@ -36,13 +36,17 @@ export function Omnibar({ tree, unseen }: { tree: TreeNode; unseen: Set<string> 
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-label="Search entries and boards"
-        className="border-line bg-panel-2 text-muted hover:border-line-2 hover:text-fg flex h-8 w-full max-w-sm min-w-0 items-center gap-2 rounded-md border px-2.5 text-sm transition-colors"
+        className="border-line bg-panel-2 text-faint hover:border-line-2 flex h-8.5 w-[min(360px,32vw)] min-w-0 items-center gap-2.5 rounded-[9px] border pr-2 pl-3 text-left"
       >
-        <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-          <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.2-4.2" strokeLinecap="round" />
+        <svg viewBox="0 0 24 24" width="15" height="15" className="shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
         </svg>
-        <span className="truncate">Search entries…</span>
-        <kbd className="border-line text-muted ml-auto hidden shrink-0 rounded border px-1 text-[11px] font-sans sm:block">
+        {/* Entries only, until the palette runs commands (backlog/8-design/013):
+            the reference says "or run a command", and a placeholder that
+            promises what the palette cannot do yet is a small lie. */}
+        <span className="flex-1 truncate">Search entries…</span>
+        <kbd className="border-line-2 text-muted shrink-0 rounded-[5px] border px-1.5 py-px font-mono text-[11px]">
           ⌘K
         </kbd>
       </button>

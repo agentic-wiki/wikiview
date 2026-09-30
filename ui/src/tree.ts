@@ -92,3 +92,22 @@ export function folderOf(root: TreeNode, path: string): TreeNode | undefined {
   }
   return undefined;
 }
+
+/**
+ * Where the bundle opens: its front door.
+ *
+ * `index.md` is the format's front door and comes first. `README.md` is the
+ * convention every other tool that opens this folder will honour — GitHub, an
+ * editor's preview — so a bundle that has one and no index is not left without
+ * one. Failing both, the root listing, which is generated rather than stored:
+ * nothing is written to make the root look complete.
+ *
+ * One answer for every way in — the logo, the rail's Entries, a not-found page's
+ * way back — so returning to the reader lands where starting it does.
+ */
+export function frontDoor(root: TreeNode): string {
+  if (root.index) return "/wiki" + root.index;
+  const readme = root.entries.find((e) => e.name.toLowerCase() === "readme.md");
+  if (readme) return "/wiki" + readme.path;
+  return "/wiki/";
+}

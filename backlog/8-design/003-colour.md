@@ -1,7 +1,7 @@
 ---
 type: task
 title: "positional colour: groups, tags, columns, lanes"
-status: todo
+status: done
 priority: high
 tags: [design, ui, api]
 blockers: [/8-design/002-tokens-and-type.md]
@@ -46,3 +46,12 @@ No hue. `laneBars(index, count)` returns how many of the mock's three bars are l
 ## Tests
 
 `colour.test.ts`: group resolution at root and under a subfolder, one-level-only, the neutral group; tag order from first appearance and dedup; the gradient's endpoints and stops for 1–6 columns; shelved words skipped and case-insensitive; lane bars for 1–5 lanes. Server: the tag list's order, dedup, and that it moves on rebuild.
+
+## What building it settled
+
+- **Colours are tokens, not hex in TypeScript.** `--color-cat-0…7` and `--color-stage-0…3` live in `index.css` beside the rest of the palette, each as `light-dark()`, and `colour.ts` only ever returns `var(…)` or a `color-mix(in oklch, …)` of two of them. So the theme, and print, stay the stylesheet's business, and a caller drops the result into a `style` without knowing which theme is on. A test checks that every token the module can emit is defined in the stylesheet.
+- **Between stops is `color-mix`, not maths.** No colour arithmetic in JS, and the mix follows the theme automatically.
+- **One live column is blue**, the gradient's first real colour, since gray is what a shelf is drawn in.
+- **A root that shares a prefix with a folder does not claim it**: `/guides-old` is not under `/guides`. Pinned by test.
+- **Tag order is computed per request**, like the boards beside it, rather than cached with the index. It is one walk over the entries, and there is nothing to invalidate.
+- **Nothing draws with it yet.** The consumers arrive with 006 onwards, each task wiring the function it needs.

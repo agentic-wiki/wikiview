@@ -18,6 +18,9 @@ export interface BundleInfo {
   /** Graphs declared in `[tool.wikiview]`. There is no built-in one, so absent
    *  means none. */
   graphs?: GraphConfig[];
+  /** Every tag in the bundle, first appearance first. A tag's colour is its
+   *  position here (`colour.ts`), so the order is the contract. */
+  tags: string[];
 }
 
 /**

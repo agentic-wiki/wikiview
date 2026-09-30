@@ -53,6 +53,24 @@
   --color-warn: light-dark(#b7791f, #ffb547);
   --color-danger: light-dark(#d63b50, #ff7a8a);
 
+  /* Categorical colour, for telling things apart by where they are: a folder's
+     group, a tag. Never by what a word means (backlog/8-design/003). Assigned by
+     position in `colour.ts`; the light variants are darkened to read on paper. */
+  --color-cat-0: light-dark(#6b55e0, #9d8cff);
+  --color-cat-1: light-dark(#0e8f9c, #3ccbda);
+  --color-cat-2: light-dark(#d63a7a, #ff6fa8);
+  --color-cat-3: light-dark(#4e8f1a, #8fd14f);
+  --color-cat-4: light-dark(#b7791f, #ffb547);
+  --color-cat-5: light-dark(#2f6bd6, #5f9bff);
+  --color-cat-6: light-dark(#cc5a2b, #ff8a5c);
+  --color-cat-7: light-dark(#d63b50, #ff5c7a);
+
+  /* The four stops a board's columns are sampled from, first column to last. */
+  --color-stage-0: light-dark(#8a8a9c, #7a7a90);
+  --color-stage-1: light-dark(#2f6bd6, #5f9bff);
+  --color-stage-2: light-dark(#b7791f, #ffb547);
+  --color-stage-3: light-dark(#1f9d5c, #3dd68c);
+
   /* Graph edges: a hairline that has to read over a dot grid. */
   --color-edge: light-dark(rgb(40 40 90 / 0.24), rgb(170 170 215 / 0.32));
 

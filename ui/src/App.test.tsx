@@ -25,6 +25,7 @@ const bundle: BundleInfo = {
   spec: "0.1",
   entries: 3,
   tools: ["wikiview"],
+  tags: [],
   version: 1,
   boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status" }],
   // One graph, over the same folder under the same id as the board: the two
@@ -677,12 +678,86 @@ test("a route naming no one thing is titled with the bundle alone", async () => 
   expect(document.title).toBe("My kb");
 });
 
-// The bundle name is a link to the front door, with README.md as the fallback
-// every other tool that opens this folder honours.
-test("the bundle name points at index.md, or README.md, or the listing", async () => {
+/** The logo: the bundle's tile and name, one link to the front door. */
+const logo = () => document.querySelector<HTMLAnchorElement>("header a[title=\"Go to the bundle's front door\"]");
+const crumbTexts = () =>
+  [...document.querySelectorAll('nav[aria-label="Breadcrumb"] > span > :last-child')].map((c) => c.textContent);
+
+// The bundle is named once, by the logo; the fallbacks when it has no index.md
+// are pinned beside `frontDoor` in tree.test.ts.
+test("the logo names the bundle and links to its front door", async () => {
   await mountAt("/wiki/notes/a.md");
-  const name = document.querySelector('nav[aria-label="Breadcrumb"] a');
-  expect(name?.getAttribute("href")).toBe("/wiki/index.md");
+  expect(logo()?.getAttribute("href")).toBe("/wiki/index.md");
+  expect(logo()?.textContent).toBe("MMy kb"); // the tile's initial, then the name
+  // Not also the first crumb: the trail starts inside the bundle.
+  expect(crumbTexts()).toEqual(["Notes", "A"]);
+});
+
+// A board and a graph are addressed by an id, which is not a path to walk, so
+// their trail is the section and the view's name — where it used to be empty.
+test("the trail names the board, the graph, or the list you are on", async () => {
+  const restore = stubBoard();
+  await mountAt("/kanban/notes");
+  expect(crumbTexts()).toEqual(["Boards", "Notes"]);
+  restore();
+
+  await act(async () => navigateTo("/changed"));
+  expect(crumbTexts()).toEqual(["Recently changed"]);
+  await act(async () => navigateTo("/read-later"));
+  expect(crumbTexts()).toEqual(["Read later"]);
+  await act(async () => navigateTo("/graph/notes"));
+  expect(crumbTexts()).toEqual(["Graphs", "Who links whom"]);
+  // An id nothing declares still says what it is, rather than nothing.
+  await act(async () => navigateTo("/graph/gone"));
+  expect(crumbTexts()).toEqual(["Graphs", "gone"]);
+});
+
+// The section crumb has nowhere to go — a board is not inside "Boards" the way
+// an entry is inside a folder — so it opens the list of the others instead.
+test("the Boards crumb opens the boards panel", async () => {
+  const restore = stubBoard();
+  await mountAt("/kanban/notes");
+  const panel = document.querySelector("aside")!;
+  expect(panel.className).toContain("w-0"); // one board, so no list by default
+  const boards = [...document.querySelectorAll<HTMLElement>('nav[aria-label="Breadcrumb"] button')].find(
+    (b) => b.textContent === "Boards",
+  )!;
+  await act(async () => boards.click());
+  expect(panel.className).toContain("w-64");
+  expect(panel.textContent).toContain("Notes");
+  restore();
+});
+
+// The last crumb is where you are, and a link to where you are is a link that
+// does nothing.
+test("the last crumb is not a link", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const nav = document.querySelector('nav[aria-label="Breadcrumb"]')!;
+  expect([...nav.querySelectorAll("a")].map((a) => a.textContent)).toEqual(["Notes"]);
+});
+
+// A re-read that is still going looks like one: the glyph turns and the button
+// takes no second click, until the answer lands.
+test("refresh spins and holds while the re-read is in flight", async () => {
+  await mountAt("/wiki/index.md");
+  const real = globalThis.fetch;
+  let finish: () => void = () => {};
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input) === "/api/refresh"
+      ? new Promise<Response>((resolve) => {
+          finish = () => resolve(new Response(JSON.stringify({ version: 2 }), { headers: { "content-type": "application/json" } }));
+        })
+      : real(input, init)) as typeof fetch;
+
+  const button = document.querySelector<HTMLButtonElement>("[aria-label='Refresh the index']")!;
+  await act(async () => button.click());
+  expect(button.disabled).toBe(true);
+  expect(button.querySelector("svg")?.getAttribute("class")).toContain("animate-wv-spin");
+
+  await act(async () => finish());
+  expect(button.disabled).toBe(false);
+  expect(button.querySelector("svg")?.getAttribute("class")).not.toContain("animate-wv-spin");
+  globalThis.fetch = real;
 });
 
 // React reuses DOM nodes between routes, so a selection made on one entry
@@ -2683,15 +2758,14 @@ test("the frontmatter divider is not shortened by the print button", async () =>
   );
 });
 
-// The bundle name, a column header and a lane header are the same typographic
-// decision made in three places, so they share one rule rather than three
-// sprinklings of `uppercase tracking-wide`.
+// A column header and a lane header are the same typographic decision made
+// twice, so they share one rule rather than sprinklings of
+// `uppercase tracking-wide`.
 test("capitals are set by one shared rule", async () => {
   await mountAt("/kanban/notes");
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const caps = (el: Element | null | undefined) => el?.className.split(/\s+/).includes("caps");
-  expect(caps(document.querySelector("nav[aria-label='Breadcrumb'] a"))).toBe(true);
   expect(caps(columnEl("todo").querySelector("h2"))).toBe(true);
   expect(caps(columnEl("todo").querySelector("h3"))).toBe(true);
 
@@ -3524,4 +3598,21 @@ test("a long title is shortened until you point at it", async () => {
   await act(async () => node.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
   await act(async () => node.dispatchEvent(new PointerEvent("pointerenter")));
   expect(label()).toBe(long);
+});
+
+// Opening the app is one more way in, and it used to be the one that did not
+// ask: `/` went to /wiki/index.md whatever the bundle had, so a bundle without
+// one opened on "there is no entry here yet". It goes where the logo goes.
+test("opening the app lands on the front door, not an index.md that is not there", async () => {
+  await mountAt("/");
+  expect(here).toBe("/wiki/index.md");
+
+  const had = tree.index;
+  delete tree.index;
+  try {
+    await mountAt("/");
+    expect(here).toBe("/wiki/");
+  } finally {
+    tree.index = had;
+  }
 });
