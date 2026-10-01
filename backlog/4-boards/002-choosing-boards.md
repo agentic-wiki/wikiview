@@ -88,8 +88,12 @@ A name is a TOML basic string with two escapes, and anything needing more is ref
 
 **The empty state is the form.** The Boards panel with nothing declared shows the folder picker rather than a paragraph about what to hand-write, which is the step it can take for you. The same form appears on a board with no cards, under the reason it has none — `root` exists without any config, and in a bundle of notes it matches nothing, which is where a first-time reader lands.
 
-**A board that would be empty is refused**, asked with the board's own defaults so the answer is the one the board would give. An empty page is the hardest thing for whoever declared their first board to debug, and `no cards under /notes` says the thing the page could not.
+~~**A board that would be empty is refused**~~ (reversed 2026-10-01, see below), asked with the board's own defaults so the answer is the one the board would give. An empty page is the hardest thing for whoever declared their first board to debug, and `no cards under /notes` says the thing the page could not.
 
 **A config change moves the version.** It did not before: the digest covered entries only, so declaring a board — or hand-editing `wiki.toml` — rebuilt the index and told nobody, and the change reached whoever reloaded next. wiki.toml is hashed into the digest now, so the stream carries it like any other change and nothing here needs its own refresh path.
 
 **Not here:** a "make this a board" action in the reader, and suggesting candidate folders. Both are ways to reach this form rather than things it cannot do, and the panel already reaches it from the state where it is needed.
+
+## Revised after use (2026-10-01)
+
+- **A board over a folder with no tasks yet is allowed.** The user hit the refusal setting up `/backlog/tasks` before writing any tasks, which is the ordinary way to start a board. The filter editor already says as much: a filter is often written before the entries catch up. What is refused now is a path that is not a folder in the bundle (missing, or a file), which is a typo far more often than a plan. The empty-page worry this rule answered is handled by the page itself. A declared board with no cards says "No cards yet" and what would make one (an entry under its folder with `type: task` and its status field). The undeclared `root` board a fresh bundle lands on still offers the form to point a board elsewhere. Graphs follow the same rule ([7-graphs/002](../7-graphs/002-declaring-graphs.md)).

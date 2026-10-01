@@ -344,15 +344,16 @@ function matches(card: Card, q: string): boolean {
 }
 
 /**
- * A board with nothing on it.
- *
- * Which is where a fresh bundle lands: `root` exists without configuring
- * anything, and in a bundle of notes it matches nothing. So this says why rather
- * than leaving a blank page, and then offers the thing that fixes it — a board
- * over a folder that does have tasks in it.
+ * A board with nothing on it, and what would put a card there.
  *
  * The reason is worth spelling out because it is not guessable: a card is an
  * entry with `type: task`, and nothing on screen says so.
+ *
+ * Two ways to get here. A fresh bundle lands on `root`, which exists without
+ * configuring anything and in a bundle of notes matches nothing: that one
+ * offers the fix, a board over a folder that has tasks. A board you declared
+ * yourself is one set up before its cards are written, so it only says what
+ * will fill it.
  */
 function EmptyBoard({
   board,
@@ -366,18 +367,27 @@ function EmptyBoard({
   return (
     <State
       icon={StateIcon.board}
-      title="Nothing on this board"
+      title={board.declared ? "No cards yet" : "Nothing on this board"}
       detail={
-        <>
-          No entry under <code>{board.path}</code> is a <code>type: task</code> with a <code>{board.field}</code>.
-        </>
+        board.declared ? (
+          <>
+            An entry under <code>{board.path}</code> with <code>type: task</code> and a <code>{board.field}</code> becomes
+            a card here.
+          </>
+        ) : (
+          <>
+            No entry under <code>{board.path}</code> is a <code>type: task</code> with a <code>{board.field}</code>.
+          </>
+        )
       }
       action={
-        // A form is a control, and paper takes no input.
-        <div data-print="hide" className="border-line bg-panel-2 rounded-xl border p-4 text-left">
-          <p className="text-muted mb-3 text-[13px]">Point a board at a folder that has some:</p>
-          <NewView kind="board" tree={tree} rootLabel={rootLabel} />
-        </div>
+        !board.declared && (
+          // A form is a control, and paper takes no input.
+          <div data-print="hide" className="border-line bg-panel-2 rounded-xl border p-4 text-left">
+            <p className="text-muted mb-3 text-[13px]">Point a board at a folder that has some:</p>
+            <NewView kind="board" tree={tree} rootLabel={rootLabel} />
+          </div>
+        )
       }
     />
   );

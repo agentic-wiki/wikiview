@@ -219,11 +219,11 @@ POST /api/git/branch          push the current work to a new branch
 
 A write carries the `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the values a drop landed on, `{"value": "done", "lane": "high", "version": 7}`, and the board decides which frontmatter keys those stand for. Both are written in one pass, and an empty `lane` leaves that field alone rather than clearing it.
 
-`POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs"}` and appends a `[[tool.wikiview.board]]` table, leaving the rest of the file alone. It refuses an id that is not a word, one already declared, and a folder with no cards under it.
+`POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs"}` and appends a `[[tool.wikiview.board]]` table, leaving the rest of the file alone. It refuses an id that is not a word, one already declared, and a path that is not a folder in the bundle. A folder with no tasks in it yet is fine: the board starts empty and says what will fill it.
 
 `PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane`, `lanes` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it.
 
-`POST /api/graph` and `PUT /api/graph/{id}` do the same for graphs. A graph's settings are `name`, `where` and `neighbours`, and a graph's id is checked only against other graphs. A graph is refused when its folder holds no entries at all, since it has no filter by default. All of these writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
+`POST /api/graph` and `PUT /api/graph/{id}` do the same for graphs. A graph's settings are `name`, `where` and `neighbours`, and a graph's id is checked only against other graphs. A graph is refused by the same rule, a path that is not a folder; an empty folder is fine. All of these writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
 
 `/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. A `.env` sitting beside your notes has no key there, so it cannot be requested.
 

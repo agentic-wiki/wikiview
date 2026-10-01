@@ -1992,6 +1992,19 @@ test("a board with nothing on it says why, and offers a way out", async () => {
   expect(Boolean(main.querySelector("form"))).toBe(true);
 });
 
+// A board you declared over a folder with no tasks yet was set up ahead of its
+// cards: it says what will fill it, and does not send you to another folder.
+test("a declared board with no cards yet says what will fill it", async () => {
+  const empty = { path: "/notes", id: "later", name: "Later", field: "status", declared: true, columns: [] };
+  await mountWithNoBoards("/kanban/later", empty);
+
+  const main = document.querySelector("main")!;
+  expect(main.textContent).toContain("No cards yet");
+  expect(main.textContent).toContain("type: task");
+  expect(main.textContent).toContain("/notes");
+  expect(main.querySelector("form")).toBeNull();
+});
+
 // Declaring a board is a config write, and the only thing worth asserting is
 // that it goes out as one and lands you on the board it made.
 test("declaring a board writes it and opens it", async () => {

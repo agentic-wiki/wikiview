@@ -310,6 +310,24 @@ func TestDeclareBoardOverAFolderThatAlreadyHasOne(t *testing.T) {
 	}
 }
 
+// A board is often set up before its cards are written, so a folder with no
+// tasks in it yet is a board like any other: empty until one is written.
+func TestDeclareBoardOverAFolderWithNoTasksYet(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	if code, _ := post(t, srv, "/api/board", declareRequest{ID: "notes", Path: "/notes"}); code != http.StatusOK {
+		t.Fatalf("POST = %d, want 200", code)
+	}
+	b := board(t, srv, "/api/board/notes")
+	if b.Path != "/notes" {
+		t.Errorf("board = %+v", b)
+	}
+	for _, c := range b.Columns {
+		if len(c.Cards) > 0 {
+			t.Errorf("column %q has cards %v, want none", c.Value, c.Cards)
+		}
+	}
+}
+
 func TestDeclareBoardRefusesWhatCannotBeAddressed(t *testing.T) {
 	cases := []struct {
 		why string
@@ -318,8 +336,8 @@ func TestDeclareBoardRefusesWhatCannotBeAddressed(t *testing.T) {
 		{"an id with a slash is two segments, and the address splits at the first", declareRequest{ID: "a/b", Path: "/backlog"}},
 		{"an empty id has no address at all", declareRequest{ID: "", Path: "/backlog"}},
 		{"an id that is already declared would make one address mean two boards", declareRequest{ID: "backlog", Path: "/backlog"}},
-		{"a folder with nothing in it boards as an empty page", declareRequest{ID: "empty", Path: "/nowhere"}},
-		{"nor is a folder holding no tasks worth a board", declareRequest{ID: "notes", Path: "/notes"}},
+		{"a folder that is not there is a typo, not a plan", declareRequest{ID: "empty", Path: "/nowhere"}},
+		{"nor is a file a folder", declareRequest{ID: "file", Path: "/wiki.toml"}},
 		{"a name with a newline in it would write a broken file", declareRequest{ID: "ok", Path: "/backlog", Name: "one\ntwo"}},
 	}
 	for _, c := range cases {

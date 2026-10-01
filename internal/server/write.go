@@ -3,7 +3,9 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -179,13 +181,12 @@ func (s *Server) handleDeclareBoard(w http.ResponseWriter, r *http.Request) {
 		Path: path.Clean("/" + strings.Trim(req.Path, "/")),
 		Name: req.Name,
 	})
-	// A board with no cards renders as an empty page, and an empty page is the
-	// hardest thing for whoever declared their first board to debug. Asked with
-	// the board's own defaults, so the answer is the one the board would give.
-	if len(v.Index.Filter(strings.TrimSuffix(board.Path, "/"), board.Filters)) == 0 {
-		writeJSON(w, http.StatusUnprocessableEntity, errorBody{
-			"nothing under " + board.Path + " would be a card: a board holds entries with `type: task`",
-		})
+	// A board over a folder with no tasks yet is allowed: a board is often set
+	// up before its cards are written, and the empty board says what would put
+	// one on it. A folder that is not there is refused, being a typo far more
+	// often than a plan.
+	if !isFolder(v.Index.Bundle.Dir, board.Path) {
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{"no folder " + board.Path + " in the bundle"})
 		return
 	}
 	if err := config.Declare(v.Index.Bundle.Dir, cfg, board); err != nil {
@@ -207,10 +208,9 @@ func (s *Server) handleDeclareGraph(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
 	graph := config.Graph{ID: req.ID, Path: path.Clean("/" + strings.Trim(req.Path, "/")), Name: req.Name}
-	// A graph has no default filter, so it is empty only when the folder is:
-	// refused for the reason an empty board is, a page with nothing on it.
-	if len(v.Index.Filter(strings.TrimSuffix(graph.Path, "/"), nil)) == 0 {
-		writeJSON(w, http.StatusUnprocessableEntity, errorBody{"no entries under " + graph.Path})
+	// By the board's rule: an empty folder is allowed, a missing one refused.
+	if !isFolder(v.Index.Bundle.Dir, graph.Path) {
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{"no folder " + graph.Path + " in the bundle"})
 		return
 	}
 	if err := config.DeclareGraph(v.Index.Bundle.Dir, cfg, graph); err != nil {
@@ -330,4 +330,11 @@ func (s *Server) committed(w http.ResponseWriter) {
 type conflictBody struct {
 	Error   string `json:"error"`
 	Version uint64 `json:"version"`
+}
+
+// isFolder reports whether a bundle path names a folder on disk. The path is
+// already cleaned from a leading slash, so it cannot climb out of the bundle.
+func isFolder(dir, bundlePath string) bool {
+	info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(bundlePath)))
+	return err == nil && info.IsDir()
 }

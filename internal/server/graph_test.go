@@ -265,6 +265,21 @@ func TestDeclareGraphAppendsToWikiToml(t *testing.T) {
 	}
 }
 
+// By the board's rule, a graph may be declared over a folder before anything
+// is written in it.
+func TestDeclareGraphOverAnEmptyFolder(t *testing.T) {
+	srv := newGraphServer(t, graphTOML(""))
+	if err := os.Mkdir(filepath.Join(srv.store.View().Index.Bundle.Dir, "later"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := post(t, srv, "/api/graph", declareRequest{ID: "later", Path: "/later"}); code != http.StatusOK {
+		t.Fatalf("POST = %d, want 200", code)
+	}
+	if g := fetchGraph(t, srv, "later"); g.Path != "/later" || len(g.Nodes) != 0 {
+		t.Errorf("graph = %s %v", g.Path, nodePaths(g))
+	}
+}
+
 func TestDeclareGraphRefusesWhatCannotBeAddressed(t *testing.T) {
 	cases := []struct {
 		why string
@@ -273,7 +288,8 @@ func TestDeclareGraphRefusesWhatCannotBeAddressed(t *testing.T) {
 		{"an id with a slash", declareRequest{ID: "a/b", Path: "/people"}},
 		{"an empty id", declareRequest{ID: "", Path: "/people"}},
 		{"an id another graph has", declareRequest{ID: "people", Path: "/orgs"}},
-		{"a folder with nothing in it", declareRequest{ID: "none", Path: "/nowhere"}},
+		{"a folder that is not there", declareRequest{ID: "none", Path: "/nowhere"}},
+		{"a file, which is not a folder", declareRequest{ID: "file", Path: "/index.md"}},
 		{"a name that would break the file", declareRequest{ID: "ok", Path: "/people", Name: "a\nb"}},
 	}
 	for _, c := range cases {

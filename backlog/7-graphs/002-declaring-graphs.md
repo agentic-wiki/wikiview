@@ -9,7 +9,7 @@ blockers: [/7-graphs/001-graph-view.md]
 
 What boards already have, for graphs: a form to declare one and a sheet to change its settings, both writing `wiki.toml` line by line through the writer boards use.
 
-- **Declaring.** `POST /api/graph` appends a `[[tool.wikiview.graph]]` table with `id`, `path` and `name`, by the same rules as a board: the name proposes an id, a taken id is refused, and a folder with nothing in it is refused rather than becoming an empty page.
+- **Declaring.** `POST /api/graph` appends a `[[tool.wikiview.graph]]` table with `id`, `path` and `name`, by the same rules as a board: the name proposes an id, a taken id is refused, and a path that is not a folder is refused. An empty folder is allowed (revised 2026-10-01, by the board's rule in [4-boards/002](../4-boards/002-choosing-boards.md)), and the graph says it has nothing on it yet.
 - **The empty state is the form.** The Graphs panel with none declared shows the folder picker in place of the snippet [the graph view](./001-graph-view.md) ships with.
 - **Settings.** `PUT /api/graph/{id}` takes `name`, `where` and `neighbours` and rewrites those lines. `id` and `path` are not settings, as for a board.
 
