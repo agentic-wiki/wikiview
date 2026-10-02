@@ -14,7 +14,7 @@ Mock lines 582–638. The fields and what gets written to `wiki.toml` stay as th
 - A centred dialog: `min(560px, 100%)`, max height 90vh, `elev` with a 16px radius, the shadow, and `wv-in`, over a `black/55` backdrop.
 - The header shows the title at 16px 600 with the view's path in mono under it, plus a close button.
 - The body scrolls, with 18px between fields.
-- The footer reads "Writes to the bundle's `wiki.toml`", followed by Cancel and a primary Save.
+- The footer reads "Writes to the bundle's `wiki.toml`", followed by Cancel and a primary Apply (renamed from Save on 2026-10-02: it applies the settings to the view as much as it writes a file).
 
 ## Fields
 

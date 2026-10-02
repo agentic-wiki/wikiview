@@ -317,10 +317,13 @@ export function Shell({
       {/* No panel toggle of its own: clicking the rail's active icon is that
           control, and a hamburger beside it was a second way to do one thing —
           the vaguer of the two, since it could only ever mean "whichever panel
-          is showing" while the icon names the section it hides. */}
+          is showing" while the icon names the section it hides.
+          Layered above the side sheet (z-30), because what opens from here —
+          the git popover — has to land over whatever the view has open. Below
+          the narrow sheet's backdrop (z-55), which covers the whole screen. */}
       <header
         className={[
-          "border-line bg-panel relative z-10 flex h-13 shrink-0 items-center border-b",
+          "border-line bg-panel relative z-40 flex h-13 shrink-0 items-center border-b",
           narrow ? "gap-1 pr-2 pl-1.5" : "gap-2.5 pr-3 pl-2.5",
         ].join(" ")}
       >

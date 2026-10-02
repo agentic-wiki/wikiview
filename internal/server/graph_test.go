@@ -385,3 +385,35 @@ func TestGraphSettingsLeaveTheSameIDsBoardAlone(t *testing.T) {
 		t.Errorf("the edit landed in the wrong table: %q", got)
 	}
 }
+
+// Through the endpoint, so the graph is what calls the rule: the bundle's own
+// index.md is a node named for the bundle, a folder's for its folder, and a
+// title still wins, because the UI shows a title before any label.
+func TestAnIndexNodeIsNamedForItsFolder(t *testing.T) {
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"all\"\npath = \"/\"\n")
+	for name, content := range map[string]string{
+		"orgs/index.md":   "---\ntype: index\n---\n[Acme](./acme.md)\n",
+		"people/index.md": "---\ntitle: The team\n---\n[Ana](./ana.md)\n",
+	} {
+		if err := os.WriteFile(filepath.Join(srv.store.Dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, _ := post(t, srv, "/api/refresh", struct{}{}); code != http.StatusOK {
+		t.Fatalf("refresh = %d", code)
+	}
+
+	labels := map[string]Node{}
+	for _, n := range fetchGraph(t, srv, "all").Nodes {
+		labels[n.Path] = n
+	}
+	if got, want := labels["/index.md"].Label, dirLabel(srv.store.Dir); got != want {
+		t.Errorf("/index.md label = %q, want the bundle's %q", got, want)
+	}
+	if got := labels["/orgs/index.md"].Label; got != "Orgs" {
+		t.Errorf("/orgs/index.md label = %q, want Orgs", got)
+	}
+	if n := labels["/people/index.md"]; n.Title != "The team" || n.Label != "People" {
+		t.Errorf("/people/index.md = %+v, want its title kept beside the folder's name", n)
+	}
+}

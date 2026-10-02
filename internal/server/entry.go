@@ -315,14 +315,21 @@ func titleFromFilename(p string) string {
 // shorter, truer name there. A backlinks footer has neither, and rows all
 // reading "Index" say nothing about which entries link here.
 func backlinkName(p string) string {
-	if strings.TrimSuffix(path2.Base(p), ".md") == "index" {
-		if dir := path2.Dir(p); dir != "/" && dir != "." && dir != "" {
-			if folder := readableName(path2.Base(dir)); folder != "" {
-				return folder + " (index)"
-			}
+	if dir := indexedFolder(p); dir != "" && dir != "/" {
+		if folder := readableName(path2.Base(dir)); folder != "" {
+			return folder + " (index)"
 		}
 	}
 	return titleFromFilename(p)
+}
+
+// indexedFolder is the folder an `index.md` stands for, "/" for the bundle's
+// own, and "" for any other entry.
+func indexedFolder(p string) string {
+	if path2.Base(p) != "index.md" {
+		return ""
+	}
+	return path2.Dir(p)
 }
 
 // dirLabel names a directory on this machine, whose separators are the OS's

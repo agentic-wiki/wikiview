@@ -16,7 +16,12 @@ export function SettingsDialog({
   error,
   onSubmit,
   onClose,
-  action = "Save",
+  action = "Apply",
+  footnote = (
+    <>
+      Writes to the bundle's <span className="font-mono">wiki.toml</span>
+    </>
+  ),
   children,
 }: {
   title: string;
@@ -29,6 +34,9 @@ export function SettingsDialog({
   onClose: () => void;
   /** What the submit says: saving settings, or creating the view. */
   action?: string;
+  /** Where Apply writes. A dialog with a field kept elsewhere says so here,
+   *  since a footer claiming every field goes to wiki.toml would be wrong. */
+  footnote?: ReactNode;
   children: ReactNode;
 }) {
   useEscape(onClose);
@@ -76,9 +84,7 @@ export function SettingsDialog({
         </div>
 
         <footer className="border-line flex shrink-0 items-center gap-2 border-t py-3 pr-4 pl-5">
-          <span className="text-faint flex-1 text-xs">
-            Writes to the bundle's <span className="font-mono">wiki.toml</span>
-          </span>
+          <span className="text-faint flex-1 text-xs">{footnote}</span>
           <button
             type="button"
             onClick={onClose}
@@ -91,7 +97,7 @@ export function SettingsDialog({
             disabled={busy}
             className="bg-accent text-on-accent h-8.5 rounded-[9px] px-4 font-semibold hover:brightness-110 disabled:opacity-50"
           >
-            {busy ? "Saving…" : action}
+            {busy ? "Applying…" : action}
           </button>
         </footer>
       </form>

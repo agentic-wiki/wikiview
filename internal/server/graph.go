@@ -130,7 +130,7 @@ func buildGraph(v store.View, g config.Graph) GraphView {
 		e := entries[p]
 		out.Nodes = append(out.Nodes, Node{
 			Path:      p,
-			Label:     titleFromFilename(p),
+			Label:     nodeLabel(p, v.Index.Bundle.Dir),
 			Title:     e.Field("title"),
 			Type:      e.Type,
 			Neighbour: !filtered[p],
@@ -235,4 +235,22 @@ func merge(links []link) []Edge {
 		return strings.Compare(a.To, b.To)
 	})
 	return out
+}
+
+// nodeLabel names a node that has no title of its own.
+//
+// A folder's `index.md` is named for the folder it indexes. On a graph nothing
+// around a node says where it lives — no tree, no breadcrumb — so a scatter of
+// dots all reading "Index" names none of them. The bundle's own index takes the
+// bundle's name, as a view over "/" does. Unqualified, unlike a backlink's
+// "Folder (index)": a node standing for its folder is what an index is for.
+func nodeLabel(p, bundleDir string) string {
+	switch dir := indexedFolder(p); dir {
+	case "":
+		return titleFromFilename(p)
+	case "/":
+		return dirLabel(bundleDir)
+	default:
+		return titleFromFilename(dir)
+	}
 }

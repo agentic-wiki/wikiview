@@ -5703,3 +5703,173 @@ test("an empty property says nothing folded, and (nothing) in the grid", async (
     entry.frontmatter = saved;
   }
 });
+
+// A folder's index stands for the folder, so on a graph it is a landmark: named
+// whenever names are on at all, however poorly connected, and drawn as a ring
+// rather than a dot. "None" still means none.
+test("an index node is named unless names are off, and drawn as a ring", async () => {
+  // Big enough that "hubs" leaves names out: everything is linked to two hubs,
+  // and the index and one ordinary entry are linked to nothing.
+  const leaves = Array.from({ length: 30 }, (_, i) => `/notes/n${i}.md`);
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 34 }], {
+    ...graphFixture,
+    id: "all",
+    path: "/",
+    nodes: [
+      ...["/notes/hub.md", "/notes/hub2.md", "/notes/alone.md", ...leaves].map((path) => ({ path, label: path })),
+      { path: "/notes/sub/index.md", label: "Sub" },
+      // A neighbour that is an index stays drawn as a neighbour.
+      { path: "/index.md", label: "My kb", neighbour: true },
+    ],
+    edges: leaves.flatMap((p) => [
+      { from: p, to: "/notes/hub.md", via: ["body"], count: 1 },
+      { from: p, to: "/notes/hub2.md", via: ["body"], count: 1 },
+    ]),
+  });
+  await act(async () => navigateTo("/graph/all"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const mode = (label: string) =>
+    act(async () => [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === label)!.click());
+
+  // Hubs: the index is named, the equally unconnected entry is not.
+  expect(document.querySelector("[role='radio'][aria-checked='true']")?.textContent).toBe("Hubs");
+  expect(labelled()).toContain("/notes/sub/index.md");
+  expect(labelled()).toContain("/notes/hub.md");
+  expect(labelled()).not.toContain("/notes/alone.md");
+
+  await mode("All");
+  expect(labelled()).toContain("/notes/sub/index.md");
+
+  await mode("None");
+  expect(labelled()).toEqual([]);
+
+  // A ring in its group's colour, where an entry is a filled dot.
+  const dot = (p: string) => document.querySelector<SVGCircleElement>(`main svg [data-path='${p}'] circle`)!;
+  expect(dot("/notes/sub/index.md").getAttribute("data-index")).toBe("true");
+  expect(dot("/notes/sub/index.md").getAttribute("class")).toContain("fill-bg");
+  expect(dot("/notes/sub/index.md").style.stroke).not.toBe("");
+  expect(dot("/notes/alone.md").getAttribute("data-index")).toBeNull();
+  expect(dot("/notes/alone.md").style.fill).not.toBe("");
+  expect(dot("/index.md").getAttribute("data-index")).toBeNull();
+  expect(dot("/index.md").getAttribute("stroke-dasharray")).toBe("2 2");
+});
+
+// The node open beside the graph keeps its neighbourhood lit, as pointing at it
+// does, for as long as it is open: following a link in the sheet moves the
+// highlight with it, and closing the sheet puts the graph back as it was.
+test("with the highlight following the preview, the open node stays lit until the sheet closes", async () => {
+  await openGraph();
+  const opacity = (p: string) => Number(document.querySelector(`main svg [data-path='${p}']`)!.getAttribute("opacity"));
+  const lit = () => document.querySelectorAll("main svg line[class~='stroke-fg/60']").length;
+  const arrows = () => document.querySelectorAll("main svg line[marker-end]").length;
+  // Off until asked for: opening a node lights nothing that pointing has not.
+  expect(await followsPreview()).toBe(false);
+  await act(async () => navigateTo("/graph/notes/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(opacity("/notes/d.md")).toBe(1);
+  expect(lit()).toBe(0);
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await setFollowsPreview(true);
+
+  // Nothing open: nothing singled out.
+  expect(opacity("/notes/d.md")).toBe(1);
+  expect(lit()).toBe(0);
+
+  // A links B and the front door, and D nothing.
+  await act(async () => navigateTo("/graph/notes/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(opacity("/notes/a.md")).toBe(1);
+  expect(opacity("/notes/b.md")).toBe(1);
+  expect(opacity("/notes/d.md")).toBeLessThan(0.5);
+  expect(lit()).toBe(2);
+  expect(arrows()).toBe(2);
+  // Named, as the hovered node's neighbours are, whatever the label mode.
+  await act(async () => [...document.querySelectorAll<HTMLElement>("[role='radio']")].find((b) => b.textContent === "None")!.click());
+  expect(labelled()).toEqual(expect.arrayContaining(["/notes/a.md", "/notes/b.md", "/index.md"]));
+  expect(labelled()).not.toContain("/notes/d.md");
+
+  // Pointing at another node takes over while you point, then hands back.
+  await pointAt("/notes/d.md");
+  expect(opacity("/notes/d.md")).toBe(1);
+  expect(opacity("/notes/b.md")).toBeLessThan(0.5);
+  const node = document.querySelector("main svg [data-path='/notes/d.md']")!;
+  await act(async () => node.dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
+  await act(async () => node.dispatchEvent(new PointerEvent("pointerleave")));
+  expect(opacity("/notes/b.md")).toBe(1);
+  expect(opacity("/notes/d.md")).toBeLessThan(0.5);
+
+  // Another entry opened in the sheet moves the highlight to it.
+  await act(async () => navigateTo("/graph/notes/notes/d.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(opacity("/notes/d.md")).toBe(1);
+  expect(opacity("/notes/a.md")).toBeLessThan(0.5);
+  expect(lit()).toBe(0); // D has no edges to light
+
+  // An entry the graph does not hold has no neighbourhood here: nothing dims.
+  await act(async () => navigateTo("/graph/notes/notes/checks.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(opacity("/notes/a.md")).toBe(1);
+  expect(opacity("/notes/d.md")).toBe(1);
+
+  // Closed, the graph is as it was before anything was opened.
+  await act(async () => navigateTo("/graph/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  for (const p of ["/notes/a.md", "/notes/b.md", "/notes/d.md"]) expect(opacity(p)).toBe(1);
+  expect(lit()).toBe(0);
+});
+
+// A preference, so it is kept: the next visit to a graph in this bundle starts
+// the way the last one was left.
+test("highlight follows preview is set in the graph's settings, and remembered", async () => {
+  await openGraph();
+  // Cancel undoes it, like any field in the dialog.
+  await act(async () => openGraphSettings());
+  await act(async () => graphDialog()!.querySelectorAll<HTMLInputElement>("input[type='checkbox']")[1]!.click());
+  await act(async () => [...graphDialog()!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!.click());
+  expect(await followsPreview()).toBe(false);
+
+  // Saved, it is this browser's: what goes to wiki.toml is the graph's settings
+  // and nothing about how this browser draws it.
+  const writes = await setFollowsPreview(true);
+  expect(writes).toHaveLength(1);
+  expect(Object.keys(writes[0]!.body).sort()).toEqual(["name", "neighbours", "where"]);
+  await openGraph();
+  expect(await followsPreview()).toBe(true);
+  await act(async () => navigateTo("/graph/notes/notes/a.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(Number(document.querySelector("main svg [data-path='/notes/d.md']")!.getAttribute("opacity"))).toBeLessThan(0.5);
+});
+
+/** Whether the graph's settings say the highlight follows the preview. */
+async function followsPreview(): Promise<boolean> {
+  await act(async () => openGraphSettings());
+  const on = graphDialog()!.querySelectorAll<HTMLInputElement>("input[type='checkbox']")[1]!.checked;
+  await act(async () => [...graphDialog()!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!.click());
+  return on;
+}
+
+/** Sets it the way a person does: in the graph's settings, then Save. */
+async function setFollowsPreview(on: boolean) {
+  await act(async () => openGraphSettings());
+  const box = graphDialog()!.querySelectorAll<HTMLInputElement>("input[type='checkbox']")[1]!;
+  if (box.checked !== on) await act(async () => box.click());
+  const writes = captureWrites();
+  await act(async () => submit(graphDialog()!));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(graphDialog()).toBeNull();
+  return writes;
+}
+
+// What opens from the header — the git popover — has to land over a sheet open
+// beside a board or graph. The popover's own z-index cannot do it: it is capped
+// by the header's, so the header itself is what has to sit above the sheet.
+test("the header is layered above the side sheet", async () => {
+  await openGraph("/graph/notes/notes/a.md");
+  const z = (el: Element | null) => Number(/(?:^|\s)z-(\d+)(?:\s|$)/.exec(el?.getAttribute("class") ?? "")?.[1]);
+  const header = document.querySelector("header.h-13");
+  const sheet = document.querySelector("[data-print='sheet']");
+  expect(sheet).not.toBeNull();
+  expect(z(header)).toBeGreaterThan(z(sheet));
+});

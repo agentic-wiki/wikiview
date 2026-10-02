@@ -12,7 +12,7 @@ import {
 import { api, type Graph } from "@/api";
 import { useBundleState } from "@/state";
 import { useBundle } from "@/bundle";
-import { find } from "@/tree";
+import { find, isIndex } from "@/tree";
 import { count } from "@/count";
 import { groupColour, groupOf, groupsUnder, NEUTRAL, type Group } from "@/colour";
 import { Glyph, IconButton } from "@/ui/IconButton";
@@ -72,6 +72,11 @@ export function GraphView({
   const [storedSize, setTextSize] = useBundleState<TextSize>(bundleId, "graph-text", "m");
   // A stored value from some other version of this control is not a size.
   const textSize: TextSize = storedSize in TEXT_SIZES ? storedSize : "m";
+  // Off unless asked for. A preference of this browser rather than of the
+  // bundle, so it is kept here and never written to wiki.toml; it is set in
+  // the graph's settings, since it is changed about as rarely as they are.
+  const [storedFollow, setFollow] = useBundleState<boolean>(bundleId, "graph-follow-preview", false);
+  const follow = storedFollow === true;
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
   const { bundle, tree } = useBundle();
@@ -201,6 +206,7 @@ export function GraphView({
             textSize={textSize}
             labels={labels}
             highlight={highlight}
+            follow={follow}
             groups={groupsUnder(tree, graph.path)}
             rootLabel={rootLabel}
             hidden={hidden}
@@ -227,7 +233,9 @@ export function GraphView({
         )}
       </div>
 
-      {editing && <GraphSettings graph={graph} onClose={() => setEditing(false)} />}
+      {editing && (
+        <GraphSettings graph={graph} follow={follow} onFollow={setFollow} onClose={() => setEditing(false)} />
+      )}
 
     </div>
   );
@@ -250,7 +258,9 @@ interface View {
 }
 
 /** Which nodes are named: the best connected, all, or none (the one pointed
- *  at, and the highlight's matches, always are). */
+ *  at, and the highlight's matches, always are). A folder's index is named
+ *  under "hubs" as under "all": it stands for its folder, so its name is a
+ *  landmark rather than one more title crowding the canvas. */
 type LabelMode = "hubs" | "all" | "none";
 
 /** At or under this many nodes, "hubs" names everything: a graph this small
@@ -266,6 +276,7 @@ function Canvas({
   textSize,
   labels,
   highlight,
+  follow,
   groups,
   rootLabel,
   hidden,
@@ -279,6 +290,9 @@ function Canvas({
   labels: LabelMode;
   /** Text to light the matching nodes by, "" for none. */
   highlight: string;
+  /** Whether the node open beside the graph keeps the highlight pointing at it
+   *  gives, for as long as it is open. */
+  follow: boolean;
   /** The groups under the graph's folder, which colour its nodes. */
   groups: Group[];
   /** What the entries directly in the graph's folder are called in the legend. */
@@ -481,10 +495,17 @@ function Canvas({
     return <div className="relative min-h-0 grow"><svg ref={svg} className="absolute inset-0 size-full" /></div>;
   }
 
-  const lit = hovered ? neighbourhood(current.links, hovered) : null;
+  // The node whose neighbours are lit: the one pointed at, else, when the
+  // highlight follows the preview, the one open beside the graph, so it stays
+  // lit while you read it. Only a node
+  // that is drawn: an entry the sheet reached that is not on this graph, or
+  // is in a group set aside, has no neighbourhood here to show.
+  const openNode = open ? current.byPath.get(open) : undefined;
+  const focus = hovered ?? (follow && openNode && visible(openNode) ? open : null);
+  const lit = focus ? neighbourhood(current.links, focus) : null;
   /** In the group pointed at in the legend; null when no group is. */
   const grouped = pointed === null ? null : (path: string) => groupKey(path) === pointed;
-  // What stays at full strength: the hovered node and its neighbours, else the
+  // What stays at full strength: the focused node and its neighbours, else the
   // hovered group, else the highlight's matches, else everything. What you are
   // pointing at wins over what you typed.
   const strong = (path: string) =>
@@ -500,7 +521,7 @@ function Canvas({
     (grouped?.(n.path) ?? false) ||
     (matched?.has(n.path) ?? false) ||
     labels === "all" ||
-    (labels === "hubs" && (small || n.degree >= hubFrom || view.k > 1.8));
+    (labels === "hubs" && (isIndex(n.path) || small || n.degree >= hubFrom || view.k > 1.8));
   const hoveredNode = hovered ? current.nodes.find((n) => n.path === hovered) : undefined;
 
   /** Zooms by a factor about the middle of the canvas. */
@@ -576,20 +597,20 @@ function Canvas({
         <g transform={`translate(${box.w / 2 + view.x} ${box.h / 2 + view.y})`}>
           {current.links.map((l) => {
             if (!visible(l.source) || !visible(l.target)) return null;
-            // The edges of the node you are pointing at, not every edge among
+            // The edges of the node you are pointing at (or the one open), not every edge among
             // its neighbours: those say how they know each other, which you did
             // not ask.
             // Or, with a group pointed at, the edges inside it.
             const on =
-              hovered !== null
-                ? l.source.path === hovered || l.target.path === hovered
+              focus !== null
+                ? l.source.path === focus || l.target.path === focus
                 : grouped !== null && grouped(l.source.path) && grouped(l.target.path);
             const faded =
               (lit !== null || grouped !== null || matched !== null) &&
               !on &&
               !(!lit && !grouped && matched?.has(l.source.path) && matched.has(l.target.path));
-            // Direction only where you are looking: the hovered node's own edges.
-            const arrowed = hovered !== null && on;
+            // Direction only where you are looking: the focused node's own edges.
+            const arrowed = focus !== null && on;
             const [x1, y1, x2, y2] = ends(at(l.source), at(l.target), dotSize(l.source), dotSize(l.target), arrowed);
             return (
               <g key={l.edge.from + "\n" + l.edge.to} opacity={faded ? 0.15 : 1}>
@@ -619,6 +640,7 @@ function Canvas({
             const name = n.node.title || n.node.label;
             const p = at(n);
             const colour = groupColour(n.path, groups, graph.path);
+            const ring = isIndex(n.path) && !n.node.neighbour;
             return (
               <g
                 key={n.path}
@@ -652,13 +674,22 @@ function Canvas({
               >
                 <title>{n.path}</title>
                 {/* A neighbour is hollow: on the graph for context, and not
-                    what the graph is about. The one open beside the graph is
-                    ringed, so it can be found again. */}
+                    what the graph is about. A folder's index is a ring in its
+                    group's colour — solid where a neighbour's is dashed and
+                    grey — since it stands for the folder rather than being one
+                    more entry in it. A neighbour that is an index stays a
+                    neighbour: being context is the stronger thing to say. The
+                    one open beside the graph is ringed, so it can be found
+                    again. */}
                 <circle
                   r={r}
-                  className={n.node.neighbour ? "fill-bg stroke-muted" : n.path === open ? "stroke-fg" : "stroke-bg"}
-                  style={n.node.neighbour ? undefined : { fill: colour }}
-                  strokeWidth={n.path === open ? 2.5 : 1.5}
+                  data-index={ring || undefined}
+                  className={[
+                    n.node.neighbour || ring ? "fill-bg" : "",
+                    n.node.neighbour ? "stroke-muted" : n.path === open ? "stroke-fg" : ring ? "" : "stroke-bg",
+                  ].join(" ")}
+                  style={n.node.neighbour ? undefined : ring ? (n.path === open ? undefined : { stroke: colour }) : { fill: colour }}
+                  strokeWidth={n.path === open || ring ? 2.5 : 1.5}
                   strokeDasharray={n.node.neighbour ? "2 2" : undefined}
                 />
                 {/* Shortened until it is the one you are pointing at, which is

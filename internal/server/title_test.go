@@ -85,3 +85,22 @@ func TestBacklinkNameQualifiesAFolderIndex(t *testing.T) {
 		t.Errorf("titleFromFilename on a folder index = %q, want %q", got, "Index")
 	}
 }
+
+// On a graph nothing says where a node lives, so a folder's index.md is named
+// for the folder it indexes, unqualified, and the bundle's own for the bundle.
+func TestNodeLabelNamesAnIndexForItsFolder(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "my-kb")
+	for _, tc := range []struct{ in, want string }{
+		{"/1-design/index.md", "1 Design"},
+		{"/notes/deep/index.md", "Deep"},
+		{"/index.md", "My kb"},
+		{"/notes/a.md", "A"},
+		// Only an index is one: a name that merely contains the word is not.
+		{"/notes/index-of-ideas.md", "Index of ideas"},
+		{"/notes/reindex.md", "Reindex"},
+	} {
+		if got := nodeLabel(tc.in, dir); got != tc.want {
+			t.Errorf("nodeLabel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
