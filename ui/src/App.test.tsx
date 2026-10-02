@@ -3965,14 +3965,38 @@ test("a folder's chevron toggles it where it stands, and its name opens it", asy
   expect(folderRow("Notes").className).toContain("bg-accent-bg");
 });
 
-// Clicking the name of a folder that is already open goes there, and does not
-// close the list you were using to get there.
-test("opening an open folder by name leaves it open", async () => {
+// The name toggles as the chevron does, so closing a folder does not mean going
+// back for the small target: click it open, click it shut. It still goes to the
+// folder, and being on the folder does not reopen it — only an entry inside
+// does, for the folders above it.
+test("a folder's name opens and closes it", async () => {
   await mountAt("/wiki/notes/a.md"); // opened for the entry you are on
   const chevron = () => folderRow("Notes").querySelector<HTMLButtonElement>("button")!;
+  const name = () => folderRow("Notes").querySelector("a")!;
   expect(chevron().getAttribute("aria-expanded")).toBe("true");
-  await act(async () => folderRow("Notes").querySelector("a")!.click());
+
+  await act(async () => name().click());
+  expect(here).toBe("/wiki/notes/");
+  expect(chevron().getAttribute("aria-expanded")).toBe("false");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(chevron().getAttribute("aria-expanded")).toBe("false"); // and stays shut
+
+  await act(async () => name().click());
   expect(chevron().getAttribute("aria-expanded")).toBe("true");
+  await act(async () => name().click());
+  expect(chevron().getAttribute("aria-expanded")).toBe("false");
+});
+
+// A modified click opens the folder in another tab or window, and the tree in
+// this one is not what it was asking to change.
+test("a modified click on a folder's name leaves it as it was", async () => {
+  await mountAt("/wiki/index.md");
+  const chevron = () => folderRow("Notes").querySelector<HTMLButtonElement>("button")!;
+  const name = folderRow("Notes").querySelector("a")!;
+  for (const init of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { button: 1 }]) {
+    await act(async () => name.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init })));
+    expect(chevron().getAttribute("aria-expanded")).toBe("false");
+  }
 });
 
 // Top-level folders wear their group's colour, and deeper ones none: a group is
@@ -5711,13 +5735,15 @@ test("an index node is named unless names are off, and drawn as a ring", async (
   // Big enough that "hubs" leaves names out: everything is linked to two hubs,
   // and the index and one ordinary entry are linked to nothing.
   const leaves = Array.from({ length: 30 }, (_, i) => `/notes/n${i}.md`);
-  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 34 }], {
+  await mountWithGraphs([{ path: "/", id: "all", name: "Everything", entries: 35 }], {
     ...graphFixture,
     id: "all",
     path: "/",
     nodes: [
       ...["/notes/hub.md", "/notes/hub2.md", "/notes/alone.md", ...leaves].map((path) => ({ path, label: path })),
       { path: "/notes/sub/index.md", label: "Sub" },
+      // The folder's log: named like the index, drawn like any entry.
+      { path: "/notes/sub/log.md", label: "Sub (log)" },
       // A neighbour that is an index stays drawn as a neighbour.
       { path: "/index.md", label: "My kb", neighbour: true },
     ],
@@ -5736,6 +5762,7 @@ test("an index node is named unless names are off, and drawn as a ring", async (
   expect(document.querySelector("[role='radio'][aria-checked='true']")?.textContent).toBe("Hubs");
   expect(labelled()).toContain("/notes/sub/index.md");
   expect(labelled()).toContain("/notes/hub.md");
+  expect(labelled()).toContain("/notes/sub/log.md");
   expect(labelled()).not.toContain("/notes/alone.md");
 
   await mode("All");
@@ -5751,6 +5778,8 @@ test("an index node is named unless names are off, and drawn as a ring", async (
   expect(dot("/notes/sub/index.md").style.stroke).not.toBe("");
   expect(dot("/notes/alone.md").getAttribute("data-index")).toBeNull();
   expect(dot("/notes/alone.md").style.fill).not.toBe("");
+  expect(dot("/notes/sub/log.md").getAttribute("data-index")).toBeNull();
+  expect(dot("/notes/sub/log.md").style.fill).not.toBe("");
   expect(dot("/index.md").getAttribute("data-index")).toBeNull();
   expect(dot("/index.md").getAttribute("stroke-dasharray")).toBe("2 2");
 });
@@ -5872,4 +5901,60 @@ test("the header is layered above the side sheet", async () => {
   const sheet = document.querySelector("[data-print='sheet']");
   expect(sheet).not.toBeNull();
   expect(z(header)).toBeGreaterThan(z(sheet));
+});
+
+/** Presses ⌘F (or Ctrl+F), reporting whether the app took it from the browser. */
+function pressFind(init: KeyboardEventInit = { metaKey: true }): boolean {
+  const e = new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true, ...init });
+  act(() => {
+    (document.activeElement ?? document.body).dispatchEvent(e);
+  });
+  return e.defaultPrevented;
+}
+
+// On a board or a graph the view's own search is the better find, so ⌘F goes
+// there — and a second press, already in it, is the browser's find again.
+test("⌘F or Ctrl+F goes to the board's filter, then back to the browser", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const filter = document.querySelector<HTMLInputElement>("input[aria-label='Filter cards']")!;
+
+  expect(pressFind({ ctrlKey: true })).toBe(true);
+  expect(document.activeElement).toBe(filter);
+  expect(pressFind({ metaKey: true })).toBe(false);
+
+  // Not every chord with an F in it: ⇧⌘F and ⌥⌘F are something else's.
+  filter.blur();
+  expect(pressFind({ metaKey: true, shiftKey: true })).toBe(false);
+  expect(pressFind({ metaKey: true, altKey: true })).toBe(false);
+  expect(pressFind({})).toBe(false);
+  expect(document.activeElement).not.toBe(filter);
+});
+
+test("⌘F goes to the graph's highlight", async () => {
+  await openGraph();
+  expect(pressFind()).toBe(true);
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Highlight nodes");
+});
+
+// A box behind a dialog is not one to send focus to, and a field you are typing
+// in keeps its keys.
+test("⌘F leaves an open dialog, and another field, alone", async () => {
+  await openGraph();
+  await act(async () => openGraphSettings());
+  expect(pressFind()).toBe(false);
+  expect(graphDialog()!.contains(document.activeElement) || document.activeElement === document.body).toBe(true);
+  await act(async () => [...graphDialog()!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!.click());
+
+  const other = document.createElement("textarea");
+  document.body.append(other);
+  other.focus();
+  expect(pressFind()).toBe(false);
+  other.remove();
+});
+
+// Where there is no view search — an entry — the browser's find is untouched.
+test("⌘F is the browser's on a page with no search box", async () => {
+  await mountAt("/wiki/notes/a.md");
+  expect(pressFind()).toBe(false);
 });

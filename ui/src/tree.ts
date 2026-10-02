@@ -55,6 +55,12 @@ export function isIndex(path: string): boolean {
   return path.endsWith("/index.md");
 }
 
+/** Whether a path is a folder's log, its side narrative, root's included: the
+ *  other file the format reserves in every folder. */
+export function isLog(path: string): boolean {
+  return path.endsWith("/log.md");
+}
+
 /**
  * How to name a bundle path in a list, and where to say it lives.
  *

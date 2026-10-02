@@ -393,6 +393,7 @@ func TestAnIndexNodeIsNamedForItsFolder(t *testing.T) {
 	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"all\"\npath = \"/\"\n")
 	for name, content := range map[string]string{
 		"orgs/index.md":   "---\ntype: index\n---\n[Acme](./acme.md)\n",
+		"orgs/log.md":     "Acme signed. [Acme](./acme.md)\n",
 		"people/index.md": "---\ntitle: The team\n---\n[Ana](./ana.md)\n",
 	} {
 		if err := os.WriteFile(filepath.Join(srv.store.Dir, name), []byte(content), 0o644); err != nil {
@@ -412,6 +413,9 @@ func TestAnIndexNodeIsNamedForItsFolder(t *testing.T) {
 	}
 	if got := labels["/orgs/index.md"].Label; got != "Orgs" {
 		t.Errorf("/orgs/index.md label = %q, want Orgs", got)
+	}
+	if got := labels["/orgs/log.md"].Label; got != "Orgs (log)" {
+		t.Errorf("/orgs/log.md label = %q, want Orgs (log)", got)
 	}
 	if n := labels["/people/index.md"]; n.Title != "The team" || n.Label != "People" {
 		t.Errorf("/people/index.md = %+v, want its title kept beside the folder's name", n)

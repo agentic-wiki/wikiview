@@ -23,8 +23,8 @@ Badges, the mock's accent pill (15px, 9.5px bold, `on-accent`) at the top right:
 
 A header row: `ENTRIES` section label and a mono count of entries. Then the tree:
 
-- Folder rows 32px, 7px radius, 500: a 20px chevron hit area that **alone** toggles (rotates 90° when open, 150ms), a 7px rounded-square dot in the folder's group colour ([003](./003-colour.md)) — top level only, deeper folders have no dot — the label, and a mono child count. Clicking the label **opens the folder** (its `index.md`, else the listing) and expands it.
-- Entry rows: 400 in `muted`, active `accent-bg` / `accent-ink` / 500. Indentation matches the mock (folder 8px, child 44px, +12px a level).
+- Folder rows 32px, 7px radius, 500: a 20px chevron hit area that **alone** toggles (rotates 90° when open, 150ms), a 7px rounded-square dot in the folder's group colour ([003](./003-colour.md)) — top level only, deeper folders have no dot — the label, and a mono child count. Clicking the label **opens the folder** (its `index.md`, else the listing) and expands or collapses it.
+- Entry rows: 400 in `muted`, active `accent-bg` / `accent-ink` / 500. Indentation matches the mock (folder 8px, child 44px, +12px a level). As built (fixed 2026-10-02): each level below the top has one column for its names, at 46px and then +12px a level, shared by its folders and its entries; a folder's chevron hangs 23px before its name. Lining entries up with their own folder's name drifted 3px left below the top level, because only top-level folders have a dot.
 - The saved and unseen marks keep their two-slot column at the right.
 - The active folder (on its listing) is tinted like an active entry.
 
@@ -46,7 +46,7 @@ The existing panel-width assertions move from `w-64`/`w-0` to the new classes. N
 
 - **The graph groups legend moved to [011](./011-graph.md).** On its own it would be a list of toggles that hide nothing until the canvas honours them. It lands with the canvas change that makes it mean something.
 - **The panel's state is `data-open`, not a width.** Eighteen assertions read `w-64` / `w-0` off the class list, so changing the panel's width meant changing the tests. They now read the attribute, and the panel is `w-67` (268px) as in the reference.
-- **Folder rows are three controls, not one button**: a chevron `<button aria-expanded>` that only toggles, a `<Link>` for the name that navigates and expands (and never collapses an open folder), and the count outside the link, so a row's link text stays its name.
+- **Folder rows are three controls, not one button**: a chevron `<button aria-expanded>` that only toggles, a `<Link>` for the name that navigates and toggles (revised 2026-10-02: it used to only expand, and closing a folder meant going back for the chevron; a modified click navigates elsewhere and leaves the tree alone), and the count outside the link, so a row's link text stays its name.
 - **The rail's accessible name carries its count** ("Read later, 3") so a screen reader hears the number with its subject. The plain `title` is what tests and tooltips use.
 - **Found by looking, not by the tests: Tailwind drops `@theme` variables nothing references.** The categorical and stage colours are only ever named at runtime, so five of the eight folder dots rendered with no colour. They moved to a plain `:root` block, and `colour.test.ts` now checks that every token the module emits is defined *outside* `@theme` (verified to fail against the old layout).
 - **View counts on `/api/bundle`**: `BoardInfo.cards` (every card, the no-status column included) and `GraphInfo.entries` (neighbours not counted), embedded around the config so the JSON is flat and `config` stays about config.

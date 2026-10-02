@@ -21,3 +21,12 @@ An index stands for its folder, so it reads as a landmark rather than one more e
 - **A ring, not a dot.** Ground-coloured fill with a solid 2.5px stroke in its group's colour. This is deliberately not the neighbour look, which is a dashed grey outline. A neighbour that is also an index keeps the neighbour look, because being context is the stronger thing to say. The node open in the sheet keeps the foreground ring that marks it.
 
 Not done: the legend has no "Index" row explaining the ring, the way it has one for neighbours. Add one if the ring turns out not to explain itself.
+
+## And the log
+
+`log.md` is the format's other reserved file in a folder, its side narrative, and on a graph it gets the same treatment as the index, with two differences:
+
+- **Named "Folder (log)"**, e.g. "Orgs (log)", or "My kb (log)" for the bundle's own. If it took the folder's bare name it would collide with the index sitting next to it.
+- **An ordinary dot.** The ring stays the index's: it marks the folder's front door, and a log is not one.
+
+Its name shows under Hubs and All, as an index's does. The server's `folderOwn(p, name)` replaces `indexedFolder` and answers for both files. The UI has `isLog` next to `isIndex`.

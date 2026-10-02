@@ -26,7 +26,7 @@ A 10px-radius band, 4px padding, 6px gap. Header: the three-bar glyph lit by pos
 
 ## Cards
 
-`elev`, `line` border (`line-2` and −1px lift on hover), 10px radius, `11px 12px 10px`:
+`elev`, `line` border (`line-2` on hover; the reference's −1px lift was dropped on 2026-10-02, as it read as the card jumping), 10px radius, `11px 12px 10px`:
 
 - the title, 500 13.5px, line-height 1.35 — the entry's title when it has one, else the label;
 - the label under it in `muted` 12.5px, clamped to two lines, when it differs (the mock's description slot);

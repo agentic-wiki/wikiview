@@ -239,18 +239,26 @@ func merge(links []link) []Edge {
 
 // nodeLabel names a node that has no title of its own.
 //
-// A folder's `index.md` is named for the folder it indexes. On a graph nothing
-// around a node says where it lives — no tree, no breadcrumb — so a scatter of
-// dots all reading "Index" names none of them. The bundle's own index takes the
-// bundle's name, as a view over "/" does. Unqualified, unlike a backlink's
-// "Folder (index)": a node standing for its folder is what an index is for.
+// A folder's own files are named for the folder. On a graph nothing around a
+// node says where it lives — no tree, no breadcrumb — so a scatter of dots all
+// reading "Index" or "Log" names none of them. The bundle's own take the
+// bundle's name, as a view over "/" does.
+//
+// The index is unqualified, unlike a backlink's "Folder (index)": a node
+// standing for its folder is what an index is for. The log is "Folder (log)",
+// so it sits beside its folder's index without taking its name.
 func nodeLabel(p, bundleDir string) string {
-	switch dir := indexedFolder(p); dir {
-	case "":
-		return titleFromFilename(p)
-	case "/":
-		return dirLabel(bundleDir)
-	default:
+	folder := func(dir string) string {
+		if dir == "/" {
+			return dirLabel(bundleDir)
+		}
 		return titleFromFilename(dir)
 	}
+	if dir := folderOwn(p, "index.md"); dir != "" {
+		return folder(dir)
+	}
+	if dir := folderOwn(p, "log.md"); dir != "" {
+		return folder(dir) + " (log)"
+	}
+	return titleFromFilename(p)
 }

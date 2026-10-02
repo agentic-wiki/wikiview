@@ -691,7 +691,7 @@ function BoardCard({
       to={cardHref(board, card.path) + search}
       aria-current={open ? "true" : undefined}
       className={[
-        "bg-elev border-line hover:border-line-2 block shrink-0 rounded-[10px] border px-3 pt-[11px] pb-2.5 transition-[border-color,transform] hover:-translate-y-px",
+        "bg-elev border-line hover:border-line-2 block shrink-0 rounded-[10px] border px-3 pt-[11px] pb-2.5 transition-[border-color]",
         open ? "ring-accent ring-[1.5px]" : "",
         // Left in place rather than removed, so the column does not reflow under
         // the pointer while you are deciding where to drop.

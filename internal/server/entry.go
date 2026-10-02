@@ -315,7 +315,7 @@ func titleFromFilename(p string) string {
 // shorter, truer name there. A backlinks footer has neither, and rows all
 // reading "Index" say nothing about which entries link here.
 func backlinkName(p string) string {
-	if dir := indexedFolder(p); dir != "" && dir != "/" {
+	if dir := folderOwn(p, "index.md"); dir != "" && dir != "/" {
 		if folder := readableName(path2.Base(dir)); folder != "" {
 			return folder + " (index)"
 		}
@@ -323,10 +323,11 @@ func backlinkName(p string) string {
 	return titleFromFilename(p)
 }
 
-// indexedFolder is the folder an `index.md` stands for, "/" for the bundle's
-// own, and "" for any other entry.
-func indexedFolder(p string) string {
-	if path2.Base(p) != "index.md" {
+// folderOwn is the folder whose own `name` — its `index.md` or its `log.md`,
+// the two files the format reserves in every folder — p is: "/" for the
+// bundle's, and "" when p is any other entry.
+func folderOwn(p, name string) string {
+	if path2.Base(p) != name {
 		return ""
 	}
 	return path2.Dir(p)

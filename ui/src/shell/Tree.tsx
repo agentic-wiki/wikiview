@@ -141,16 +141,31 @@ export function Tree({
   );
 }
 
-/** Where a row's content starts. A folder's chevron, then its dot at the top
- *  level; an entry lines its name up with the name of the folder it is in. */
-function folderIndent(depth: number): number {
-  return 8 + depth * 12;
+/**
+ * Where a row's content starts.
+ *
+ * Every level below the top has one column its names start in, 12px further in
+ * than the level above, shared by its folders and its entries — so siblings
+ * line up whatever they are, and deeper always reads as further right. The
+ * first of those columns is the top-level folders' names, which sit past a
+ * chevron and a dot, so a folder's entries start under its name.
+ *
+ * Lining an entry up with its own folder's name instead looked the same at the
+ * top and drifted below it: only top-level folders have a dot, so the next
+ * level's names start 15px earlier, and their entries ended up 3px left of the
+ * level above.
+ */
+function column(depth: number): number {
+  return 46 + (depth - 1) * 12;
 }
+/** A folder's chevron hangs before its name: 15px of it past the padding, and
+ *  the 8px gap. The top level is the exception, at 8px, with its dot between. */
+function folderIndent(depth: number): number {
+  return depth === 0 ? 8 : column(depth) - 23;
+}
+/** Entries at the bundle's root have no folder to sit under. */
 function entryIndent(depth: number): number {
-  if (depth === 0) return 12;
-  // The parent folder's indent, past its chevron (15) and gap (8), and past
-  // its dot and gap (15) when it is a top-level folder.
-  return folderIndent(depth - 1) + 23 + (depth === 1 ? 15 : 0);
+  return depth === 0 ? 12 : column(depth);
 }
 
 function Level({
@@ -183,8 +198,8 @@ function Level({
         return (
           <li key={child.path}>
             {/* Two controls in one row, because a folder is two things: a place
-                to go and a list to open. The chevron alone opens the list; the
-                name goes to the folder and opens it too. */}
+                to go and a list to open. The chevron only opens and closes the
+                list; the name goes to the folder and opens or closes it too. */}
             <div
               style={{ paddingLeft: `${folderIndent(depth)}px` }}
               className={[
@@ -216,7 +231,15 @@ function Level({
               </button>
               <Link
                 to={"/wiki" + child.path + "/"}
-                onClick={() => !isOpen && toggle(child.path)}
+                // Goes to the folder and opens or closes it, so the row you
+                // are pointing at is enough for both: the chevron is a small
+                // target to go back to just to close what a click opened. A
+                // modified click opens the folder somewhere else, and leaves
+                // this tree as it is.
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  toggle(child.path);
+                }}
                 className="flex min-w-0 flex-1 items-center gap-2 self-stretch"
               >
                 {colour && (

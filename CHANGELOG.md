@@ -8,7 +8,7 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 
 - **Boards of anything, not only tasks.** New board and New graph open a dialog where you pick the folder, the name and the filter, so a board can start as `type=idea` or `type=topic` instead of being changed afterwards. Tasks remain the default. Clearing a board's filter now sticks: it is written as `where = []`, meaning every entry under the path, where before the empty filter was dropped and the `type=task` default came back. An empty board says what would fill it using its own filter, not `type: task`.
 
-- **A folder's index is named for the folder on a graph.** An untitled `index.md` used to draw as "Index", so several folders made several identical dots. It now carries the folder's name, and the bundle's own `index.md` carries the bundle's. A `title` still wins. Index nodes are drawn as a ring in their group's colour, and their names show under Hubs as well as All. Only None hides them.
+- **A folder's index is named for the folder on a graph.** An untitled `index.md` used to draw as "Index", so several folders made several identical dots. It now carries the folder's name, and the bundle's own `index.md` carries the bundle's. A `title` still wins. Index nodes are drawn as a ring in their group's colour, and their names show under Hubs as well as All. Only None hides them. A folder's `log.md` is named "Folder (log)" and shown the same way, drawn as an ordinary dot.
 
 - **Highlight follows preview.** A checkbox in a graph's Settings, under Include neighbours, off by default. When it is on, a node opened in the side panel keeps the highlight hovering gives it, with its neighbours and edges lit, until the panel closes, and the highlight follows the links you open from the panel. It is saved in this browser only and never written to `wiki.toml`.
 
@@ -16,10 +16,14 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 
 ### Changed
 
+- **Clicking a folder's name in the tree opens or closes it**, as the chevron does, and still goes to the folder. Cmd, Ctrl or Shift-click and middle-click leave the tree as it is.
+- **⌘F / Ctrl+F on a board or graph** goes to its search box, which filters cards or highlights nodes. Pressed again from inside the box, it opens the browser's find, which can search an entry open in the side panel. It leaves dialogs, the palette and other fields alone.
 - The settings dialogs say **Apply** instead of Save.
+- Board cards no longer lift 1px on hover; only the border changes.
 
 ### Fixed
 
+- **Nested folders in the tree indent further in.** A subfolder's entries started 3px left of the entries above them, so deeper levels looked shallower. Each level is now 12px further in than the one above, and a folder's name lines up with the entries beside it.
 - **The git popover opens over a side panel.** With a card or node open beside a board or graph, the Source control popover opened underneath it. The header it opens from was layered below the panel, which capped the popover too.
 
 ## v0.8.0 — 2026-09-10

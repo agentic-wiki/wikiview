@@ -12,7 +12,7 @@ import {
 import { api, type Graph } from "@/api";
 import { useBundleState } from "@/state";
 import { useBundle } from "@/bundle";
-import { find, isIndex } from "@/tree";
+import { find, isIndex, isLog } from "@/tree";
 import { count } from "@/count";
 import { groupColour, groupOf, groupsUnder, NEUTRAL, type Group } from "@/colour";
 import { Glyph, IconButton } from "@/ui/IconButton";
@@ -258,9 +258,9 @@ interface View {
 }
 
 /** Which nodes are named: the best connected, all, or none (the one pointed
- *  at, and the highlight's matches, always are). A folder's index is named
- *  under "hubs" as under "all": it stands for its folder, so its name is a
- *  landmark rather than one more title crowding the canvas. */
+ *  at, and the highlight's matches, always are). A folder's index and
+ *  log are named under "hubs" as under "all": they are the folder's own, so
+ *  their names are landmarks rather than more titles crowding the canvas. */
 type LabelMode = "hubs" | "all" | "none";
 
 /** At or under this many nodes, "hubs" names everything: a graph this small
@@ -521,7 +521,7 @@ function Canvas({
     (grouped?.(n.path) ?? false) ||
     (matched?.has(n.path) ?? false) ||
     labels === "all" ||
-    (labels === "hubs" && (isIndex(n.path) || small || n.degree >= hubFrom || view.k > 1.8));
+    (labels === "hubs" && (isIndex(n.path) || isLog(n.path) || small || n.degree >= hubFrom || view.k > 1.8));
   const hoveredNode = hovered ? current.nodes.find((n) => n.path === hovered) : undefined;
 
   /** Zooms by a factor about the middle of the canvas. */
