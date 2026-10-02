@@ -319,6 +319,22 @@ export interface GraphSettings {
   neighbours: boolean;
 }
 
+/** A view about to be declared: which folder, called what, addressed how, and
+ *  which of its entries it holds. An empty `where` is every entry under the
+ *  path, on a board as on a graph. */
+export interface Declaration {
+  id: string;
+  path: string;
+  name: string;
+  where: string[];
+}
+
+/** What a view over a folder starts as before it is declared. */
+export interface Draft {
+  where: string[];
+  fields: Field[];
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -398,6 +414,11 @@ export const api = {
       version,
     }),
 
+  /** What a board or a graph over a folder would start as, for the form that
+   *  declares one: the server's default filter, and the folder's keys. */
+  draft: (kind: "board" | "graph", path: string, signal?: AbortSignal) =>
+    get<Draft>("/api/draft/" + kind + "/" + encode(path), signal),
+
   /**
    * Declares a board, by appending it to the bundle's `wiki.toml`.
    *
@@ -405,7 +426,7 @@ export const api = {
    * that only means anything against the content it was read from, and this
    * appends a board that did not exist.
    */
-  declareBoard: (board: { id: string; path: string; name: string }) =>
+  declareBoard: (board: Declaration) =>
     post<{ version: number }>("/api/board", board),
 
   /**
@@ -419,7 +440,7 @@ export const api = {
     put<{ version: number }>("/api/board/" + encodeURIComponent(id), settings),
 
   /** Declares a graph, and changes one, by the rules boards follow. */
-  declareGraph: (graph: { id: string; path: string; name: string }) =>
+  declareGraph: (graph: Declaration) =>
     post<{ version: number }>("/api/graph", graph),
   graphSettings: (id: string, settings: GraphSettings) =>
     put<{ version: number }>("/api/graph/" + encodeURIComponent(id), settings),

@@ -108,7 +108,7 @@ path = "/backlog"
 	if err := Update(dir, "backlog", Settings{Lane: "priority"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := read(t, dir); !strings.Contains(got, "path = \"/backlog\"\nlane = \"priority\"\n") {
+	if got := read(t, dir); !strings.Contains(got, "path = \"/backlog\"\nwhere = []\nlane = \"priority\"\n") {
 		t.Errorf("wiki.toml = %q", got)
 	}
 }
@@ -303,5 +303,53 @@ func TestUpdateGraphRefusesWhatItCannotEdit(t *testing.T) {
 	}
 	if read(t, dir) != before {
 		t.Error("a refused update wrote anyway")
+	}
+}
+
+// Clearing a board's filter writes `where = []` rather than removing the key,
+// because a board without the key takes the default back: the form would say
+// "every entry" and the board would go on holding only tasks.
+func TestUpdateWritesAClearedBoardFilter(t *testing.T) {
+	dir := declared(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id    = "backlog"
+path  = "/backlog"
+where = ["type=task"]
+`)
+	if err := Update(dir, "backlog", Settings{Where: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, dir); !strings.Contains(got, "where = []\n") || strings.Contains(got, "type=task") {
+		t.Fatalf("wiki.toml = %q", got)
+	}
+	cfg, _ := loadDir(t, dir)
+	if w := cfg.Board[0].Where; w == nil || len(w) != 0 {
+		t.Errorf("where = %#v, want every entry", w)
+	}
+
+	// And filled again, it is replaced in place rather than added beside.
+	if err := Update(dir, "backlog", Settings{Where: []string{"type=idea"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, dir); strings.Count(got, "where") != 1 || !strings.Contains(got, `where = ["type=idea"]`) {
+		t.Errorf("wiki.toml = %q", got)
+	}
+}
+
+// A graph has no default to fall back to, so its empty filter is left out.
+func TestUpdateGraphLeavesAClearedFilterOut(t *testing.T) {
+	dir := declared(t, `spec = "0.1"
+
+[[tool.wikiview.graph]]
+id    = "g"
+path  = "/"
+where = ["type=note"]
+`)
+	if err := UpdateGraph(dir, "g", GraphSettings{Where: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, dir); strings.Contains(got, "where") {
+		t.Errorf("wiki.toml = %q", got)
 	}
 }

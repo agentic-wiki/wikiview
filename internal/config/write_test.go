@@ -182,3 +182,63 @@ func loadDir(t *testing.T, dir string) (Config, []string) {
 	}
 	return Decode(b, nil)
 }
+
+// The filter is chosen when the view is made, so it is written with it. Nil was
+// not chosen and leaves the default (TestDeclareWritesOnlyWhatWasAskedFor); for
+// a board, empty is "every entry", which only an explicit `[]` can say.
+func TestDeclareWritesTheChosenFilter(t *testing.T) {
+	cases := []struct {
+		why   string
+		where []string
+		line  string
+		want  []string
+	}{
+		{"a board of something other than tasks", []string{"type=idea"}, `where = ["type=idea"]`, []string{"type=idea"}},
+		{"a board of every entry under its path", []string{}, `where = []`, []string{}},
+		{"several conditions, in order", []string{"type=topic", "status!=done"}, `where = ["type=topic", "status!=done"]`,
+			[]string{"type=topic", "status!=done"}},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			dir := declared(t, `spec = "0.1"`)
+			if err := Declare(dir, Config{}, Board{ID: "b", Path: "/notes", Where: c.where}); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, dir); !strings.Contains(got, "\n"+c.line+"\n") {
+				t.Errorf("wiki.toml = %q, want %s", got, c.line)
+			}
+			cfg, problems := loadDir(t, dir)
+			if len(problems) != 0 {
+				t.Errorf("problems = %v", problems)
+			}
+			if w := cfg.Board[0].Where; w == nil || strings.Join(w, ",") != strings.Join(c.want, ",") {
+				t.Errorf("where = %#v, want %#v", w, c.want)
+			}
+		})
+	}
+}
+
+func TestDeclareGraphWritesOnlyAFilterThatSaysSomething(t *testing.T) {
+	dir := declared(t, `spec = "0.1"`)
+	if err := DeclareGraph(dir, Config{}, Graph{ID: "all", Path: "/", Where: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeclareGraph(dir, Config{}, Graph{ID: "people", Path: "/", Where: []string{"type=person"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, dir)
+	if strings.Count(got, "where") != 1 || !strings.Contains(got, `where = ["type=person"]`) {
+		t.Errorf("wiki.toml = %q", got)
+	}
+}
+
+func TestDeclareRefusesAnUnwritableFilter(t *testing.T) {
+	dir := declared(t, `spec = "0.1"`)
+	before := read(t, dir)
+	if err := Declare(dir, Config{}, Board{ID: "b", Path: "/notes", Where: []string{"type=a\nb"}}); err == nil {
+		t.Error("accepted a newline, which would end the line inside the array")
+	}
+	if read(t, dir) != before {
+		t.Error("a refused board was written anyway")
+	}
+}

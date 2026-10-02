@@ -239,6 +239,13 @@ function emitVersion(v: number) {
 }
 
 let fetches = 0;
+/** Every draft the declaring form asked for, so a test can see it follow the
+ *  folder. Compared as a set: StrictMode runs the effect twice, aborting the first. */
+let drafts: string[] = [];
+const draftFields = [
+  { key: "status", values: ["done", "todo"] },
+  { key: "type", values: ["idea", "task"] },
+];
 /** How many requests the app has made, so a test can assert that a redundant
  *  event caused none. */
 function fetchCount() {
@@ -266,6 +273,7 @@ const sectionsEntry: Entry = {
 
 function stubFetch() {
   fetches = 0;
+  drafts = [];
   const body = (v: unknown) =>
     Promise.resolve(new Response(JSON.stringify(v), { headers: { "content-type": "application/json" } }));
   globalThis.fetch = ((input: RequestInfo | URL) => {
@@ -273,6 +281,12 @@ function stubFetch() {
     const url = String(input);
     if (url.endsWith("/api/bundle")) return body(bundle);
     if (url.endsWith("/api/tree")) return body(tree);
+    // What a view over a folder starts as: the server's default filter, which
+    // only a board has, and the folder's keys to choose another from.
+    if (url.includes("/api/draft/")) {
+      drafts.push(url.slice(url.indexOf("/api/draft/")));
+      return body({ where: url.includes("/board/") ? ["type=task"] : [], fields: draftFields });
+    }
     if (url.includes("/api/board/")) return body(boardFixture);
     if (url.endsWith("/api/graph/notes")) return body(graphFixture);
     if (url.includes("/api/entry/notes/checks.md")) return body(checksEntry);
@@ -1961,48 +1975,78 @@ async function mountWithNoBoards(path: string, board?: unknown) {
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 }
 
+/** The dialog that declares a view, opened from its button inside `within`. */
+async function openNew(within: Element, noun: "board" | "graph"): Promise<HTMLElement> {
+  const button = [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === `New ${noun}`);
+  if (!button) throw new Error(`no New ${noun} button`);
+  await act(async () => button.click());
+  // The draft is fetched on open, and the filter waits for it.
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = document.querySelector<HTMLElement>(`[aria-label='New ${noun}']`);
+  if (!dialog) throw new Error(`New ${noun} did not open a dialog`);
+  return dialog;
+}
+
 // The empty state of a feature is the one moment somebody will read how it
-// works, so it shows the form rather than a note about what to hand-write into
-// wiki.toml.
+// works, so it offers the way to make one rather than a note about what to
+// hand-write into wiki.toml.
 test("with no boards declared the panel offers to make one", async () => {
   await mountWithNoBoards("/wiki/index.md");
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   const panel = document.querySelector("aside")!;
-  expect(Boolean(panel.querySelector("form"))).toBe(true);
+  // A button in the panel, and the form in a dialog over everything.
+  expect(panel.querySelector("form")).toBeNull();
+  const dialog = await openNew(panel, "board");
   // The folders that hold entries, and only those.
-  const options = [...panel.querySelectorAll("option")].map((o) => o.getAttribute("value"));
+  const options = [...dialog.querySelectorAll("select:not([aria-label]) option")].map((o) => o.getAttribute("value"));
   expect(options).toEqual(["/", "/notes"]);
   // The id is suggested from the name rather than left for you to invent.
-  expect(panel.querySelector<HTMLInputElement>("input[aria-label='Board id']")?.value).toBe("my-kb");
+  expect(dialog.querySelector<HTMLInputElement>("input[aria-label='Board id']")?.value).toBe("my-kb");
+  // The filter starts at the server's default, which is tasks, and can be
+  // changed before the board exists rather than only after.
+  expect(chips(dialog)).toEqual(["typeistask"]);
+  expect([...new Set(drafts)]).toEqual(["/api/draft/board/"]);
 });
 
 // The board `root` matches nothing in a bundle of notes, and it used to render a
 // blank page: the server sent `columns: null` and the view read a list it had
 // been promised.
 test("a board with nothing on it says why, and offers a way out", async () => {
-  const empty = { path: "/", id: "root", name: "My kb", field: "status", declared: false, columns: [] };
+  const empty = { path: "/", id: "root", name: "My kb", field: "status", where: ["type=task"], declared: false, columns: [] };
   await mountWithNoBoards("/kanban/root", empty);
 
   const main = document.querySelector("main")!;
   expect(main.textContent).toContain("Nothing on this board");
   // The reason, which is not guessable from anything on screen.
-  expect(main.textContent).toContain("type: task");
-  expect(Boolean(main.querySelector("form"))).toBe(true);
+  expect(main.textContent).toContain("matching type=task");
+  await openNew(main, "board");
 });
 
-// A board you declared over a folder with no tasks yet was set up ahead of its
-// cards: it says what will fill it, and does not send you to another folder.
+// A board you declared over a folder with no cards yet was set up ahead of its
+// cards: it says what will fill it — by its own filter, not by the default —
+// and does not send you to another folder.
 test("a declared board with no cards yet says what will fill it", async () => {
-  const empty = { path: "/notes", id: "later", name: "Later", field: "status", declared: true, columns: [] };
+  const empty = {
+    path: "/notes", id: "later", name: "Later", field: "status", declared: true, columns: [],
+    where: ["type=idea", "status!=done"],
+  };
   await mountWithNoBoards("/kanban/later", empty);
 
   const main = document.querySelector("main")!;
   expect(main.textContent).toContain("No cards yet");
-  expect(main.textContent).toContain("type: task");
-  expect(main.textContent).toContain("/notes");
-  expect(main.querySelector("form")).toBeNull();
+  expect(main.textContent).toContain("An entry under /notes matching type=idea and status!=done becomes a card here.");
+  expect(main.textContent).not.toContain("type=task");
+  expect([...main.querySelectorAll("button")].some((b) => b.textContent?.includes("New board"))).toBe(false);
+});
+
+// With no filter, every entry is a card, and saying "matching" nothing would
+// read as a sentence with a hole in it.
+test("a board of every entry says so when it is empty", async () => {
+  const empty = { path: "/notes", id: "all", name: "All", field: "status", declared: true, columns: [], where: [] };
+  await mountWithNoBoards("/kanban/all", empty);
+  expect(document.querySelector("main")!.textContent).toContain("Any entry under /notes becomes a card here.");
 });
 
 // Declaring a board is a config write, and the only thing worth asserting is
@@ -2011,16 +2055,58 @@ test("declaring a board writes it and opens it", async () => {
   await mountWithNoBoards("/wiki/index.md");
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = await openNew(document.querySelector("aside")!, "board");
 
   const writes = captureWrites();
-  const panel = document.querySelector("aside")!;
-  await act(async () => submit(panel));
+  await act(async () => submit(dialog));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  // The id the form suggested is the id that gets written, and the folder and
-  // name go with it.
-  expect(writes).toEqual([{ url: "/api/board", body: { id: "my-kb", path: "/", name: "My kb" } }]);
+  // The id the form suggested is the id that gets written, and the folder, the
+  // name and the filter go with it.
+  expect(writes).toEqual([
+    { url: "/api/board", body: { id: "my-kb", path: "/", name: "My kb", where: ["type=task"] } },
+  ]);
   expect(here).toBe("/kanban/my-kb");
+  // Done with: the panel stays mounted across the navigation, the dialog not.
+  expect(document.querySelector("[aria-label='New board']")).toBeNull();
+});
+
+// An empty filter is a choice — every entry under the folder — and is sent as
+// one, rather than left out and turned back into tasks by the default.
+test("a board can be declared with no filter at all", async () => {
+  await mountWithNoBoards("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = await openNew(document.querySelector("aside")!, "board");
+
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 1']")!.click());
+  expect(chips(dialog)).toEqual([]);
+  expect(dialog.textContent).toContain("every entry in the folder is a card");
+
+  const writes = captureWrites();
+  await act(async () => submit(dialog));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(writes[0]?.body.where).toEqual([]);
+});
+
+// The keys follow the folder, since they are what there is to filter by; the
+// filter does not, because once it is on screen it is yours.
+test("choosing another folder asks for its keys and keeps the filter", async () => {
+  await mountWithNoBoards("/wiki/index.md");
+  await act(async () => openBoardsSection());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = await openNew(document.querySelector("aside")!, "board");
+  await act(async () => dialog.querySelector<HTMLElement>("[aria-label='Remove filter 1']")!.click());
+
+  const folder = dialog.querySelector<HTMLSelectElement>("select:not([aria-label])")!;
+  await act(async () => {
+    folder.value = "/notes";
+    folder.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect([...new Set(drafts)]).toEqual(["/api/draft/board/", "/api/draft/board/notes"]);
+  expect(chips(dialog)).toEqual([]);
 });
 
 // The server owns which ids are valid and which are taken, so a refusal is shown
@@ -2029,13 +2115,14 @@ test("a refused board keeps you on the form and says why", async () => {
   await mountWithNoBoards("/wiki/index.md");
   await act(async () => openBoardsSection());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = await openNew(document.querySelector("aside")!, "board");
 
   captureWrites(422);
-  const panel = document.querySelector("aside")!;
-  await act(async () => submit(panel));
+  await act(async () => submit(dialog));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  expect(panel.textContent).toContain(refusal);
+  expect(dialog.textContent).toContain(refusal);
+  expect(document.querySelector("[aria-label='New board']")).not.toBeNull();
   expect(here).toBe("/wiki/index.md");
 });
 
@@ -2048,7 +2135,8 @@ test("a refused board keeps you on the form and says why", async () => {
  * demanded — and the assertions below are about that.
  */
 function submit(within: Element) {
-  within.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  const form = within.matches("form") ? within : within.querySelector("form")!;
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 }
 
 // A list with no way to add to it means editing wiki.toml by hand for the second
@@ -2062,10 +2150,7 @@ test("the boards list can add another", async () => {
 
   const panel = document.querySelector("aside")!;
   expect(Boolean(panel.querySelector("form"))).toBe(false); // the list, not a form
-
-  const add = [...panel.querySelectorAll("button")].find((b) => b.textContent?.includes("New board"))!;
-  await act(async () => add.click());
-  expect(Boolean(panel.querySelector("form"))).toBe(true);
+  await openNew(panel, "board");
 });
 
 // Renaming a status in the entries makes an inferred column vanish and leaves a
@@ -2482,7 +2567,7 @@ test("with no boards the icon still opens the panel", async () => {
 
   const panel = document.querySelector("aside")!;
   expect(panel.getAttribute("data-open")).toBe("true");
-  expect(Boolean(panel.querySelector("form"))).toBe(true);
+  expect([...panel.querySelectorAll("button")].some((b) => b.textContent?.trim() === "New board")).toBe(true);
 });
 
 // The router defers navigation into a transition; a setState here is urgent. So
@@ -3517,9 +3602,9 @@ test("the tab names the graph, or the entry open over it", async () => {
 });
 
 // No graph is built in, so with none declared the Graphs icon has nowhere to go:
-// the panel is where the first one is made, and it is the form, not a note about
-// what to write by hand.
-test("with no graphs declared the panel is the form that makes one", async () => {
+// the panel is where the first one is made, and it offers that rather than a
+// note about what to write by hand.
+test("with no graphs declared the panel is where one is made", async () => {
   await mountWithGraphs(undefined);
   await act(async () => openSection("Graphs"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
@@ -3528,14 +3613,20 @@ test("with no graphs declared the panel is the form that makes one", async () =>
   const panel = document.querySelector("aside")!;
   expect(panel.textContent).toContain("Your first graph");
   expect(panel.textContent).not.toContain("Your first board");
+  const dialog = await openNew(panel, "graph");
   // Addressed under its own prefix, with an id suggested from the name.
-  expect(panel.textContent).toContain("/graph/");
-  expect(panel.querySelector<HTMLInputElement>("input[aria-label='Graph id']")?.value).toBe("my-kb");
+  expect(dialog.textContent).toContain("/graph/");
+  expect(dialog.querySelector<HTMLInputElement>("input[aria-label='Graph id']")?.value).toBe("my-kb");
+  // A graph assumes nothing, so it starts with no filter — and its words are
+  // its own: a node, not a card.
+  expect(chips(dialog)).toEqual([]);
+  expect(dialog.textContent).toContain("every entry in the folder is a node");
+  expect([...new Set(drafts)]).toEqual(["/api/draft/graph/"]);
 
   const writes = captureWrites();
-  await act(async () => submit(panel));
+  await act(async () => submit(dialog));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  expect(writes).toEqual([{ url: "/api/graph", body: { id: "my-kb", path: "/", name: "My kb" } }]);
+  expect(writes).toEqual([{ url: "/api/graph", body: { id: "my-kb", path: "/", name: "My kb", where: [] } }]);
   expect(here).toBe("/graph/my-kb");
 });
 
@@ -3543,17 +3634,17 @@ test("a refused graph keeps you on the form and says why", async () => {
   await mountWithGraphs(undefined);
   await act(async () => openSection("Graphs"));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const dialog = await openNew(document.querySelector("aside")!, "graph");
 
   captureWrites(422);
-  const panel = document.querySelector("aside")!;
-  await act(async () => submit(panel));
+  await act(async () => submit(dialog));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  expect(panel.textContent).toContain(refusal);
+  expect(dialog.textContent).toContain(refusal);
   expect(here).toBe("/wiki/index.md");
 });
 
 // With graphs declared, the list is what you came for and the form waits behind
-// a disclosure.
+// a button.
 test("the graphs list can add another", async () => {
   await mountWithGraphs([
     { path: "/notes", id: "notes", name: "Who links whom", entries: 2 },
@@ -3564,14 +3655,15 @@ test("the graphs list can add another", async () => {
   const panel = document.querySelector("aside")!;
   expect(Boolean(panel.querySelector("form"))).toBe(false);
 
-  const add = [...panel.querySelectorAll("button")].find((b) => b.textContent === "New graph")!;
-  await act(async () => add.click());
-  expect(Boolean(panel.querySelector("input[aria-label='Graph id']"))).toBe(true);
+  const dialog = await openNew(panel, "graph");
+  expect(Boolean(dialog.querySelector("input[aria-label='Graph id']"))).toBe(true);
 
   // A form you opened is one you can put away, without writing anything.
-  const cancel = [...panel.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+  const writes = captureWrites();
+  const cancel = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
   await act(async () => cancel.click());
-  expect(Boolean(panel.querySelector("form"))).toBe(false);
+  expect(document.querySelector("[aria-label='New graph']")).toBeNull();
+  expect(writes).toEqual([]);
 });
 
 function openGraphSettings() {

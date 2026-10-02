@@ -359,3 +359,21 @@ path = "/backlog"
 		t.Errorf("graph=%+v, want no filter and no neighbours", g)
 	}
 }
+
+// An empty filter is a choice, and not the same as leaving the key out: a board
+// without `where` holds tasks, and `where = []` holds every entry under its path.
+func TestAnEmptyBoardFilterIsNotTheDefault(t *testing.T) {
+	cfg, problems := load(t, `spec = "0.1"
+
+[[tool.wikiview.board]]
+id    = "everything"
+path  = "/backlog"
+where = []
+`)
+	if len(problems) != 0 {
+		t.Errorf("problems=%v, want none", problems)
+	}
+	if b := cfg.Board[0]; b.Where == nil || len(b.Where) != 0 || len(b.Filters) != 0 {
+		t.Errorf("where=%#v filters=%+v, want an empty filter rather than the default", b.Where, b.Filters)
+	}
+}

@@ -34,7 +34,7 @@ func (s Settings) values() map[string]string {
 		"status":   optional(s.Status),
 		"lane":     optional(s.Lane),
 		"blockers": optional(s.Blockers),
-		"where":    list(s.Where),
+		"where":    filter(s.Where),
 		"columns":  list(s.Columns),
 		"lanes":    list(s.Lanes),
 	}
@@ -318,6 +318,19 @@ func list(values []string) string {
 		quoted[i] = quote(v)
 	}
 	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// filter renders a board's `where`, the one list written when empty.
+//
+// On a board, leaving the key out does not mean "no filter": it means the
+// default, `type=task`. So `where = []` is how a board says every entry under
+// its path is a card, and dropping it would quietly put the default back. A
+// graph has no default, so its empty filter is simply left out.
+func filter(where []string) string {
+	if len(where) == 0 {
+		return "[]"
+	}
+	return list(where)
 }
 
 // validSettings refuses what cannot be written as a TOML basic string. Whether a

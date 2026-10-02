@@ -261,7 +261,7 @@ export function Shell({
         rootLabel={bundle.label}
         intro={
           <>
-            A board is a folder's tasks, in columns by <code>status</code>.
+            A board is a folder's entries, in columns by <code>status</code>. It holds tasks unless you choose otherwise.
           </>
         }
         // Choosing from the list is done with the list, so it gives the width
@@ -278,7 +278,7 @@ export function Shell({
         views={bundle.graphs}
         tree={tree}
         rootLabel={bundle.label}
-        intro="A graph is a folder's entries and the links between them. Narrow it with a filter afterwards, in its settings."
+        intro="A graph is a folder's entries and the links between them."
         onPick={(picked) => {
           setLastGraph(picked);
           toggle("graphs", false);
@@ -470,11 +470,11 @@ function hasPanel(section: RailSection): boolean {
 /**
  * The views of one kind a bundle declares, and the way to declare another.
  *
- * With none declared the form is the whole panel. The empty state of a feature
- * is the one moment somebody is definitely willing to be shown how it works, and
- * showing them is cheaper than explaining: a note about what to hand-write into
- * `wiki.toml` leaves them to go and do it, which is exactly the step this can
- * take for them.
+ * With none declared, the panel says what this kind of view is and offers the
+ * button that makes one. The empty state of a feature is the one moment somebody
+ * is definitely willing to be shown how it works, and a note about what to
+ * hand-write into `wiki.toml` leaves them to go and do it, which is exactly the
+ * step this can take for them.
  */
 function ViewsPanel({
   kind,
@@ -492,16 +492,13 @@ function ViewsPanel({
   intro: ReactNode;
   onPick: (id: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
   const label = kind === "board" ? "Boards" : "Graphs";
   if (!views?.length) {
     return (
       <div className="space-y-3 overflow-y-auto p-3.5">
         <SectionLabel>Your first {kind}</SectionLabel>
         <p className="text-muted text-[13px] leading-relaxed">{intro}</p>
-        <div className="border-line bg-panel-2 rounded-xl border p-3.5">
-          <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
-        </div>
+        <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
       </div>
     );
   }
@@ -511,28 +508,10 @@ function ViewsPanel({
       <SectionLabel className="pt-3.5 pr-3.5 pb-2 pl-4">{label}</SectionLabel>
       <ViewList prefix={kind === "board" ? "/kanban" : "/graph"} kind={kind} views={views} onPick={onPick} />
 
-      {/* Behind a disclosure, because the list is what you came for and a form
-          under every one of them is a form you scroll past. Without it, adding a
-          second one means editing wiki.toml by hand, which is the dead end the
-          empty state already avoids. */}
+      {/* Without it, adding a second one means editing wiki.toml by hand, which
+          is the dead end the empty state already avoids. */}
       <div className="p-2.5">
-        {adding ? (
-          <div className="border-line bg-panel-2 animate-wv-in rounded-xl border p-3.5">
-            <p className="mb-2.5 font-semibold">New {kind}</p>
-            <NewView kind={kind} tree={tree} rootLabel={rootLabel} onCancel={() => setAdding(false)} />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="border-line-2 text-muted hover:border-faint hover:text-fg flex h-9 w-full items-center gap-2 rounded-[9px] border border-dashed px-2.5"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New {kind}
-          </button>
-        )}
+        <NewView kind={kind} tree={tree} rootLabel={rootLabel} />
       </div>
     </div>
   );

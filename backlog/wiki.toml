@@ -20,7 +20,8 @@ ignore_orphans = ["*/**"]
 # design telling us something before anyone else has to live with it.
 #
 # `path = "/"` boards the whole bundle, since this bundle *is* the backlog.
-# `where` is omitted because ["type=task"] is the default. `columns` pins the
+# `where` is the default, written out because the board is about tasks rather
+# than tasks by accident; `where = []` would board every entry. `columns` pins the
 # order and declares "in-progress" before anything is in it, which inference
 # alone could never do.
 [[tool.wikiview.board]]

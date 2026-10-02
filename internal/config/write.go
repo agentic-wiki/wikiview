@@ -26,15 +26,22 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 // none of which survives a parse-and-reserialize. Adding a table to the end is
 // the whole edit, which is small enough to be obviously correct.
 //
-// Only the keys that say which board this is. `where`, `status` and `columns`
-// all have defaults, and writing them out would be a config file full of
-// settings nobody chose.
+// The keys that say which board this is, plus `where` when one was chosen.
+// `status` and `columns` have defaults, and writing them out would be a config
+// file full of settings nobody chose. `where` is different because choosing it
+// is part of making the board: a board of ideas is not a board of tasks with a
+// setting changed afterwards. A nil `where` was not chosen and is left to the
+// default; an empty one was, and means every entry under the path.
 func Declare(dir string, existing Config, b Board) error {
 	taken := make([]string, 0, len(existing.Board))
 	for _, other := range existing.Board {
 		taken = append(taken, other.ID)
 	}
-	return declare(dir, "board", taken, b.ID, b.Path, b.Name)
+	where := ""
+	if b.Where != nil {
+		where = filter(b.Where)
+	}
+	return declare(dir, "board", taken, b.ID, b.Path, b.Name, b.Where, where)
 }
 
 // DeclareGraph appends a graph, by the rules a board is declared by. Ids are
@@ -44,13 +51,18 @@ func DeclareGraph(dir string, existing Config, g Graph) error {
 	for _, other := range existing.Graph {
 		taken = append(taken, other.ID)
 	}
-	return declare(dir, "graph", taken, g.ID, g.Path, g.Name)
+	return declare(dir, "graph", taken, g.ID, g.Path, g.Name, g.Where, list(g.Where))
 }
 
 // declare appends one `[[tool.wikiview.<kind>]]` table naming a view over a
 // folder. Every view is declared the same way, so there is one writer for it.
-func declare(dir, kind string, taken []string, id, folder, name string) error {
+// `rendered` is the filter as it is written, "" to leave the key out: whether
+// an empty filter is written is the kind's rule, not this writer's.
+func declare(dir, kind string, taken []string, id, folder, name string, where []string, rendered string) error {
 	if err := validate(kind, taken, id, folder, name); err != nil {
+		return err
+	}
+	if err := allWritable(where); err != nil {
 		return err
 	}
 
@@ -70,6 +82,9 @@ func declare(dir, kind string, taken []string, id, folder, name string) error {
 	fmt.Fprintf(&out, "path = %s\n", quote(folder))
 	if name != "" {
 		fmt.Fprintf(&out, "name = %s\n", quote(name))
+	}
+	if rendered != "" {
+		fmt.Fprintf(&out, "where = %s\n", rendered)
 	}
 
 	return replace(path, out.String())

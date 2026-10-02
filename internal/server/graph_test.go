@@ -291,6 +291,7 @@ func TestDeclareGraphRefusesWhatCannotBeAddressed(t *testing.T) {
 		{"a folder that is not there", declareRequest{ID: "none", Path: "/nowhere"}},
 		{"a file, which is not a folder", declareRequest{ID: "file", Path: "/index.md"}},
 		{"a name that would break the file", declareRequest{ID: "ok", Path: "/people", Name: "a\nb"}},
+		{"a filter that does not parse", declareRequest{ID: "ok", Path: "/people", Where: []string{"nonsense"}}},
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {

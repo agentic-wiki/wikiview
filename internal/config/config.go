@@ -24,7 +24,7 @@ import (
 //
 //	[[tool.wikiview.board]]
 //	path    = "/backlog"
-//	where   = ["type=task"]                              # default
+//	where   = ["type=task"]                              # default; [] is every entry
 //	status  = "status"                                   # default
 //	columns = ["backlog", "todo", "in-progress", "done"] # default: inferred
 //	lane    = "priority"                                 # default: no lanes
@@ -51,7 +51,9 @@ type Board struct {
 	// Filled in by whoever displays it, not here — naming a path readably is a
 	// presentation rule with one home, and it is not this package's.
 	Name string `toml:"name" json:"name,omitempty"`
-	// Where filters which entries are cards, in the `--where` spelling.
+	// Where filters which entries are cards, in the `--where` spelling. Nil
+	// takes the default; empty is every entry under Path, which is why an empty
+	// one is written out rather than left out (see `filter`).
 	Where []string `toml:"where" json:"where,omitempty"`
 	// Status is the frontmatter field the columns come from.
 	Status string `toml:"status" json:"status"`

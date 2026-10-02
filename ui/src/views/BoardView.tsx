@@ -347,11 +347,14 @@ function matches(card: Card, q: string): boolean {
  * A board with nothing on it, and what would put a card there.
  *
  * The reason is worth spelling out because it is not guessable: a card is an
- * entry with `type: task`, and nothing on screen says so.
+ * entry matching the board's filter — `type=task` unless somebody chose
+ * otherwise — and nothing else on screen says so. Said from the board's own
+ * filter, since a board of ideas claiming to want tasks sends you off to write
+ * the wrong thing.
  *
  * Two ways to get here. A fresh bundle lands on `root`, which exists without
  * configuring anything and in a bundle of notes matches nothing: that one
- * offers the fix, a board over a folder that has tasks. A board you declared
+ * offers the fix, a board over a folder that has some. A board you declared
  * yourself is one set up before its cards are written, so it only says what
  * will fill it.
  */
@@ -371,25 +374,43 @@ function EmptyBoard({
       detail={
         board.declared ? (
           <>
-            An entry under <code>{board.path}</code> with <code>type: task</code> and a <code>{board.field}</code> becomes
-            a card here.
+            {board.where.length ? "An entry" : "Any entry"} under <code>{board.path}</code>
+            <Matching where={board.where} /> becomes a card here.
           </>
         ) : (
           <>
-            No entry under <code>{board.path}</code> is a <code>type: task</code> with a <code>{board.field}</code>.
+            No entry under <code>{board.path}</code>
+            <Matching where={board.where} /> yet.
           </>
         )
       }
       action={
         !board.declared && (
-          // A form is a control, and paper takes no input.
-          <div data-print="hide" className="border-line bg-panel-2 rounded-xl border p-4 text-left">
-            <p className="text-muted mb-3 text-[13px]">Point a board at a folder that has some:</p>
+          // A button is a control, and paper takes no input.
+          <div data-print="hide" className="flex w-60 flex-col gap-2">
+            <p className="text-muted text-[13px]">Point a board at a folder that has some:</p>
             <NewView kind="board" tree={tree} rootLabel={rootLabel} />
           </div>
         )
       }
     />
+  );
+}
+
+/** A board's filter as the end of a sentence — " matching `a` and `b`" — or
+ *  nothing, when every entry is a card. */
+function Matching({ where }: { where: string[] }) {
+  if (where.length === 0) return null;
+  return (
+    <>
+      {" matching "}
+      {where.map((w, i) => (
+        <span key={i}>
+          {i > 0 && " and "}
+          <code>{w}</code>
+        </span>
+      ))}
+    </>
   );
 }
 

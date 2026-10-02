@@ -6,7 +6,8 @@ import { useEscape } from "@/ui/escape";
  * naming what is being set up, and a save that writes the bundle's wiki.toml.
  *
  * One frame, so a board's settings and a graph's close, save and fail the same
- * way; each view owns only its fields.
+ * way; each view owns only its fields. Declaring a new view is the same dialog
+ * with a different verb on its button.
  */
 export function SettingsDialog({
   title,
@@ -15,6 +16,7 @@ export function SettingsDialog({
   error,
   onSubmit,
   onClose,
+  action = "Save",
   children,
 }: {
   title: string;
@@ -25,6 +27,8 @@ export function SettingsDialog({
   error: string | null;
   onSubmit: () => void;
   onClose: () => void;
+  /** What the submit says: saving settings, or creating the view. */
+  action?: string;
   children: ReactNode;
 }) {
   useEscape(onClose);
@@ -57,7 +61,7 @@ export function SettingsDialog({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close settings"
+            aria-label={"Close " + title.toLowerCase()}
             className="text-muted hover:text-fg hover:bg-fg/5 ml-auto grid size-7.5 shrink-0 place-items-center rounded-[7px]"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -87,7 +91,7 @@ export function SettingsDialog({
             disabled={busy}
             className="bg-accent text-on-accent h-8.5 rounded-[9px] px-4 font-semibold hover:brightness-110 disabled:opacity-50"
           >
-            {busy ? "Saving…" : "Save"}
+            {busy ? "Saving…" : action}
           </button>
         </footer>
       </form>

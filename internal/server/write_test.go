@@ -339,6 +339,7 @@ func TestDeclareBoardRefusesWhatCannotBeAddressed(t *testing.T) {
 		{"a folder that is not there is a typo, not a plan", declareRequest{ID: "empty", Path: "/nowhere"}},
 		{"nor is a file a folder", declareRequest{ID: "file", Path: "/wiki.toml"}},
 		{"a name with a newline in it would write a broken file", declareRequest{ID: "ok", Path: "/backlog", Name: "one\ntwo"}},
+		{"a filter that does not parse would be reported on every startup", declareRequest{ID: "ok", Path: "/backlog", Where: []string{"nonsense"}}},
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {
@@ -531,5 +532,97 @@ path = "/backlog"
 	}
 	if raw(t, srv, "backlog/a.md") != before {
 		t.Error("a refused move wrote anyway")
+	}
+}
+
+// allCards is every card on a board, whichever column it is in.
+func allCards(b BoardView) []string {
+	var out []string
+	for _, c := range b.Columns {
+		out = append(out, cardPaths(c)...)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// The filter chosen when a board is made is the one it holds by: a board of
+// notes is not a board of tasks, and an empty filter is every entry under the
+// path rather than the default coming back.
+func TestDeclareBoardWithAFilterHoldsWhatItSays(t *testing.T) {
+	cases := []struct {
+		why   string
+		where []string
+		want  []string
+	}{
+		{"left out, it is tasks", nil,
+			[]string{"/backlog/a.md", "/backlog/b.md", "/backlog/c.md", "/backlog/d.md"}},
+		{"chosen, it is what was chosen", []string{"type=note"}, []string{"/backlog/note.md"}},
+		{"empty, it is everything", []string{},
+			[]string{"/backlog/a.md", "/backlog/b.md", "/backlog/c.md", "/backlog/d.md", "/backlog/note.md"}},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			srv := newBoardServer(t, `spec = "0.1"`)
+			if code, _ := post(t, srv, "/api/board", declareRequest{ID: "b", Path: "/backlog", Where: c.where}); code != http.StatusOK {
+				t.Fatalf("POST = %d, want 200", code)
+			}
+			if got := allCards(board(t, srv, "/api/board/b")); !slices.Equal(got, c.want) {
+				t.Errorf("cards = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// Clearing a board's filter in its settings keeps it cleared, rather than the
+// default reappearing on the next read.
+func TestBoardSettingsCanClearTheFilter(t *testing.T) {
+	srv := newBoardServer(t, declaredBoard)
+	if code, _ := put(t, srv, "/api/board/backlog", config.Settings{Where: []string{}}); code != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", code)
+	}
+	b := board(t, srv, "/api/board/backlog")
+	if got := allCards(b); !slices.Contains(got, "/backlog/note.md") || len(got) != 5 {
+		t.Errorf("cards = %v, want every entry under /backlog", got)
+	}
+	if len(b.Where) != 0 {
+		t.Errorf("where = %v, want none", b.Where)
+	}
+}
+
+// The form that declares a view starts from the server's default, never a copy
+// of it, and offers the keys of the folder it is over.
+func TestDraftIsWhatADeclaredViewWouldStartAs(t *testing.T) {
+	srv := newBoardServer(t, `spec = "0.1"`)
+
+	var b draft
+	if code := get(t, srv, "/api/draft/board/backlog", &b); code != http.StatusOK {
+		t.Fatalf("GET = %d", code)
+	}
+	if !slices.Equal(b.Where, []string{"type=task"}) {
+		t.Errorf("board where = %v, want the default", b.Where)
+	}
+	i := slices.IndexFunc(b.Fields, func(f Field) bool { return f.Key == "type" })
+	if i < 0 || !slices.Equal(b.Fields[i].Values, []string{"note", "task"}) {
+		t.Errorf("fields = %+v, want type with the folder's values", b.Fields)
+	}
+
+	// The folder's own keys, not the bundle's: /notes has no status.
+	var n draft
+	get(t, srv, "/api/draft/board/notes", &n)
+	if slices.ContainsFunc(n.Fields, func(f Field) bool { return f.Key == "status" }) {
+		t.Errorf("fields = %+v, want only what /notes uses", n.Fields)
+	}
+
+	// A graph assumes nothing, and says so as an empty list rather than null.
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/draft/graph/", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"where":[]`) {
+		t.Errorf("graph draft = %d %s", rec.Code, rec.Body)
+	}
+
+	for _, path := range []string{"/api/draft/board/nowhere", "/api/draft/board/wiki.toml", "/api/draft/table/backlog"} {
+		if code := get(t, srv, path, nil); code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, code)
+		}
 	}
 }

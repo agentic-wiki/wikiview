@@ -149,16 +149,65 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 	s.committed(w)
 }
 
-// declareRequest is a new board: which folder, called what, addressed how.
+// declareRequest is a new view: which folder, called what, addressed how, and
+// which of its entries it holds.
 //
 // No version guard, unlike the writes above. Those are addressed by something
 // only meaningful against the content they were read from — a line, a column —
-// and this is not: it appends a board that did not exist, and the answer is the
+// and this is not: it appends a view that did not exist, and the answer is the
 // same whatever else changed meanwhile.
 type declareRequest struct {
 	ID   string `json:"id"`
 	Path string `json:"path"`
 	Name string `json:"name"`
+	// Where is absent (nil) for a request that did not choose one, which leaves
+	// the kind's default. Empty is a choice: every entry under the path.
+	Where []string `json:"where"`
+}
+
+// draft is what a view over a folder starts as, before it is declared: the
+// filter it would have, and the keys there are to choose a different one from.
+// Served so the form offers the server's default rather than a copy of it.
+type draft struct {
+	Where  []string `json:"where"`
+	Fields []Field  `json:"fields"`
+}
+
+// handleDraft answers for the form that declares a view.
+func (s *Server) handleDraft(w http.ResponseWriter, r *http.Request) {
+	v := s.store.View()
+	folder := path.Clean("/" + strings.Trim(r.PathValue("path"), "/"))
+	if !isFolder(v.Index.Bundle.Dir, folder) {
+		writeJSON(w, http.StatusNotFound, errorBody{"no folder " + folder + " in the bundle"})
+		return
+	}
+	// Never null, so "no filter" reads the same as it is sent back.
+	out := draft{Where: []string{}}
+	switch r.PathValue("kind") {
+	case "board":
+		out.Where = config.Defaults(config.Board{}).Where
+	case "graph":
+	default:
+		writeJSON(w, http.StatusNotFound, errorBody{"a view is a board or a graph"})
+		return
+	}
+	out.Fields = fieldsIn(v.Index.Filter(strings.TrimSuffix(folder, "/"), nil))
+	writeJSON(w, http.StatusOK, out)
+}
+
+// refusedFilter reports a filter that does not parse, and says so to the client.
+//
+// The query spelling has one implementation, and it is the engine's. A filter
+// that does not parse is reported here rather than written and reported on
+// every startup afterwards.
+func refusedFilter(w http.ResponseWriter, where []string) bool {
+	for _, expr := range where {
+		if _, err := index.ParseFilter(expr); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
+			return true
+		}
+	}
+	return false
 }
 
 // handleDeclareBoard adds a board to the bundle's wiki.toml.
@@ -176,11 +225,15 @@ func (s *Server) handleDeclareBoard(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
 
-	board := config.Defaults(config.Board{
-		ID:   req.ID,
-		Path: path.Clean("/" + strings.Trim(req.Path, "/")),
-		Name: req.Name,
-	})
+	board := config.Board{
+		ID:    req.ID,
+		Path:  path.Clean("/" + strings.Trim(req.Path, "/")),
+		Name:  req.Name,
+		Where: req.Where,
+	}
+	if refusedFilter(w, board.Where) {
+		return
+	}
 	// A board over a folder with no tasks yet is allowed: a board is often set
 	// up before its cards are written, and the empty board says what would put
 	// one on it. A folder that is not there is refused, being a typo far more
@@ -207,7 +260,10 @@ func (s *Server) handleDeclareGraph(w http.ResponseWriter, r *http.Request) {
 
 	v := s.store.View()
 	cfg, _ := config.Decode(v.Index.Bundle, v.Index)
-	graph := config.Graph{ID: req.ID, Path: path.Clean("/" + strings.Trim(req.Path, "/")), Name: req.Name}
+	graph := config.Graph{ID: req.ID, Path: path.Clean("/" + strings.Trim(req.Path, "/")), Name: req.Name, Where: req.Where}
+	if refusedFilter(w, graph.Where) {
+		return
+	}
 	// By the board's rule: an empty folder is allowed, a missing one refused.
 	if !isFolder(v.Index.Bundle.Dir, graph.Path) {
 		writeJSON(w, http.StatusUnprocessableEntity, errorBody{"no folder " + graph.Path + " in the bundle"})
@@ -236,11 +292,8 @@ func (s *Server) handleGraphSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{"no graph with that id"})
 		return
 	}
-	for _, expr := range req.Where {
-		if _, err := index.ParseFilter(expr); err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
-			return
-		}
+	if refusedFilter(w, req.Where) {
+		return
 	}
 	if err := config.UpdateGraph(v.Index.Bundle.Dir, id, req); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
@@ -270,14 +323,8 @@ func (s *Server) handleBoardSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The query spelling has one implementation, and it is the engine's. A filter
-	// that does not parse is reported here rather than written and reported on
-	// every startup afterwards.
-	for _, expr := range req.Where {
-		if _, err := index.ParseFilter(expr); err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
-			return
-		}
+	if refusedFilter(w, req.Where) {
+		return
 	}
 
 	// A column or a lane is one value, and a list has many. Written anyway, it
