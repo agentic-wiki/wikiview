@@ -5958,3 +5958,62 @@ test("⌘F is the browser's on a page with no search box", async () => {
   await mountAt("/wiki/notes/a.md");
   expect(pressFind()).toBe(false);
 });
+
+/** Presses Escape where the focus is, the way a keyboard does. */
+async function pressEscape() {
+  await act(async () => {
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+  });
+}
+
+// Escape in a view's search clears it: the quick way back to everything.
+test("Escape in the board's filter clears it", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const filter = () => document.querySelector<HTMLInputElement>("input[aria-label='Filter cards']")!;
+  const everything = allCards().length;
+
+  filter().focus();
+  await typeInto(filter(), "zzz-matches-nothing");
+  expect(allCards().length).toBeLessThan(everything);
+  await pressEscape();
+  expect(filter().value).toBe("");
+  expect(allCards().length).toBe(everything);
+  expect(document.activeElement).toBe(filter()); // cleared, still where you were typing
+});
+
+test("Escape in the graph's highlight clears it", async () => {
+  await openGraph();
+  const box = document.querySelector<HTMLInputElement>("input[aria-label='Highlight nodes']")!;
+  box.focus();
+  await typeInto(box, "note");
+  expect(Number(document.querySelector("main svg [data-path='/notes/d.md']")!.getAttribute("opacity"))).toBeLessThan(0.5);
+  await pressEscape();
+  expect(box.value).toBe("");
+  expect(document.querySelector("main svg [data-path='/notes/d.md']")!.getAttribute("opacity")).toBe("1");
+});
+
+// The press is the box's before it is the sheet's: clearing what you typed must
+// not also close the card you were reading. Empty, Escape leaves the box; only
+// then does the next one close the sheet, as it would from anywhere else.
+test("Escape clears the search, then leaves it, before it closes the sheet", async () => {
+  await openGraph("/graph/notes/notes/a.md");
+  const box = document.querySelector<HTMLInputElement>("input[aria-label='Highlight nodes']")!;
+  const sheetOpen = () => Boolean(document.querySelector("[data-print='sheet']"));
+  box.focus();
+  await typeInto(box, "note");
+
+  await pressEscape();
+  expect(box.value).toBe("");
+  expect(sheetOpen()).toBe(true);
+
+  await pressEscape();
+  expect(document.activeElement).not.toBe(box);
+  expect(sheetOpen()).toBe(true);
+
+  await pressEscape();
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(sheetOpen()).toBe(false);
+});

@@ -18,6 +18,7 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 
 - **Clicking a folder's name in the tree opens or closes it**, as the chevron does, and still goes to the folder. Cmd, Ctrl or Shift-click and middle-click leave the tree as it is.
 - **⌘F / Ctrl+F on a board or graph** goes to its search box, which filters cards or highlights nodes. Pressed again from inside the box, it opens the browser's find, which can search an entry open in the side panel. It leaves dialogs, the palette and other fields alone.
+- **Escape in a board's or graph's search box clears it.** Pressed again with the box empty, it leaves the box. Neither press closes the side panel; the next one does, as before.
 - The settings dialogs say **Apply** instead of Save.
 - Board cards no longer lift 1px on hover; only the border changes.
 

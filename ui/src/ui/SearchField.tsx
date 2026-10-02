@@ -13,6 +13,8 @@ import { useEffect, useRef } from "react";
  * Left alone while you are typing somewhere else, or while a dialog or the
  * palette is open: the key belongs to what you are in, and a box behind a modal
  * is not one to send focus to.
+ *
+ * Escape inside it clears it, then leaves it, before it closes anything else.
  */
 export function SearchField({
   label,
@@ -52,6 +54,16 @@ export function SearchField({
         ref={input}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        // Escape clears what you typed, and with nothing left to clear, leaves
+        // the box. Either way it is this box's press: stopped before the
+        // window, where the escape stack would close the sheet as well.
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          e.preventDefault();
+          e.nativeEvent.stopPropagation();
+          if (value) onChange("");
+          else e.currentTarget.blur();
+        }}
         placeholder={placeholder}
         aria-label={label}
         className="placeholder:text-faint min-w-0 flex-1 bg-transparent text-[13px] outline-none"
