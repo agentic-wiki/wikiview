@@ -104,6 +104,8 @@ export function Tree({
   // Top-level folders carry their group's colour, the same one the rest of the
   // app draws their entries in (backlog/8-design/003).
   const groups = useMemo(() => groupsUnder(node, "/"), [node]);
+  const indexes = useMemo(() => indexesUnder(node), [node]);
+  const atIndex = indexes.has(current);
 
   // Ancestors of the current entry, reopened whenever it changes. A union
   // rather than a replacement, so folders opened by hand stay open.
@@ -111,6 +113,11 @@ export function Tree({
     setExpanded((prev) => {
       const next = new Set(prev);
       const parts = current.split("/").filter(Boolean).slice(0, -1);
+      // A folder's index.md is the folder itself — its listing redirects there
+      // — so it leaves that folder as it is, the same as its listing does.
+      // Otherwise clicking a folder's name to close it would reopen it on
+      // arrival at its index.
+      if (atIndex) parts.pop();
       let path = "";
       for (const part of parts) {
         path += "/" + part;
@@ -120,7 +127,7 @@ export function Tree({
       // to storage and re-render on every click through the tree.
       return next.size === prev.length ? prev : [...next];
     });
-  }, [current, setExpanded]);
+  }, [current, atIndex, setExpanded]);
 
   const toggle = (path: string) =>
     setExpanded((prev) =>
@@ -139,6 +146,13 @@ export function Tree({
       groups={groups}
     />
   );
+}
+
+/** Every folder's own index.md under `node`. */
+function indexesUnder(node: TreeNode, into = new Set<string>()): Set<string> {
+  if (node.index) into.add(node.index);
+  for (const child of node.children) indexesUnder(child, into);
+  return into;
 }
 
 /**

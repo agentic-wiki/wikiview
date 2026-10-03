@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Navigate, Route, Routes } from "react-router";
 import type { TreeNode } from "@/api";
 import { Tree } from "@/shell/Tree";
 
@@ -77,4 +77,49 @@ test("a folder's name lines up with the entries beside it", async () => {
   expect(at["a"]).toBe(8); // the top level, with its dot between chevron and name
   expect(at["b"]! + 23).toBe(at["/a/x.md"]!);
   expect(at["c"]! + 23).toBe(at["/a/b/y.md"]!);
+});
+
+// A folder with an index.md redirects its listing to it. Arriving there must not
+// reopen the folder a click on its name just closed — it used to, so root
+// folders (the ones that tend to have an index) flickered shut and open again.
+test("clicking a folder's name closes it even when it redirects to its index", async () => {
+  const indexed: TreeNode = {
+    path: "/",
+    name: "",
+    entries: [],
+    children: [
+      {
+        path: "/a",
+        name: "a",
+        index: "/a/index.md",
+        entries: [stub("/a/index.md"), stub("/a/x.md")],
+        children: [{ path: "/a/b", name: "b", entries: [stub("/a/b/y.md")], children: [] }],
+      },
+    ],
+  };
+  localStorage.clear();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <MemoryRouter initialEntries={["/wiki/r.md"]}>
+        <Tree node={indexed} bundleId="index-test" unseen={new Set()} saved={new Set()} />
+        <Routes>
+          <Route path="/wiki/a/" element={<Navigate to="/wiki/a/index.md" replace />} />
+          <Route path="*" element={null} />
+        </Routes>
+      </MemoryRouter>,
+    ),
+  );
+  const chevron = () => host.querySelector<HTMLElement>("button[aria-label$=' a']")!;
+  const name = () => host.querySelector<HTMLElement>("a[href='/wiki/a/']")!;
+
+  await act(async () => name().click());
+  expect(chevron().getAttribute("aria-expanded")).toBe("true");
+  await act(async () => name().click());
+  expect(chevron().getAttribute("aria-expanded")).toBe("false");
+
+  act(() => root.unmount());
+  host.remove();
 });
